@@ -1,0 +1,232 @@
+// prisma/schema.prisma
+// EchoAurion Company OS — see CLAUDE.md §9 for the authoritative schema spec.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ── Audit ──────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String // "william_morrison" | "computer_agent"
+  action    String // e.g. "crm.contact.create"
+  entityId  String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([actor])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// ── Financial Monitor ──────────────────────────────────────────────────────
+
+model PlaidItem {
+  id              String   @id @default(cuid())
+  itemId          String   @unique
+  accessToken     String
+  institutionName String
+  accountType     String // "personal_checking" | "business_checking"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  accounts PlaidAccount[]
+
+  @@map("plaid_items")
+}
+
+model PlaidAccount {
+  id             String   @id @default(cuid())
+  plaidAccountId String   @unique
+  itemId         String
+  item           PlaidItem @relation(fields: [itemId], references: [id])
+  name           String
+  type           String
+  subtype        String?
+  mask           String?
+  createdAt      DateTime @default(now())
+
+  balanceSnapshots BalanceSnapshot[]
+  transactions     Transaction[]
+
+  @@map("plaid_accounts")
+}
+
+model BalanceSnapshot {
+  id        String       @id @default(cuid())
+  accountId String
+  account   PlaidAccount @relation(fields: [accountId], references: [id])
+  available Float?
+  current   Float
+  limit     Float?
+  snappedAt DateTime     @default(now())
+
+  @@index([accountId, snappedAt])
+  @@map("balance_snapshots")
+}
+
+model Transaction {
+  id                 String       @id @default(cuid())
+  accountId          String
+  account            PlaidAccount @relation(fields: [accountId], references: [id])
+  plaidTransactionId String       @unique
+  amount             Float
+  date               DateTime
+  name               String
+  merchantName       String?
+  category           String[]
+  pending            Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+
+  @@index([accountId, date])
+  @@map("transactions")
+}
+
+model MercurySnapshot {
+  id          String   @id @default(cuid())
+  accountId   String // Mercury account UUID
+  accountName String
+  available   Float
+  current     Float
+  snappedAt   DateTime @default(now())
+
+  @@index([snappedAt])
+  @@map("mercury_snapshots")
+}
+
+model Bill {
+  id        String   @id @default(cuid())
+  name      String
+  amount    Float
+  dueDay    Int // day of month (1-31)
+  category  String // "rent" | "subscription" | "software" | "other"
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bills")
+}
+
+// ── Dr. OS ─────────────────────────────────────────────────────────────────
+// Manual pilot-client record (CLAUDE.md §10.2).
+
+model Pilot {
+  id          String   @id @default(cuid())
+  name        String
+  stage       String // DealStage value, stored as string for the manual record
+  health      String // "GREEN" | "AMBER" | "RED"
+  lastContact DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("pilots")
+}
+
+// ── CRM ────────────────────────────────────────────────────────────────────
+
+model Contact {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  company   String?
+  title     String?
+  linkedIn  String?
+  tags      String[] // ["investor", "advisor", "integration_partner", "pilot"]
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outreach Outreach[]
+  deals    Deal[]
+
+  @@map("contacts")
+}
+
+model Outreach {
+  id         String         @id @default(cuid())
+  contactId  String
+  contact    Contact        @relation(fields: [contactId], references: [id])
+  channel    String // "email" | "linkedin" | "phone" | "in_person"
+  subject    String?
+  body       String?
+  sentAt     DateTime
+  status     OutreachStatus @default(SENT)
+  responseAt DateTime?
+  actor      String // "william_morrison" | "computer_agent"
+  createdAt  DateTime       @default(now())
+
+  @@index([contactId])
+  @@map("outreach")
+}
+
+enum OutreachStatus {
+  SENT
+  OPENED
+  RESPONDED
+  BOUNCED
+  NO_REPLY
+}
+
+model Deal {
+  id                String    @id @default(cuid())
+  contactId         String
+  contact           Contact   @relation(fields: [contactId], references: [id])
+  title             String
+  value             Float? // USD
+  stage             DealStage @default(IDENTIFIED)
+  notes             String?
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([stage])
+  @@map("deals")
+}
+
+enum DealStage {
+  IDENTIFIED
+  CONTACTED
+  RESPONDED
+  MEETING
+  ACTIVE
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+// ── Revenue ────────────────────────────────────────────────────────────────
+
+model MRRSnapshot {
+  id            String   @id @default(cuid())
+  mrr           Float
+  customerCount Int
+  newMRR        Float    @default(0)
+  churnedMRR    Float    @default(0)
+  expansionMRR  Float    @default(0)
+  snappedAt     DateTime @default(now())
+
+  @@index([snappedAt])
+  @@map("mrr_snapshots")
+}
+
+// Single-row raise configuration (CLAUDE.md §14.4), upsert pattern.
+model RaiseConfig {
+  id            String   @id @default(cuid())
+  target        Float    @default(500000)
+  committed     Float    @default(0)
+  conversations Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@map("raise_config")
+}
