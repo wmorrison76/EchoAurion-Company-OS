@@ -18,6 +18,6 @@ export const config = {
   // Protect everything except the login page, auth endpoints, the public
   // health check, the Plaid webhook, and static assets.
   matcher: [
-    '/((?!login|api/auth|api/health|api/financial/webhook|_next/static|_next/image|favicon.ico).*)',
+    '/((?!login|api/auth|api/health|api/financial/webhook|api/financial/sync|_next/static|_next/image|favicon.ico).*)',
   ],
 }
