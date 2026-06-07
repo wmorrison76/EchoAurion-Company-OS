@@ -7,6 +7,7 @@ import { KPICard, KPIValue } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { HEALTH_LABEL, HEALTH_TO_STATUS } from '@/lib/support'
 import { QuestionsPanel } from './QuestionsPanel'
+import { WorkRequestsPanel } from './WorkRequestsPanel'
 import { AlertsPanel } from './AlertsPanel'
 import type { APIResponse } from '@/types'
 import type { SupportClientView, SupportSessionView } from '@/types/support'
@@ -98,8 +99,9 @@ export function SupportConsole() {
         </KPICard>
       </div>
 
-      {/* Ask the Board + Alerts */}
+      {/* Ask the Board + billable change requests + Alerts */}
       <QuestionsPanel />
+      <WorkRequestsPanel />
       <AlertsPanel />
 
       {/* Client health */}

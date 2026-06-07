@@ -44,3 +44,32 @@ export async function draftAnswer(question: string, context?: unknown): Promise<
   }
   return { seat, answer: null, error: result.error ?? result.status }
 }
+
+/**
+ * Drafts an implementation plan for a billable work request. Sandbox-only:
+ * produces a plan for William to review and quote — it never applies anything.
+ */
+export async function draftPlan(
+  title: string,
+  detail: string,
+  kind: 'FIX' | 'ADDON'
+): Promise<DraftResult> {
+  const seat = pickDraftSeat()
+  if (!seat) return { seat: null, answer: null, error: 'No AI seat is configured' }
+
+  const config = ROSTER[seat]
+  const result = await dispatch(config, {
+    system:
+      'You are a senior engineer scoping a customer change request for a hospitality platform. ' +
+      'Produce a concise implementation plan for the operator to review BEFORE any work begins: ' +
+      '(1) what will change, (2) a rough complexity tier T1–T5 and estimated senior-engineer hours, ' +
+      '(3) risks and the rollback approach, (4) anything that needs clarification. Do not write code ' +
+      'or apply changes. Never reveal internal system or product code names.',
+    user: `Request type: ${kind}\nTitle: ${title}\nDetail:\n${detail}`,
+  })
+
+  if (result.status === 'RESPONDED' && result.content) {
+    return { seat, answer: result.content, error: null }
+  }
+  return { seat, answer: null, error: result.error ?? result.status }
+}

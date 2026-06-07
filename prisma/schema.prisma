@@ -453,3 +453,78 @@ model PushSubscription {
 
   @@map("push_subscriptions")
 }
+
+// ── Billable change requests (Ask-the-Board "build me a fix/add-on") ─────────
+// A customer requests work from inside support (never sees the product). The
+// Board Room drafts it in sandbox; it's quoted by complexity tier; the
+// property's designated billing contact authorizes the spend (two-key with
+// William's execute approval); every executed change keeps a rollback path.
+
+model WorkRequest {
+  id        String     @id @default(cuid())
+  clientId  String?
+  clientKey String // opaque deployment id — product stays hidden
+  kind      WorkKind   @default(FIX)
+  title     String
+  detail    String
+  context   Json?
+  // requester gating (who at the property asked)
+  requesterName String?
+  requesterRole String?
+  // pricing (frozen at quote time)
+  tier          String? // ComplexityTier T1..T5
+  humanHours    Float?
+  quoteTotal    Float?
+  quoteSnapshot Json?
+  // Board Room draft (sandbox-first)
+  draftSeat String?
+  draftPlan String?
+  // approvals (two-key) + rollback
+  approvedByCustomer Boolean @default(false)
+  customerApprover   String? // billing-contact name who authorized spend
+  approvedByAdmin    Boolean @default(false)
+  rollbackRef        String? // revert SHA / snapshot — REQUIRED before EXECUTED
+  delivered          Boolean @default(false)
+  status    WorkStatus @default(RECEIVED)
+  actor     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  quotedAt     DateTime?
+  authorizedAt DateTime?
+  executedAt   DateTime?
+  rolledBackAt DateTime?
+
+  @@index([status])
+  @@index([clientKey, delivered])
+  @@map("work_requests")
+}
+
+enum WorkKind {
+  FIX
+  ADDON
+}
+
+enum WorkStatus {
+  RECEIVED // submitted, needs triage
+  QUOTED // tier + price set, awaiting customer authorization
+  AUTHORIZED // billing contact approved the quote
+  IN_PROGRESS // admin approved + sandbox work underway
+  EXECUTED // applied, rollback recorded
+  ROLLED_BACK
+  DECLINED
+}
+
+// Designated billing contact(s) per property — the only profiles allowed to
+// authorize paid work. The token is the credential the deployment presents.
+model BillingContact {
+  id        String   @id @default(cuid())
+  clientKey String // property/deployment scope
+  name      String
+  email     String?
+  token     String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([clientKey])
+  @@map("billing_contacts")
+}
