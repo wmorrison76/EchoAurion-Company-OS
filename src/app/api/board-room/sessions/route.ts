@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { convene } from '@/lib/board-room/session'
 import { KNIGHT_SEATS } from '@/lib/board-room/knights'
+import { applyPersona } from '@/lib/board-room/personas'
 import type { APIResponse } from '@/types'
 import type { BoardRoomSessionSummary, SessionStatus } from '@/types/board-room'
 
@@ -41,6 +42,8 @@ export async function GET(): Promise<Response> {
 const schema = z.object({
   problem: z.string().min(8, 'Describe the problem in a sentence or two'),
   sandbox: z.boolean().default(false),
+  // Phase 5 — Playground persona (sandbox only).
+  persona: z.string().optional(),
 })
 
 export async function POST(req: Request): Promise<Response> {
@@ -60,7 +63,12 @@ export async function POST(req: Request): Promise<Response> {
       return Response.json({ success: false, error: 'No knights configured' }, { status: 503 })
     }
 
-    const id = await convene(parsed.data.problem, parsed.data.sandbox, 'william_morrison')
+    // Persona framing only applies to sandbox (Playground) sessions.
+    const problem =
+      parsed.data.sandbox && parsed.data.persona
+        ? applyPersona(parsed.data.problem, parsed.data.persona)
+        : parsed.data.problem
+    const id = await convene(problem, parsed.data.sandbox, 'william_morrison')
     return Response.json({ success: true, data: { id } } satisfies APIResponse<{ id: string }>, {
       status: 201,
     })

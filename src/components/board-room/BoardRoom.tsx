@@ -7,10 +7,13 @@ import { KPICard } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SkeletonCard } from '@/components/ui/SkeletonCard'
 import { knightLabel, knightLevel, sessionLabel, sessionLevel } from '@/lib/board-room/status'
+import { BriefingCard } from './BriefingCard'
+import { ActionPanel } from './ActionPanel'
 import type { APIResponse } from '@/types'
 import type {
   BoardRoomSessionDTO,
   BoardRoomSessionSummary,
+  Persona,
   Seat,
 } from '@/types/board-room'
 
@@ -38,9 +41,13 @@ export function BoardRoom() {
   const sessions = useSWR('/api/board-room/sessions', jsonFetcher<BoardRoomSessionSummary[]>, {
     revalidateOnFocus: false,
   })
+  const personas = useSWR('/api/board-room/personas', jsonFetcher<Persona[]>, {
+    revalidateOnFocus: false,
+  })
 
   const [problem, setProblem] = useState('')
   const [sandbox, setSandbox] = useState(false)
+  const [persona, setPersona] = useState<string | null>(null)
   const [convening, setConvening] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState<BoardRoomSessionDTO | null>(null)
@@ -58,7 +65,7 @@ export function BoardRoom() {
       const res = await fetch('/api/board-room/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ problem, sandbox }),
+        body: JSON.stringify({ problem, sandbox, persona: sandbox ? persona ?? undefined : undefined }),
       })
       const body = (await res.json()) as APIResponse<{ id: string }>
       if (!body.success) throw new Error(body.error)
@@ -70,10 +77,12 @@ export function BoardRoom() {
     } finally {
       setConvening(false)
     }
-  }, [problem, sandbox, openSession, sessions])
+  }, [problem, sandbox, persona, openSession, sessions])
 
   return (
     <div className="flex flex-col gap-6">
+      <BriefingCard />
+
       {/* Convene form */}
       <KPICard title="Convene the Board">
         <div className="flex flex-col gap-3">
@@ -110,6 +119,34 @@ export function BoardRoom() {
               {convening ? 'Convening…' : 'Convene the Board'}
             </button>
           </div>
+          {sandbox && personas.data && personas.data.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] uppercase tracking-widest text-[#5a5a78]">
+                Playground persona (optional)
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {personas.data.map((p) => {
+                  const selected = persona === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPersona(selected ? null : p.id)}
+                      aria-pressed={selected}
+                      title={p.framing}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors duration-150 ${
+                        selected
+                          ? 'border-[#D4AF37] text-[#D4AF37]'
+                          : 'border-[#2a2a3f] text-[#a0a0b8] hover:bg-[#1a1a26]'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className="text-xs text-white">
               <span aria-hidden="true">✕</span> {error}
@@ -238,6 +275,10 @@ function SessionView({ session }: { session: BoardRoomSessionDTO }) {
           {session.synthesis ?? 'Awaiting synthesis…'}
         </p>
       </KPICard>
+
+      {session.status === 'COMPLETE' ? (
+        <ActionPanel sessionId={session.id} synthesis={session.synthesis} />
+      ) : null}
     </section>
   )
 }

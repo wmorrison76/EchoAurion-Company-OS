@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { dispatch } from './connectors'
 import { ROSTER, MAESTRO, KNIGHT_SEATS } from './knights'
+import { buildKnightContext } from './context'
 import type { BoardRoomSessionDTO, KnightResponseDTO, Seat } from '@/types/board-room'
 
 /**
@@ -27,20 +28,12 @@ function knightSystemPrompt(seat: Seat): string {
   ].join(' ')
 }
 
-// Echo (Chef's Brain) is the only seat permitted raw DB context (spec note #3).
-async function buildContext(seat: Seat, problem: string): Promise<string> {
-  if (ROSTER[seat].hasDbAccess) {
-    // TODO(claude): assemble live DB slices relevant to the problem (Phase 3).
-    return `Problem: ${problem}\n\nYou may reference live platform data where relevant.`
-  }
-  return `Problem: ${problem}\n\nContext summary: (no raw platform data is shared with this seat).`
-}
-
 async function runKnight(sessionId: string, seat: Seat, problem: string): Promise<void> {
   const config = ROSTER[seat]
   const result = await dispatch(config, {
     system: knightSystemPrompt(seat),
-    user: await buildContext(seat, problem),
+    // Live DB context with the per-seat permission layer (Phase 3).
+    user: await buildKnightContext(seat, problem),
   })
   await db.knightResponse.updateMany({
     where: { sessionId, seat },

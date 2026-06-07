@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: echoaurion-company-os
+    env: node
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXTAUTH_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          property: host
+      # All other env vars (DATABASE_URL, STRIPE_SECRET_KEY, GITHUB_TOKEN, the
+      # Board Room provider keys, CRON_SECRET, …) are set in the Render dashboard.
+
+  # Financial + MRR daily sync (CLAUDE.md §20.1).
+  - type: cron
+    name: echoaurion-company-os-sync
+    env: node
+    buildCommand: npm install
+    startCommand: curl -fsS -X POST "$RENDER_SERVICE_URL/api/financial/sync" -H "Authorization: Bearer $CRON_SECRET"
+    schedule: "0 8 * * *" # 8:00 AM UTC daily
+
+  # Board Room daily briefing (Phase 4) — posts a Company OS snapshot each morning.
+  - type: cron
+    name: echoaurion-company-os-briefing
+    env: node
+    buildCommand: npm install
+    startCommand: curl -fsS -X POST "$RENDER_SERVICE_URL/api/board-room/briefing" -H "Authorization: Bearer $CRON_SECRET"
+    schedule: "0 11 * * *" # 7:00 AM ET daily

@@ -281,3 +281,53 @@ enum KnightResponseStatus {
   TIMEOUT
   ERROR
 }
+
+// ── Board Room — Action Layer (Phase 4, approval-gated) ─────────────────────
+
+model BoardAction {
+  id        String            @id @default(cuid())
+  sessionId String?
+  type      BoardActionType
+  status    BoardActionStatus @default(PROPOSED)
+  title     String
+  summary   String?
+  // Typed draft payload (e.g. email to/subject/body, ticket labels, event time).
+  payload   Json?
+  // Record of what an execute did (or would do) — never auto-sends outward.
+  result    Json?
+  sandbox   Boolean           @default(false)
+  actor     String
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([sessionId])
+  @@index([status])
+  @@map("board_actions")
+}
+
+enum BoardActionType {
+  TICKET
+  EMAIL
+  CALENDAR
+  NOTE
+}
+
+enum BoardActionStatus {
+  PROPOSED
+  APPROVED
+  EXECUTED
+  DISMISSED
+}
+
+// ── Board Room — Daily Briefing (Phase 4 cron) ──────────────────────────────
+
+model BoardBriefing {
+  id        String   @id @default(cuid())
+  // Structured snapshot used to render the briefing card.
+  snapshot  Json
+  headline  String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("board_briefings")
+}
