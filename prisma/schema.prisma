@@ -391,3 +391,65 @@ enum SupportSessionStatus {
   WAITING_ON_CUSTOMER
   RESOLVED
 }
+
+// ── Ask-the-Board relay ─────────────────────────────────────────────────────
+// A deployment submits a question keyed by an opaque clientKey (the product
+// stays hidden). An AI seat drafts an answer; William approves on his phone;
+// the deployment pulls the approved answer/directive back down. No remote access.
+
+model CustomerQuestion {
+  id          String         @id @default(cuid())
+  clientId    String? // SupportClient soft link (resolved by clientKey)
+  clientKey   String // opaque deployment id — never reveals the product name
+  question    String
+  context     Json? // optional structured context from the deployment
+  status      QuestionStatus @default(NEW)
+  draftSeat   String? // which AI seat produced the draft
+  draftAnswer String?
+  answer      String? // William's approved final answer
+  directive   Json? // optional structured change for the deployment to apply
+  delivered   Boolean        @default(false) // pulled back by the deployment
+  actor       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  answeredAt  DateTime?
+
+  @@index([status])
+  @@index([clientKey, delivered])
+  @@map("customer_questions")
+}
+
+enum QuestionStatus {
+  NEW // received, no draft yet
+  DRAFTED // AI draft ready, awaiting William
+  ANSWERED // William approved — deliverable
+  DISMISSED
+}
+
+// ── Alerts (phone-bound notifications) ──────────────────────────────────────
+
+model Alert {
+  id        String   @id @default(cuid())
+  kind      String // "client_health" | "question" | "report" | "system"
+  severity  String // "INFO" | "WARN" | "CRITICAL"
+  title     String
+  body      String?
+  entityRef String? // related id (clientId, questionId, …)
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([read, createdAt])
+  @@map("alerts")
+}
+
+// ── Web Push subscriptions (SuperAdmin phone app) ───────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@map("push_subscriptions")
+}

@@ -6,6 +6,8 @@ import { formatDistanceToNow } from 'date-fns'
 import { KPICard, KPIValue } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { HEALTH_LABEL, HEALTH_TO_STATUS } from '@/lib/support'
+import { QuestionsPanel } from './QuestionsPanel'
+import { AlertsPanel } from './AlertsPanel'
 import type { APIResponse } from '@/types'
 import type { SupportClientView, SupportSessionView } from '@/types/support'
 
@@ -95,6 +97,10 @@ export function SupportConsole() {
           <KPIValue value={String(openSessions)} sub="not yet resolved" />
         </KPICard>
       </div>
+
+      {/* Ask the Board + Alerts */}
+      <QuestionsPanel />
+      <AlertsPanel />
 
       {/* Client health */}
       <KPICard title="Client Health">

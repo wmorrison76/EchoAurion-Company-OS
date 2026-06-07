@@ -31,6 +31,38 @@ export interface SupportSessionView {
   closedAt: string | null
 }
 
+// ── Ask-the-Board relay ─────────────────────────────────────────────────────
+
+export const QUESTION_STATUSES = ['NEW', 'DRAFTED', 'ANSWERED', 'DISMISSED'] as const
+export type QuestionStatus = (typeof QUESTION_STATUSES)[number]
+
+export interface CustomerQuestionView {
+  id: string
+  clientKey: string
+  clientLabel: string | null
+  question: string
+  status: QuestionStatus
+  draftSeat: string | null
+  draftAnswer: string | null
+  answer: string | null
+  delivered: boolean
+  createdAt: string
+}
+
+// ── Alerts ──────────────────────────────────────────────────────────────────
+
+export type AlertSeverity = 'INFO' | 'WARN' | 'CRITICAL'
+
+export interface AlertView {
+  id: string
+  kind: string
+  severity: AlertSeverity
+  title: string
+  body: string | null
+  read: boolean
+  createdAt: string
+}
+
 /** Diagnostic bundle posted by the Electron client (the only inbound write). */
 export interface DiagnosticIngest {
   clientKey: string
