@@ -53,11 +53,98 @@ async function seedRaiseConfig() {
   console.log('raiseConfig: seeded')
 }
 
+// Integration partners contacted during outreach (CLAUDE.md §13.1). The spec
+// names 18 and asks for 40+ total; the rest are well-known hospitality / F&B
+// tech companies to reflect the real pipeline.
+const PARTNERS: string[] = [
+  'Mews', '7shifts', 'Deputy', 'Tock', 'OpenTable', 'SevenRooms', 'Lightspeed',
+  'Toast', 'Amadeus', 'Agilysys', 'Shiji', 'Cloudbeds', 'Oracle OPERA',
+  'Infor HMS', 'Quore', 'HotSOS', 'Alice', 'Kipsu', 'SiteMinder', 'Stayntouch',
+  'Resy', 'Guestline', 'RoomRaccoon', 'Apaleo', 'Maestro PMS', 'RMS Cloud',
+  'Hotelogix', 'eviivo', 'Duetto', 'IDeaS', 'Revinate', 'Cendyn', 'Lighthouse',
+  'Canary Technologies', 'Akia', 'Whistle', 'Medallia', 'Actabl', 'Hapi',
+  'Beekeeper', 'Optii', 'Knowcross', 'Sabre Hospitality', 'Square',
+]
+
+async function seedContacts() {
+  const existing = await db.contact.count()
+  if (existing > 0) {
+    console.log(`contacts: ${existing} already present, skipping`)
+    return
+  }
+
+  // Active pilot.
+  const giovanni = await db.contact.create({
+    data: {
+      firstName: 'Giovanni',
+      lastName: 'Genao',
+      company: 'Miccosukee Resort & Gaming',
+      title: 'Operations',
+      tags: ['pilot'],
+    },
+  })
+  await db.deal.create({
+    data: { contactId: giovanni.id, title: 'Miccosukee pilot', stage: 'ACTIVE' },
+  })
+
+  // Advisor target (reconnect email sent).
+  const mancuso = await db.contact.create({
+    data: {
+      firstName: 'Robert',
+      lastName: 'Mancuso',
+      title: 'Hospitality Consultant, CMC',
+      tags: ['advisor'],
+    },
+  })
+  await db.deal.create({
+    data: { contactId: mancuso.id, title: 'Advisor — Robert Mancuso', stage: 'CONTACTED' },
+  })
+  await db.outreach.create({
+    data: {
+      contactId: mancuso.id,
+      channel: 'email',
+      subject: 'Reconnecting on EchoAurion',
+      sentAt: new Date(),
+      status: 'SENT',
+      actor: 'william_morrison',
+    },
+  })
+
+  // Integration partners — each: contact + deal (CONTACTED) + outreach (SENT).
+  for (const company of PARTNERS) {
+    const contact = await db.contact.create({
+      data: {
+        firstName: 'Partnership',
+        lastName: 'Team',
+        company,
+        title: 'Partnership Team',
+        tags: ['integration_partner'],
+      },
+    })
+    await db.deal.create({
+      data: { contactId: contact.id, title: `${company} integration`, stage: 'CONTACTED' },
+    })
+    await db.outreach.create({
+      data: {
+        contactId: contact.id,
+        channel: 'email',
+        subject: `EchoAurion × ${company} integration`,
+        sentAt: new Date(),
+        status: 'SENT',
+        actor: 'william_morrison',
+      },
+    })
+  }
+
+  const total = await db.contact.count()
+  console.log(`contacts: seeded ${total}`)
+}
+
 async function main() {
   await seedBills()
   await seedPilot()
   await seedRaiseConfig()
-  // CRM contacts are seeded in Step 5 (see seed-contacts).
+  await seedContacts()
 }
 
 main()
