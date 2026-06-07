@@ -9,6 +9,7 @@ import { SkeletonCard } from '@/components/ui/SkeletonCard'
 import { knightLabel, knightLevel, sessionLabel, sessionLevel } from '@/lib/board-room/status'
 import { BriefingCard } from './BriefingCard'
 import { ActionPanel } from './ActionPanel'
+import { ConnectorPanel } from './ConnectorPanel'
 import type { APIResponse } from '@/types'
 import type {
   BoardRoomSessionDTO,
@@ -193,6 +194,9 @@ export function BoardRoom() {
           </div>
         )}
       </section>
+
+      {/* Connector-state dashboard (Phase 3) */}
+      <ConnectorPanel />
 
       {/* Active session */}
       {active ? <SessionView session={active} /> : null}
