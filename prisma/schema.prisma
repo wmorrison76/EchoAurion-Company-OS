@@ -331,3 +331,63 @@ model BoardBriefing {
   @@index([createdAt])
   @@map("board_briefings")
 }
+
+// ── Support (Tier 0 — passive diagnostics + sessions) ───────────────────────
+// Reaches the product's Electron clients over the network only (no code import
+// from the product repo). Tier 0 is view-only: diagnostics in, no screen, no
+// remote control. See the support console for the capability ladder.
+
+model SupportClient {
+  id        String   @id @default(cuid())
+  clientKey String   @unique // stable install/machine id reported by the Electron app
+  label     String // friendly name, e.g. "Miccosukee — Kitchen Line 1"
+  property  String? // grouping, e.g. "Miccosukee Resort & Gaming"
+  contactId String? // optional CRM Contact link (no FK — soft reference)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  snapshots DiagnosticSnapshot[]
+  sessions  SupportSession[]
+
+  @@map("support_clients")
+}
+
+model DiagnosticSnapshot {
+  id         String        @id @default(cuid())
+  clientId   String
+  client     SupportClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appVersion String?
+  platform   String? // "darwin" | "win32" | "linux"
+  online     Boolean       @default(true)
+  queueDepth Int           @default(0) // offline-queue backlog
+  lastSyncAt DateTime?
+  errorCount Int           @default(0)
+  health     String        @default("UNKNOWN") // "GREEN" | "AMBER" | "RED" | "UNKNOWN"
+  details    Json? // bounded raw bundle for drill-down
+  createdAt  DateTime      @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("diagnostic_snapshots")
+}
+
+model SupportSession {
+  id        String               @id @default(cuid())
+  clientId  String?
+  client    SupportClient?       @relation(fields: [clientId], references: [id])
+  contactId String?
+  topic     String
+  status    SupportSessionStatus @default(OPEN)
+  notes     String?
+  actor     String // "william_morrison" | "computer_agent"
+  openedAt  DateTime             @default(now())
+  closedAt  DateTime?
+
+  @@index([status])
+  @@map("support_sessions")
+}
+
+enum SupportSessionStatus {
+  OPEN
+  WAITING_ON_CUSTOMER
+  RESOLVED
+}
