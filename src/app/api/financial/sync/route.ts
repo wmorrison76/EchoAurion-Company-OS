@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { getAccounts, getTransactions, plaidConfigured } from '@/lib/plaid'
 import { getMercuryAccounts, mercuryConfigured } from '@/lib/mercury'
+import { getStripe, snapshotMRR } from '@/lib/stripe'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -11,6 +12,7 @@ type SyncResult = {
   balanceSnapshots: number
   transactionsUpserted: number
   mercurySnapshots: number
+  mrrSnapshot: boolean
 }
 
 // Daily sync (CLAUDE.md §12.1), invoked by a Render cron with a bearer secret.
@@ -21,7 +23,12 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
   }
 
-  const result: SyncResult = { balanceSnapshots: 0, transactionsUpserted: 0, mercurySnapshots: 0 }
+  const result: SyncResult = {
+    balanceSnapshots: 0,
+    transactionsUpserted: 0,
+    mercurySnapshots: 0,
+    mrrSnapshot: false,
+  }
 
   try {
     if (plaidConfigured()) {
@@ -84,6 +91,13 @@ export async function POST(req: Request): Promise<Response> {
         })
         result.mercurySnapshots += 1
       }
+    }
+
+    // Daily MRR snapshot (CLAUDE.md §14.1 — same cron).
+    if (getStripe()) {
+      await snapshotMRR()
+      result.mrrSnapshot = true
+      await audit('computer_agent', 'revenue.mrr.snapshot')
     }
 
     await audit('computer_agent', 'financial.sync', undefined, result)

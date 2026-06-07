@@ -49,6 +49,23 @@ export async function calculateMRR(): Promise<MRRResult> {
   return { mrr, customerCount: subscriptions.data.length }
 }
 
+/** Count of subscriptions canceled within the last `days` days (§14.5). */
+export async function getChurnedCount(days = 90): Promise<number> {
+  const stripe = getStripe()
+  if (!stripe) throw new Error('Stripe not configured')
+  const cutoff = Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000)
+  const canceled = await stripe.subscriptions.list({ status: 'canceled', limit: 100 })
+  return canceled.data.filter((s) => (s.canceled_at ?? 0) >= cutoff).length
+}
+
+/** Persists a daily MRR snapshot (§14.1 — same cron as the financial sync). */
+export async function snapshotMRR(): Promise<{ mrr: number; customerCount: number }> {
+  const { db } = await import('@/lib/db')
+  const { mrr, customerCount } = await calculateMRR()
+  await db.mRRSnapshot.create({ data: { mrr, customerCount } })
+  return { mrr, customerCount }
+}
+
 export async function getStripeMRRHealth(): Promise<StripeMRRHealth> {
   try {
     const { mrr, customerCount } = await calculateMRR()
