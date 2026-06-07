@@ -230,3 +230,54 @@ model RaiseConfig {
 
   @@map("raise_config")
 }
+
+// ── Board Room (board-room-spec.md) ─────────────────────────────────────────
+// Multi-AI orchestration. The thread/message model is the structural core;
+// the UI is cosmetic on top of it (spec note #2).
+
+model BoardRoomSession {
+  id        String           @id @default(cuid())
+  problem   String
+  sandbox   Boolean          @default(false) // hard write-guard (spec note #5)
+  status    BoardRoomStatus  @default(DISPATCHING)
+  synthesis String? // Maestro's synthesized action plan
+  actor     String // "william_morrison" | "computer_agent"
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  responses KnightResponse[]
+
+  @@index([createdAt])
+  @@map("board_room_sessions")
+}
+
+enum BoardRoomStatus {
+  DISPATCHING
+  SYNTHESIZING
+  COMPLETE
+  FAILED
+}
+
+model KnightResponse {
+  id        String               @id @default(cuid())
+  sessionId String
+  session   BoardRoomSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  seat      String // "maestro" | "analyst" | "scout" | "strategist" | "chefs_brain" | "architect"
+  model     String
+  status    KnightResponseStatus @default(PENDING)
+  content   String?
+  error     String?
+  latencyMs Int?
+  createdAt DateTime             @default(now())
+
+  @@index([sessionId])
+  @@map("knight_responses")
+}
+
+enum KnightResponseStatus {
+  PENDING
+  RESPONDED
+  UNAVAILABLE
+  TIMEOUT
+  ERROR
+}
