@@ -1,0 +1,23 @@
+{
+  "name": "aurion-index",
+  "version": "0.1.0",
+  "private": true,
+  "bin": { "aurion-index": "bin/aurion-index.js" },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.150.0",
+    "constructs": "10.3.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.150.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2",
+    "@types/node": "^20.16.10"
+  }
+}

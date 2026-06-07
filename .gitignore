@@ -148,8 +148,10 @@ next-env.d.ts
 # AurionIndex CDK (infrastructure/)
 infrastructure/node_modules/
 infrastructure/cdk.out/
-infrastructure/*.js
-infrastructure/*.d.ts
+infrastructure/**/*.js
+infrastructure/**/*.d.ts
+infrastructure/*.tsbuildinfo
+infrastructure/package-lock.json
 
 # Local screenshot artifacts
 screenshots/
