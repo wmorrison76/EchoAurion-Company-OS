@@ -66,24 +66,23 @@ npx web-push generate-vapid-keys
 
 ## 3. Render Blueprint
 
-This repo includes `render.yaml`:
-
-- Web service `echoaurion-company-os`
-- Daily financial sync cron
-- Daily Board Room briefing cron
+This repo includes `render.yaml` with the **web service only**
+(`echoaurion-company-os`). Cron jobs are intentionally omitted from the
+Blueprint so the first deploy validates cleanly — add them after the web
+service is live (see **Cron jobs** below).
 
 ### Env vars (minimum to boot)
 
 | Variable | Required | Notes |
 |---|---|---|
 | `NEXTAUTH_SECRET` | yes | From step 2 |
-| `NEXTAUTH_URL` | yes | Blueprint copies `RENDER_EXTERNAL_URL` (full `https://…`) |
+| `NEXTAUTH_URL` | yes | Full public `https://…` URL (paste after first deploy if needed) |
 | `AUTH_TRUST_HOST` | yes | `true` |
 | `DATABASE_URL` | yes | Neon pooled |
 | `DATABASE_URL_UNPOOLED` | yes | Neon direct |
 | `ADMIN_EMAIL` | yes | Your login email |
 | `ADMIN_PASSWORD_HASH` | yes | bcrypt hash (no escaping on Render) |
-| `CRON_SECRET` | yes | Guards cron POSTs |
+| `CRON_SECRET` | yes | Guards cron POSTs (needed when you add crons) |
 
 ### Env vars (turn on Knights + Support)
 
@@ -109,11 +108,41 @@ Unset integrations show as **Unknown** / unavailable — the app still boots.
 
 1. Push `claude/vigilant-rubin-DtQE3` (or merge to the branch Render watches).
 2. In Render: **New → Blueprint** → select this repo → apply `render.yaml`.
-3. Paste env vars from the tables above.
+3. Paste env vars from the tables above. For `NEXTAUTH_URL`, use the service’s
+   public `https://…` URL (shown on the service page after create).
 4. First deploy runs `prisma migrate deploy` on start (initial migration included).
 5. Open the service URL → `/login` → land on `/dr-os`.
 6. Optional: `npm run prisma:seed` once against production (bills, CRM seed) via
    a one-off shell, or run locally pointed at Neon.
+
+## 4b. Cron jobs (optional follow-up — after web is live)
+
+Blueprint crons were removed so first deploy is not blocked by YAML/validation
+issues. Unquoted `curl … -H "Authorization: Bearer $CRON_SECRET"` is **invalid
+YAML** (the colon after `Authorization` is parsed as a mapping). Node native
+images also may not ship `curl`.
+
+After the web service is healthy, add two **Cron Jobs** in the Render dashboard
+(or a later Blueprint revision) with `runtime: node`:
+
+| Name | Schedule (UTC) | Purpose |
+|---|---|---|
+| `echoaurion-company-os-sync` | `0 8 * * *` | `POST /api/financial/sync` |
+| `echoaurion-company-os-briefing` | `0 11 * * *` | `POST /api/board-room/briefing` |
+
+**Env vars on each cron:** `WEB_SERVICE_URL` = web service public URL,
+`CRON_SECRET` = same value as the web service.
+
+**Recommended `startCommand`** (single-quoted YAML / paste as one line; uses
+Node 18+ `fetch`, no `curl`):
+
+```bash
+node -e 'fetch(process.env.WEB_SERVICE_URL+"/api/financial/sync",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'
+```
+
+For the briefing job, swap the path to `/api/board-room/briefing`.
+
+`buildCommand` can be `true` (quoted string) if Render requires one.
 
 ## 5. Post-deploy smoke check
 
