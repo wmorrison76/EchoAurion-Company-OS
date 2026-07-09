@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
@@ -10,10 +11,15 @@ export const dynamic = 'force-dynamic'
 const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('rollback'), reason: z.string().max(2000).optional() }),
   z.object({ action: z.literal('decline'), reason: z.string().max(2000).optional() }),
+  // William comps the work — Knights may proceed after Execute (still needs rollback ref).
+  z.object({ action: z.literal('approve_free'), reason: z.string().max(2000).optional() }),
 ])
 
-// Rollback (only from EXECUTED — uses the mandatory rollback reference) or
-// decline a request before work begins.
+// Admin gate for change requests:
+//  - approve_free → $0, both keys set by William (no customer billing contact)
+//  - decline → stop before any work
+//  - rollback → reverse an EXECUTED change via the stored rollback reference
+// Charge path stays: Quote → customer authorize → Execute.
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -54,6 +60,43 @@ export async function PATCH(
         severity: 'WARN',
         title: `Rolled back: ${work.title}`,
         body: `Reverted via ${work.rollbackRef}.`,
+        entityRef: id,
+        url: '/support',
+      })
+    } else if (parsed.data.action === 'approve_free') {
+      if (work.status === 'EXECUTED' || work.status === 'ROLLED_BACK') {
+        return Response.json(
+          { success: false, error: `Cannot approve a ${work.status} request` },
+          { status: 409 }
+        )
+      }
+      await db.workRequest.update({
+        where: { id },
+        data: {
+          tier: work.tier ?? 'T1',
+          humanHours: work.humanHours ?? 0,
+          quoteTotal: 0,
+          quoteSnapshot: {
+            mode: 'complimentary',
+            reason: parsed.data.reason ?? null,
+            approvedBy: 'william_morrison',
+          } as Prisma.InputJsonValue,
+          approvedByCustomer: true,
+          customerApprover: 'William Morrison (complimentary)',
+          approvedByAdmin: true,
+          status: 'AUTHORIZED',
+          quotedAt: work.quotedAt ?? new Date(),
+          authorizedAt: new Date(),
+        },
+      })
+      await audit('william_morrison', 'work.request.approve_free', id, {
+        reason: parsed.data.reason ?? null,
+      })
+      await raiseAlert({
+        kind: 'system',
+        severity: 'INFO',
+        title: `Approved free: ${work.title}`,
+        body: 'Complimentary — ready for Execute with a rollback reference.',
         entityRef: id,
         url: '/support',
       })

@@ -1,18 +1,27 @@
 # EchoAurion Company OS
 
-Internal operating system for Aurion Holdings, Inc. (dba EchoAurion).
+**Super-admin control plane** for Aurion Holdings, Inc. (dba EchoAurion) — monitor
+every client, route tech support through the **Knights of the Round Table**, and
+approve work **free or charged** before anything ships.
 
-**This repo is separate from the product.** The hospitality platform lives at [Echo_Aurion-LUCCCA_Framework](https://github.com/wmorrison76/Echo_Aurion-LUCCCA_Framework).
+**This repo is separate from the product.** The hospitality platform /
+EchoCoder live at [Echo_Aurion-LUCCCA_Framework](https://github.com/wmorrison76/Echo_Aurion-LUCCCA_Framework).
+Do not import from or modify the product from here.
+
+**Deploy guide:** see [DEPLOY.md](./DEPLOY.md).  
+**Support Free vs Charge:** see [SUPPORT_POLICY.md](./SUPPORT_POLICY.md) (10-minute answer rule + matrix).
 
 ## What This Builds
 
 | Module | Purpose |
 |---|---|
 | Dr. OS Dashboard | Super-admin panel — all systems, Render, Neon, Stripe, GitHub, pilot status |
+| Board Room | Knights of the Round Table — multi-AI counsel (draft only) |
+| Support | Client health, Ask-the-Board Q&A, free/charge change-request gate ([policy](./SUPPORT_POLICY.md)) |
 | AurionIndex | AWS CDK infrastructure scaffold (ECS, RDS, CloudFront, S3, Route 53) |
 | Plaid Financial Monitor | Wells Fargo + Mercury — burn rate, bill calendar, runway calculator |
 | CRM | Partnership, investor, and advisor pipeline |
-| Revenue Dashboard | Stripe MRR, runway to Oct 1, investor raise tracker |
+| Revenue Dashboard | Stripe MRR, runway, investor raise tracker |
 
 ## For Claude Code
 
@@ -25,11 +34,15 @@ Start with Step 1 in §15 of CLAUDE.md.
 | Step | Module | Status |
 |---|---|---|
 | 1 | Project scaffold + NextAuth auth | ✅ Complete |
-| 2 | Dr. OS Dashboard (8 status panels) | ◻ Pending |
-| 3 | Financial Monitor (Plaid + Mercury) | ◻ Pending |
-| 4 | Revenue Dashboard (Stripe MRR) | ◻ Pending |
-| 5 | CRM (Kanban + contacts) | ◻ Pending |
-| 6 | AurionIndex CDK | ◻ Pending |
+| 2 | Dr. OS Dashboard (8 status panels) | ✅ Complete |
+| 3 | Financial Monitor (Plaid + Mercury) | ✅ Complete |
+| 4 | Revenue Dashboard (Stripe MRR) | ✅ Complete |
+| 5 | CRM (Kanban + contacts) | ✅ Complete |
+| 6 | AurionIndex CDK | ✅ Scaffold |
+| 7 | Board Room (Knights) | ✅ Complete |
+| 8 | Support + Ask-the-Board + free/charge gate | ✅ Complete |
+| 9 | PWA + push alerts | ✅ Complete |
+| — | Production deploy (Render + Neon) | ◻ See DEPLOY.md |
 
 ## Local Development
 

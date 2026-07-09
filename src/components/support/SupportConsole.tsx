@@ -9,6 +9,7 @@ import { HEALTH_LABEL, HEALTH_TO_STATUS } from '@/lib/support'
 import { QuestionsPanel } from './QuestionsPanel'
 import { WorkRequestsPanel } from './WorkRequestsPanel'
 import { AlertsPanel } from './AlertsPanel'
+import { SupportPolicyCard } from './SupportPolicyCard'
 import type { APIResponse } from '@/types'
 import type { SupportClientView, SupportSessionView } from '@/types/support'
 
@@ -98,6 +99,8 @@ export function SupportConsole() {
           <KPIValue value={String(openSessions)} sub="not yet resolved" />
         </KPICard>
       </div>
+
+      <SupportPolicyCard />
 
       {/* Ask the Board + billable change requests + Alerts */}
       <QuestionsPanel />

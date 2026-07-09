@@ -23,7 +23,7 @@ export const navItems: NavItem[] = [
   { href: '/board-room', label: 'Board Room', icon: Network, description: 'Multi-AI orchestration' },
   { href: '/financial', label: 'Financial', icon: DollarSign, description: 'Plaid monitor' },
   { href: '/crm', label: 'CRM', icon: Users, description: 'Pipeline' },
-  { href: '/support', label: 'Support', icon: LifeBuoy, description: 'Client health' },
+  { href: '/support', label: 'Support', icon: LifeBuoy, description: 'Clients · Knights gate' },
   { href: '/revenue', label: 'Revenue', icon: TrendingUp, description: 'Stripe MRR' },
   { href: '/aurion-index', label: 'AurionIndex', icon: Cloud, description: 'AWS infra' },
 ]

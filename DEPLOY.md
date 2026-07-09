@@ -1,0 +1,153 @@
+# Deploy EchoAurion Company OS (Super Admin)
+
+This repo is the **Aurion Holdings / EchoAurion control plane** — not the product.
+Product code (`Echo_Aurion-LUCCCA_Framework`, EchoCoder) stays untouched. Clients
+ask for help; the **Knights of the Round Table** draft answers and plans; **you**
+approve free or charge before anything ships.
+
+## What you get after deploy
+
+| Surface | Purpose |
+|---|---|
+| `/dr-os` | Live system status (Render, Neon, Stripe, GitHub, pilots) |
+| `/board-room` | Knights of the Round Table — multi-AI counsel |
+| `/support` | Client health, Ask-the-Board questions, billable/free change requests |
+| `/financial` · `/crm` · `/revenue` | Money, pipeline, MRR |
+| `/aurion-index` | AWS infra panel (CDK scaffold; deploy later) |
+
+### Approval gate (do not skip)
+
+```
+Customer / product → Support or Relay API
+        ↓
+Knights draft answer or implementation plan (sandbox)
+        ↓
+YOU decide: Approve free  |  Send quote (charge)  |  Decline
+        ↓ (if charge)
+Billing contact authorizes spend
+        ↓
+YOU Execute (rollback reference required)
+```
+
+Nothing auto-fixes the product. EchoCoder / product agents only act after your
+approval path completes (and product wiring is a later step).
+
+**Free vs Charge matrix + 10-minute answer rule:** [SUPPORT_POLICY.md](./SUPPORT_POLICY.md).
+The Support console shows the same guidance as chips on each question/request.
+
+## Prerequisites
+
+1. **Neon** Postgres project dedicated to Company OS (not the product DB).
+2. **Render** account (or any Node host that can run `next start`).
+3. Admin email + bcrypt password hash.
+4. Optional but recommended: Knight API keys, `SUPPORT_INGEST_SECRET`, VAPID keys.
+
+## 1. Create Neon database
+
+- Create a new project (e.g. `echoaurion-company-os`).
+- Copy **pooled** URL → `DATABASE_URL`
+- Copy **direct** URL → `DATABASE_URL_UNPOOLED`
+
+## 2. Generate secrets
+
+```bash
+# Session secret
+openssl rand -base64 32
+
+# Admin password hash (escape $ as \$ in .env.local only)
+node -e "console.log(require('bcryptjs').hashSync('YOUR_PASSWORD', 10))"
+
+# Cron + support ingest
+openssl rand -hex 32
+
+# Web push (phone alerts)
+npx web-push generate-vapid-keys
+```
+
+## 3. Render Blueprint
+
+This repo includes `render.yaml`:
+
+- Web service `echoaurion-company-os`
+- Daily financial sync cron
+- Daily Board Room briefing cron
+
+### Env vars (minimum to boot)
+
+| Variable | Required | Notes |
+|---|---|---|
+| `NEXTAUTH_SECRET` | yes | From step 2 |
+| `NEXTAUTH_URL` | yes | Blueprint copies `RENDER_EXTERNAL_URL` (full `https://…`) |
+| `AUTH_TRUST_HOST` | yes | `true` |
+| `DATABASE_URL` | yes | Neon pooled |
+| `DATABASE_URL_UNPOOLED` | yes | Neon direct |
+| `ADMIN_EMAIL` | yes | Your login email |
+| `ADMIN_PASSWORD_HASH` | yes | bcrypt hash (no escaping on Render) |
+| `CRON_SECRET` | yes | Guards cron POSTs |
+
+### Env vars (turn on Knights + Support)
+
+| Variable | Purpose |
+|---|---|
+| `PERPLEXITY_API_KEY` | Maestro |
+| `OPENAI_API_KEY` | Analyst |
+| `ANTHROPIC_API_KEY` | Strategist + Architect |
+| `GOOGLE_AI_API_KEY` | Scout |
+| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional) |
+| `SUPPORT_INGEST_SECRET` | Product → `/api/support/*` and `/api/relay/*` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Phone push |
+| `WORK_SENIOR_RATE` / `WORK_VALUE_MULTIPLIER` | Quote math (defaults 185 / 2.5) |
+
+### Env vars (live panels)
+
+`RENDER_API_KEY`, `RENDER_SERVICE_ID`, `GITHUB_TOKEN`, `STRIPE_*`, `PLAID_*`,
+`MERCURY_API_KEY`, `PRODUCT_DATABASE_URL` (read-only product DB for active users).
+
+Unset integrations show as **Unknown** / unavailable — the app still boots.
+
+## 4. Deploy steps
+
+1. Push `claude/vigilant-rubin-DtQE3` (or merge to the branch Render watches).
+2. In Render: **New → Blueprint** → select this repo → apply `render.yaml`.
+3. Paste env vars from the tables above.
+4. First deploy runs `prisma migrate deploy` on start (initial migration included).
+5. Open the service URL → `/login` → land on `/dr-os`.
+6. Optional: `npm run prisma:seed` once against production (bills, CRM seed) via
+   a one-off shell, or run locally pointed at Neon.
+
+## 5. Post-deploy smoke check
+
+- [ ] `GET /api/health` → `{ "status": "ok", "database": "ok" }`
+- [ ] Login with `ADMIN_EMAIL`
+- [ ] `/board-room` shows Knights (Unavailable until keys set)
+- [ ] `/support` loads Questions + Change Requests + Alerts
+- [ ] Approve free / Send quote / Decline buttons visible on a work card
+- [ ] Phone: Add to Home Screen → enable Notify (needs VAPID)
+
+## 6. Product connection (later — not this deploy)
+
+When you are ready to wire EchoAurion / EchoCoder (without changing product yet
+beyond a thin client):
+
+- Product posts diagnostics with `Authorization: Bearer $SUPPORT_INGEST_SECRET`
+  to `POST /api/support/diagnostics`
+- Ask-the-Board: `POST /api/relay/questions`, pull answers via
+  `GET /api/relay/questions/pull`
+- Change requests: `POST /api/relay/work`, customer authorize
+  `POST /api/relay/work/:id/authorize`, pull results
+  `GET /api/relay/work/pull`
+
+Until that client exists, you can still operate Company OS as the admin console
+and exercise Board Room + Support manually.
+
+## Local dry-run
+
+```bash
+cp .env.example .env.local
+# fill DATABASE_*, NEXTAUTH_*, ADMIN_*
+npm install
+npx prisma migrate deploy
+npm run prisma:seed   # optional
+npm run build
+npm start
+```

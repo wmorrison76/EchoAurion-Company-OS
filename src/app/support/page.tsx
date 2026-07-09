@@ -7,7 +7,10 @@ export const metadata = {
 
 export default function SupportPage() {
   return (
-    <AppShell title="Support" subtitle="Client health & support sessions — Tier 0 (view-only)">
+    <AppShell
+      title="Support"
+      subtitle="Client health · Ask the Knights · Free vs Charge policy · approve before any fix ships"
+    >
       <SupportConsole />
     </AppShell>
   )

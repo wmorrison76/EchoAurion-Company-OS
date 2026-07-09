@@ -5,8 +5,10 @@ import useSWR, { mutate } from 'swr'
 import { formatDistanceToNow } from 'date-fns'
 import { KPICard } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PolicyRecommendationBanner } from '@/components/support/PolicyRecommendation'
 import { COMPLEXITY_TIERS, TIERS, computeQuote, formatUSD } from '@/lib/pricing'
 import type { ComplexityTier } from '@/lib/pricing'
+import { classifySupportRequest } from '@/lib/support-policy'
 import type { APIResponse, StatusLevel } from '@/types'
 import { WORK_STATUS_LABEL } from '@/types/work'
 import type { WorkRequestView, WorkStatus } from '@/types/work'
@@ -31,7 +33,13 @@ const STATUS_LEVEL: Record<WorkStatus, StatusLevel> = {
 }
 
 function WorkCard({ w }: { w: WorkRequestView }) {
-  const [tier, setTier] = useState<ComplexityTier>(w.tier ?? 'T3')
+  const policy = classifySupportRequest({
+    kind: w.kind,
+    title: w.title,
+    detail: w.detail,
+    estimatedMinutes: w.humanHours ? w.humanHours * 60 : null,
+  })
+  const [tier, setTier] = useState<ComplexityTier>(w.tier ?? policy.suggestedTier ?? 'T3')
   const [hours, setHours] = useState<string>(w.humanHours ? String(w.humanHours) : '')
   const [rollback, setRollback] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -78,6 +86,8 @@ function WorkCard({ w }: { w: WorkRequestView }) {
 
       <p className="text-xs text-[#a0a0b8]">{w.detail}</p>
 
+      {!terminal ? <PolicyRecommendationBanner verdict={policy} /> : null}
+
       {w.draftPlan ? (
         <details className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-3">
           <summary className="cursor-pointer text-xs text-[#D4AF37]">
@@ -89,7 +99,10 @@ function WorkCard({ w }: { w: WorkRequestView }) {
 
       {w.approvedByCustomer ? (
         <p className="text-[11px] text-[#22c55e]">
-          <span aria-hidden="true">✓</span> Spend authorized by {w.customerApprover}
+          <span aria-hidden="true">✓</span>{' '}
+          {w.quoteTotal === 0
+            ? `Approved free by ${w.customerApprover ?? 'admin'}`
+            : `Spend authorized by ${w.customerApprover}`}
         </p>
       ) : null}
       {w.status === 'EXECUTED' && w.rollbackRef ? (
@@ -175,11 +188,27 @@ function WorkCard({ w }: { w: WorkRequestView }) {
               type="button"
               onClick={() => call(`/api/work/${w.id}/draft`, 'POST')}
               disabled={busy !== null}
-              aria-label="Draft plan with AI"
+              aria-label="Draft plan with Knights of the Round Table"
               className="rounded-lg border border-[#2a2a3f] bg-[#1a1a26] px-3 py-1.5 text-xs text-[#a0a0b8] hover:text-white disabled:opacity-40"
             >
-              {w.draftPlan ? 'Re-draft plan' : 'Draft plan (AI)'}
+              {w.draftPlan ? 'Re-draft (Knights)' : 'Draft plan (Knights)'}
             </button>
+            {w.status === 'RECEIVED' || w.status === 'QUOTED' ? (
+              <button
+                type="button"
+                onClick={() =>
+                  call(`/api/work/${w.id}`, 'PATCH', {
+                    action: 'approve_free',
+                    reason: 'Complimentary — founder approved',
+                  })
+                }
+                disabled={busy !== null}
+                aria-label="Approve this work for free"
+                className="rounded-lg border border-[#22c55e] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-[#22c55e] hover:bg-[#22223a] disabled:opacity-40"
+              >
+                Approve free
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => call(`/api/work/${w.id}`, 'PATCH', { action: 'decline' })}
@@ -223,9 +252,9 @@ export function WorkRequestsPanel() {
         <p className="text-sm text-[#a0a0b8]">Loading requests…</p>
       ) : data.length === 0 ? (
         <p className="text-sm text-[#a0a0b8]">
-          No change requests yet. Customers submit fixes and add-ons from inside support; you quote by
-          complexity tier, the property&apos;s billing contact authorizes the spend, then you execute
-          with a rollback path.
+          No change requests yet. Flow: customer asks → Knights draft → you Approve free or Send quote
+          → (if charged) billing contact authorizes → you Execute with a rollback reference. Nothing
+          ships without your approval.
         </p>
       ) : (
         <ul className="flex flex-col gap-3">

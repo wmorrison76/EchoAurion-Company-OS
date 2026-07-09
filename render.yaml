@@ -1,33 +1,70 @@
+# EchoAurion Company OS — Super Admin control plane.
+# Full checklist: DEPLOY.md
+#
+# Blueprint notes (Render 2025/2026):
+# - Use `runtime:` (not deprecated `env:`).
+# - NEXTAUTH_URL must be the public https URL (RENDER_EXTERNAL_URL), not private `host`.
+# - Secrets are prompted in the dashboard via sync: false — never commit values.
+
 services:
   - type: web
     name: echoaurion-company-os
-    env: node
+    runtime: node
+    plan: starter
     buildCommand: npm install && npx prisma generate && npm run build
     startCommand: npx prisma migrate deploy && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: AUTH_TRUST_HOST
+        value: "true"
       - key: NEXTAUTH_URL
         fromService:
           name: echoaurion-company-os
           type: web
-          property: host
-      # All other env vars (DATABASE_URL, STRIPE_SECRET_KEY, GITHUB_TOKEN, the
-      # Board Room provider keys, CRON_SECRET, …) are set in the Render dashboard.
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: CRON_SECRET
+        sync: false
 
-  # Financial + MRR daily sync (CLAUDE.md §20.1).
+  # Financial + MRR daily sync (CLAUDE.md §20.1) — 8:00 AM UTC.
   - type: cron
     name: echoaurion-company-os-sync
-    env: node
-    buildCommand: npm install
-    startCommand: curl -fsS -X POST "$RENDER_SERVICE_URL/api/financial/sync" -H "Authorization: Bearer $CRON_SECRET"
-    schedule: "0 8 * * *" # 8:00 AM UTC daily
+    runtime: node
+    schedule: "0 8 * * *"
+    buildCommand: "true"
+    startCommand: curl -fsS -X POST "$WEB_SERVICE_URL/api/financial/sync" -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
 
-  # Board Room daily briefing (Phase 4) — posts a Company OS snapshot each morning.
+  # Board Room daily briefing — 11:00 AM UTC (~7:00 AM ET).
   - type: cron
     name: echoaurion-company-os-briefing
-    env: node
-    buildCommand: npm install
-    startCommand: curl -fsS -X POST "$RENDER_SERVICE_URL/api/board-room/briefing" -H "Authorization: Bearer $CRON_SECRET"
-    schedule: "0 11 * * *" # 7:00 AM ET daily
+    runtime: node
+    schedule: "0 11 * * *"
+    buildCommand: "true"
+    startCommand: curl -fsS -X POST "$WEB_SERVICE_URL/api/board-room/briefing" -H "Authorization: Bearer $CRON_SECRET"
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false

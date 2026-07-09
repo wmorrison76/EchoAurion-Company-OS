@@ -5,6 +5,8 @@ import useSWR, { mutate } from 'swr'
 import { formatDistanceToNow } from 'date-fns'
 import { KPICard } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { PolicyRecommendationBanner } from '@/components/support/PolicyRecommendation'
+import { classifySupportRequest } from '@/lib/support-policy'
 import type { APIResponse, StatusLevel } from '@/types'
 import type { CustomerQuestionView, QuestionStatus } from '@/types/support'
 
@@ -29,6 +31,11 @@ function QuestionCard({ q }: { q: CustomerQuestionView }) {
   const [busy, setBusy] = useState<null | 'draft' | 'answer' | 'dismiss'>(null)
   const badge = STATUS_BADGE[q.status]
   const done = q.status === 'ANSWERED' || q.status === 'DISMISSED'
+  const policy = classifySupportRequest({
+    kind: 'QUESTION',
+    title: q.question,
+    detail: q.question,
+  })
 
   async function draft() {
     setBusy('draft')
@@ -84,6 +91,8 @@ function QuestionCard({ q }: { q: CustomerQuestionView }) {
         </div>
         <StatusBadge level={badge.level} label={badge.label} />
       </div>
+
+      {!done ? <PolicyRecommendationBanner verdict={policy} /> : null}
 
       {!done ? (
         <>

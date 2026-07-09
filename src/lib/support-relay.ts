@@ -1,5 +1,6 @@
 import { dispatch } from '@/lib/board-room/connectors'
 import { ROSTER, knightConfigured } from '@/lib/board-room/knights'
+import { answerDraftSystemPrompt, planDraftSystemPrompt } from '@/lib/support-voice'
 import type { Seat } from '@/types/board-room'
 
 // Preference order for drafting a customer answer: the hospitality-domain seat
@@ -30,12 +31,7 @@ export async function draftAnswer(question: string, context?: unknown): Promise<
   const config = ROSTER[seat]
   const ctx = context ? `\n\nDeployment context:\n${JSON.stringify(context).slice(0, 2000)}` : ''
   const result = await dispatch(config, {
-    system:
-      'You are the support brain behind a hospitality platform. Draft a clear, friendly, ' +
-      'accurate answer to the customer question below for the operator (William) to review. ' +
-      'Never reveal internal system, codebase, or product code names. If the request needs a ' +
-      'configuration change, state plainly what change is required. If you are unsure, say so ' +
-      'rather than inventing capabilities. Keep it concise and ready to send.',
+    system: answerDraftSystemPrompt(),
     user: `Customer question:\n${question}${ctx}`,
   })
 
@@ -59,12 +55,7 @@ export async function draftPlan(
 
   const config = ROSTER[seat]
   const result = await dispatch(config, {
-    system:
-      'You are a senior engineer scoping a customer change request for a hospitality platform. ' +
-      'Produce a concise implementation plan for the operator to review BEFORE any work begins: ' +
-      '(1) what will change, (2) a rough complexity tier T1–T5 and estimated senior-engineer hours, ' +
-      '(3) risks and the rollback approach, (4) anything that needs clarification. Do not write code ' +
-      'or apply changes. Never reveal internal system or product code names.',
+    system: planDraftSystemPrompt(),
     user: `Request type: ${kind}\nTitle: ${title}\nDetail:\n${detail}`,
   })
 
