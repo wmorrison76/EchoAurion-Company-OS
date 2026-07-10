@@ -11,6 +11,7 @@ import { NeonDBPanel } from './NeonDBPanel'
 import { StripeMRRPanel } from './StripeMRRPanel'
 import { ActiveUsersPanel } from './ActiveUsersPanel'
 import { PilotStatusPanel } from './PilotStatusPanel'
+import { PilotConnectionPanel } from './PilotConnectionPanel'
 import { AuditTrailPanel } from './AuditTrailPanel'
 
 export function DrOsDashboard() {
@@ -77,6 +78,7 @@ export function DrOsDashboard() {
         <StripeMRRPanel data={status.data?.stripe} />
         <ActiveUsersPanel data={status.data?.activeUsers} />
         <PilotStatusPanel data={status.data?.pilot} />
+        <PilotConnectionPanel data={status.data?.pilotConnection} />
         <AuditTrailPanel entries={audit.data} error={auditError} />
       </div>
     </div>

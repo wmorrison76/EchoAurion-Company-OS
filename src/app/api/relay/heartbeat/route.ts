@@ -2,10 +2,11 @@ import { z } from 'zod'
 import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
 import { applyHeartbeat } from '@/lib/relay-heartbeat'
 import type { APIResponse } from '@/types'
+import type { ClientHealth } from '@/types/support'
 
 export const dynamic = 'force-dynamic'
 
-const ingestSchema = z.object({
+const schema = z.object({
   clientKey: z.string().min(1).max(200),
   label: z.string().max(200).optional(),
   property: z.string().max(200).optional(),
@@ -19,13 +20,10 @@ const ingestSchema = z.object({
 })
 
 /**
- * Tier 0 ingest — the product's Electron client POSTs a passive diagnostic
- * bundle here. Authenticated with a shared bearer secret (NOT the admin
- * session), so it is excluded from the auth middleware. Disabled entirely
- * unless SUPPORT_INGEST_SECRET is set — nothing is open by default.
- *
- * Also acts as a heartbeat (updates SupportClient.lastHeartbeatAt). Prefer
- * POST /api/relay/heartbeat for lightweight keep-alive without a snapshot.
+ * POST /api/relay/heartbeat — canonical pilot heartbeat.
+ * Upserts SupportClient, updates lastHeartbeatAt, raises alerts on RED.
+ * Prefer this over diagnostics for lightweight keep-alive; diagnostics also
+ * calls the same helper when a full snapshot is needed.
  */
 export async function POST(req: Request): Promise<Response> {
   const a = relayAuthorized(req)
@@ -35,11 +33,13 @@ export async function POST(req: Request): Promise<Response> {
       { status: a.status }
     )
   }
+
   try {
-    const parsed = ingestSchema.safeParse(await req.json())
+    const raw: unknown = await req.json()
+    const parsed = schema.safeParse(raw)
     if (!parsed.success) {
       return Response.json(
-        { success: false, error: 'Invalid diagnostic payload', code: 'SCHEMA' },
+        { success: false, error: 'Invalid heartbeat payload', code: 'SCHEMA' },
         { status: 400 }
       )
     }
@@ -54,22 +54,27 @@ export async function POST(req: Request): Promise<Response> {
     const result = await applyHeartbeat({
       ...parsed.data,
       clientKey: key.clientKey,
-      persistSnapshot: true,
+      persistSnapshot: false,
     })
 
-    return Response.json(
-      {
-        success: true,
-        data: { id: result.snapshotId ?? result.clientId, health: result.health },
-      } satisfies APIResponse<{ id: string; health: string }>,
-      { status: 201 }
-    )
+    return Response.json({
+      success: true,
+      data: {
+        clientId: result.clientId,
+        health: result.health,
+        serverTime: new Date().toISOString(),
+      },
+    } satisfies APIResponse<{
+      clientId: string
+      health: ClientHealth
+      serverTime: string
+    }>)
   } catch (error) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Ingest failed',
-        code: 'INGEST_FAILED',
+        error: error instanceof Error ? error.message : 'Heartbeat failed',
+        code: 'HEARTBEAT_FAILED',
       },
       { status: 500 }
     )

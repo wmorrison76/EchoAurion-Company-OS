@@ -83,6 +83,12 @@ export function HelpDeskConsole() {
     { refreshInterval: 20_000 }
   )
 
+  const { data: standby, mutate: mutateStandby } = useSWR(
+    '/api/support/standby',
+    jsonFetcher<{ mode: string; maxAutoPerHour: number }>,
+    { refreshInterval: 60_000 }
+  )
+
   const {
     data: detail,
     error: detailError,
@@ -278,6 +284,59 @@ export function HelpDeskConsole() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Standby toggle — Knights may approve low-risk when William unavailable */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2a2a3f] bg-[#12121a] px-4 py-3">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-[#D4AF37]">
+            Standby: Knights may approve low-risk
+          </p>
+          <p className="mt-1 text-[11px] text-[#a0a0b8]">
+            Mode{' '}
+            <span className="font-mono text-white">{standby?.mode ?? 'off'}</span>
+            {' · '}TEXT how-to only · never auto-execute work ·{' '}
+            <a href="/support/pilot-links" className="text-[#D4AF37] underline">
+              Pilot links
+            </a>
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ['off', 'Off'],
+              ['draft_only', 'Draft only'],
+              ['auto_answer_low_risk', 'Auto low-risk'],
+            ] as const
+          ).map(([mode, label]) => {
+            const active = (standby?.mode ?? 'off') === mode
+            return (
+              <button
+                key={mode}
+                type="button"
+                aria-label={`Set standby mode to ${label}`}
+                aria-pressed={active}
+                onClick={() => {
+                  void (async () => {
+                    await fetch('/api/support/standby', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ mode }),
+                    })
+                    await mutateStandby()
+                  })()
+                }}
+                className={
+                  active
+                    ? 'rounded-lg border border-[#D4AF37] bg-[#1a1a26] px-3 py-1.5 text-xs text-[#D4AF37]'
+                    : 'rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] hover:bg-[#22223a]'
+                }
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Operator guide */}
       <div className="rounded-xl border border-[#2a2a3f] bg-gradient-to-b from-[#12121a] to-[#0a0a0f] p-4">
         <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Operator guide</p>

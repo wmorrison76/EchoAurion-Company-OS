@@ -1,9 +1,11 @@
 # Product ↔ Company OS Relay Contracts
 
-**Status:** Design + Company OS stubs only.  
-**Product repo:** untouched (`Echo_Aurion-LUCCCA_Framework` is out of scope).  
+**Status:** Company OS Pilot Connection Hub is ready (SSE + pull + standby).  
+**Product repo:** wire later via `feat/company-os-relay-wiring` stubs.  
 **Auth:** `Authorization: Bearer $SUPPORT_INGEST_SECRET` for support/relay;  
 `Authorization: Bearer $KNOWLEDGE_INGEST_SECRET` (falls back to `SUPPORT_INGEST_SECRET`) for knowledge ingest.
+
+**Full contract:** [`docs/PILOT_CONNECTION.md`](./PILOT_CONNECTION.md) — whoami, heartbeat, SSE stream, outbox, standby rules.
 
 All responses use:
 

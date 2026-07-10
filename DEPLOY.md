@@ -107,10 +107,15 @@ service is live (see **Cron jobs** below).
 | `ANTHROPIC_API_KEY` | Strategist + Architect |
 | `GOOGLE_AI_API_KEY` | Scout (preferred). Also accepts `GEMINI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` |
 | `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional — stays Unavailable until set) |
-| `SUPPORT_INGEST_SECRET` | Product → `/api/support/*` and `/api/relay/*` |
+| `SUPPORT_INGEST_SECRET` | Product → `/api/support/diagnostics` and `/api/relay/*` (whoami, heartbeat, stream, questions, work) |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
+| `KNIGHTS_STANDBY_MODE` | `off` \| `draft_only` \| `auto_answer_low_risk` (Pilot links UI can override in DB) |
+| `STANDBY_MAX_AUTO_PER_HOUR` | Cap on standby auto-answers per hour (default `10`) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Phone push |
 | `WORK_SENIOR_RATE` / `WORK_VALUE_MULTIPLIER` | Quote math (defaults 185 / 2.5) |
+
+**Pilot Connection Hub:** see `docs/PILOT_CONNECTION.md` for SSE contract, heartbeat, and standby accuracy rules.
+After deploy, set `SUPPORT_INGEST_SECRET` on Render before any pilot connects.
 
 **Scout note:** If you set `GEMINI_API_KEY` on Render but not `GOOGLE_AI_API_KEY`,
 that is fine after this deploy — both names are accepted. Prefer

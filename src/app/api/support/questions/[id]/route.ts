@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
+import { publishAnswerReady } from '@/lib/relay-outbox'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +13,7 @@ const schema = z.discriminatedUnion('action', [
 ])
 
 // William approves (answer) or dismisses a customer question. On answer, the
-// item becomes deliverable — the deployment pulls it on its next poll.
+// item becomes deliverable — SSE push + pull fallback.
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -28,11 +29,23 @@ export async function PATCH(
       return Response.json({ success: false, error: 'Invalid update payload' }, { status: 400 })
     }
     if (parsed.data.action === 'answer') {
-      await db.customerQuestion.update({
+      const updated = await db.customerQuestion.update({
         where: { id },
-        data: { answer: parsed.data.answer, status: 'ANSWERED', answeredAt: new Date() },
+        data: {
+          answer: parsed.data.answer,
+          status: 'ANSWERED',
+          answeredAt: new Date(),
+          actor: 'william_morrison',
+        },
       })
       await audit('william_morrison', 'support.question.answer', id)
+      await publishAnswerReady({
+        clientKey: updated.clientKey,
+        questionId: updated.id,
+        question: updated.question,
+        answer: parsed.data.answer,
+        directive: updated.directive,
+      })
     } else {
       await db.customerQuestion.update({ where: { id }, data: { status: 'DISMISSED' } })
       await audit('william_morrison', 'support.question.dismiss', id)

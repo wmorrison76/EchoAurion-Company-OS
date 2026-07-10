@@ -362,13 +362,16 @@ model BoardBriefing {
 // remote control. See the support console for the capability ladder.
 
 model SupportClient {
-  id        String   @id @default(cuid())
-  clientKey String   @unique // stable install/machine id reported by the Electron app
-  label     String // friendly name, e.g. "Miccosukee — Kitchen Line 1"
-  property  String? // grouping, e.g. "Miccosukee Resort & Gaming"
-  contactId String? // optional CRM Contact link (no FK — soft reference)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String    @id @default(cuid())
+  clientKey         String    @unique // stable install/machine id reported by the Electron app
+  label             String // friendly name, e.g. "Miccosukee — Kitchen Line 1"
+  property          String? // grouping, e.g. "Miccosukee Resort & Gaming"
+  contactId         String? // optional CRM Contact link (no FK — soft reference)
+  lastHeartbeatAt   DateTime? // canonical pilot heartbeat (diagnostics or /api/relay/heartbeat)
+  lastHealth        String? // GREEN | AMBER | RED | UNKNOWN from last heartbeat
+  lastStreamAt      DateTime? // last successful SSE connect / event delivery
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   snapshots DiagnosticSnapshot[]
   sessions  SupportSession[]
@@ -422,24 +425,26 @@ enum SupportSessionStatus {
 // the deployment pulls the approved answer/directive back down. No remote access.
 
 model CustomerQuestion {
-  id          String         @id @default(cuid())
-  clientId    String? // SupportClient soft link (resolved by clientKey)
-  clientKey   String // opaque deployment id — never reveals the product name
-  question    String
-  context     Json? // optional structured context from the deployment
-  status      QuestionStatus @default(NEW)
-  draftSeat   String? // which AI seat produced the draft
-  draftAnswer String?
-  answer      String? // William's approved final answer
-  directive   Json? // optional structured change for the deployment to apply
-  delivered   Boolean        @default(false) // pulled back by the deployment
-  actor       String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  answeredAt  DateTime?
+  id              String         @id @default(cuid())
+  clientId        String? // SupportClient soft link (resolved by clientKey)
+  clientKey       String // opaque deployment id — never reveals the product name
+  question        String
+  context         Json? // optional structured context from the deployment
+  status          QuestionStatus @default(NEW)
+  draftSeat       String? // which AI seat produced the draft
+  draftAnswer     String?
+  answer          String? // William's approved final answer
+  directive       Json? // optional structured change for the deployment to apply
+  delivered       Boolean        @default(false) // pulled back by the deployment
+  standbyApproved Boolean        @default(false) // true when Knights standby auto-approved
+  actor           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  answeredAt      DateTime?
 
   @@index([status])
   @@index([clientKey, delivered])
+  @@index([standbyApproved, answeredAt])
   @@map("customer_questions")
 }
 
@@ -707,4 +712,32 @@ enum HelpVoiceNoteSource {
   UPLOAD
   DICTATION
   PASTE
+}
+
+// ── Pilot Connection Hub (relay outbox + Knights standby) ───────────────────
+// Company OS pushes events to pilots via SSE; undelivered rows survive restarts.
+// Pull endpoints remain the fallback. See docs/PILOT_CONNECTION.md.
+
+model RelayOutbox {
+  id          String    @id @default(cuid())
+  clientKey   String
+  type        String // answer_ready | work_status | directive | ping
+  payload     Json
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+
+  @@index([clientKey, deliveredAt, createdAt])
+  @@index([createdAt])
+  @@map("relay_outbox")
+}
+
+/// Single-row operator settings for Knights standby when William is unavailable.
+model StandbySettings {
+  id             String   @id @default("default")
+  mode           String   @default("off") // off | draft_only | auto_answer_low_risk
+  maxAutoPerHour Int      @default(10)
+  updatedAt      DateTime @updatedAt
+  updatedBy      String? // william_morrison | computer_agent
+
+  @@map("standby_settings")
 }

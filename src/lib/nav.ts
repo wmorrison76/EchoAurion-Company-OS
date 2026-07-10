@@ -10,6 +10,7 @@ import {
   Radar,
   Brain,
   Inbox,
+  Link2,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -22,7 +23,7 @@ export interface NavItem {
 
 // Board Room = Knights counsel (strategy). Help Desk = live operator tickets
 // (text / voice / custom builds). Support = client health + approve gate.
-// Inbox = unified triage queue. Fleet Nexus = ops map. Knowledge Plane = learning.
+// Inbox = unified triage queue. Pilot links = connection hub. Fleet Nexus = ops map.
 export const navItems: NavItem[] = [
   { href: '/dr-os', label: 'Dr. OS', icon: Terminal, description: 'System overview' },
   {
@@ -37,6 +38,12 @@ export const navItems: NavItem[] = [
   { href: '/crm', label: 'CRM', icon: Users, description: 'Pipeline' },
   { href: '/support', label: 'Support', icon: LifeBuoy, description: 'Client health · diagnostics' },
   { href: '/support/inbox', label: 'Inbox', icon: Inbox, description: 'Unified triage queue' },
+  {
+    href: '/support/pilot-links',
+    label: 'Pilot links',
+    icon: Link2,
+    description: 'Heartbeat · SSE · standby',
+  },
   {
     href: '/help-desk',
     label: 'Help Desk',

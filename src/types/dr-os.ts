@@ -57,6 +57,18 @@ export interface PilotHealth {
   error?: string
 }
 
+/** Live SupportClient heartbeats (Pilot Connection Hub). */
+export interface PilotConnectionHealth {
+  level: StatusLevel
+  label: string
+  onlineCount: number
+  totalClients: number
+  streamCount: number
+  standbyMode: string
+  standbyReviewCount: number
+  error?: string
+}
+
 export interface DrOsStatus {
   github: GitHubRepoHealth[]
   render: RenderDeployHealth
@@ -64,6 +76,7 @@ export interface DrOsStatus {
   stripe: StripeMRRHealth
   activeUsers: ActiveUsersHealth
   pilot: PilotHealth
+  pilotConnection: PilotConnectionHealth
   generatedAt: string
 }
 

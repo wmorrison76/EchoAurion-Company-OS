@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized } from '@/lib/relay-auth'
+import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
+import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -15,22 +16,36 @@ const schema = z.object({
 })
 
 // A deployment submits a customer question. Stored as NEW; William drafts +
-// approves an answer; the deployment pulls it back. The product stays hidden —
-// we only ever see the opaque clientKey.
+// approves an answer; the deployment pulls it back (or receives via SSE).
 export async function POST(req: Request): Promise<Response> {
   const a = relayAuthorized(req)
-  if (!a.ok) return Response.json({ success: false, error: a.error }, { status: a.status })
+  if (!a.ok) {
+    return Response.json(
+      { success: false, error: a.error, code: a.code },
+      { status: a.status }
+    )
+  }
   try {
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {
-      return Response.json({ success: false, error: 'Invalid question payload' }, { status: 400 })
+      return Response.json(
+        { success: false, error: 'Invalid question payload', code: 'SCHEMA' },
+        { status: 400 }
+      )
     }
-    const { clientKey, question, context } = parsed.data
-    const client = await db.supportClient.findUnique({ where: { clientKey } })
+    const key = requireClientKey(parsed.data.clientKey)
+    if (!key.ok) {
+      return Response.json(
+        { success: false, error: key.error, code: key.code },
+        { status: key.status }
+      )
+    }
+    const { question, context } = parsed.data
+    const client = await upsertSupportClientByKey(key.clientKey)
     const created = await db.customerQuestion.create({
       data: {
-        clientKey,
-        clientId: client?.id ?? null,
+        clientKey: key.clientKey,
+        clientId: client.id,
         question,
         context: (context ?? undefined) as Prisma.InputJsonValue | undefined,
         actor: 'computer_agent',
@@ -51,7 +66,11 @@ export async function POST(req: Request): Promise<Response> {
     )
   } catch (error) {
     return Response.json(
-      { success: false, error: error instanceof Error ? error.message : 'Question submit failed' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Question submit failed',
+        code: 'QUESTION_FAILED',
+      },
       { status: 500 }
     )
   }

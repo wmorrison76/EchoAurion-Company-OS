@@ -108,6 +108,13 @@ export function SupportConsole() {
         >
           Unified inbox →
         </a>
+        <a
+          href="/support/pilot-links"
+          className="rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] transition-colors duration-150 hover:bg-[#1a1a26] hover:text-white"
+          aria-label="Open Pilot Connection Hub"
+        >
+          Pilot links →
+        </a>
       </div>
 
       <SupportPolicyCard />

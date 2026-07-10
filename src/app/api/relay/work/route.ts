@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized } from '@/lib/relay-auth'
+import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
+import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -22,18 +23,33 @@ const schema = z.object({
 // RECEIVED; nothing is quoted, built, or charged until William triages it.
 export async function POST(req: Request): Promise<Response> {
   const a = relayAuthorized(req)
-  if (!a.ok) return Response.json({ success: false, error: a.error }, { status: a.status })
+  if (!a.ok) {
+    return Response.json(
+      { success: false, error: a.error, code: a.code },
+      { status: a.status }
+    )
+  }
   try {
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {
-      return Response.json({ success: false, error: 'Invalid work request' }, { status: 400 })
+      return Response.json(
+        { success: false, error: 'Invalid work request', code: 'SCHEMA' },
+        { status: 400 }
+      )
     }
     const d = parsed.data
-    const client = await db.supportClient.findUnique({ where: { clientKey: d.clientKey } })
+    const key = requireClientKey(d.clientKey)
+    if (!key.ok) {
+      return Response.json(
+        { success: false, error: key.error, code: key.code },
+        { status: key.status }
+      )
+    }
+    const client = await upsertSupportClientByKey(key.clientKey)
     const created = await db.workRequest.create({
       data: {
-        clientKey: d.clientKey,
-        clientId: client?.id ?? null,
+        clientKey: key.clientKey,
+        clientId: client.id,
         kind: d.kind,
         title: d.title,
         detail: d.detail,
@@ -48,7 +64,7 @@ export async function POST(req: Request): Promise<Response> {
       kind: 'question',
       severity: 'WARN',
       title: `New ${d.kind === 'ADDON' ? 'add-on' : 'fix'} request: ${d.title}`,
-      body: `${client?.label ?? d.clientKey}${d.requesterName ? ` — ${d.requesterName}` : ''}`,
+      body: `${client.clientKey}${d.requesterName ? ` — ${d.requesterName}` : ''}`,
       entityRef: created.id,
       url: '/support/inbox',
     })
@@ -58,7 +74,11 @@ export async function POST(req: Request): Promise<Response> {
     )
   } catch (error) {
     return Response.json(
-      { success: false, error: error instanceof Error ? error.message : 'Work submit failed' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Work submit failed',
+        code: 'WORK_FAILED',
+      },
       { status: 500 }
     )
   }

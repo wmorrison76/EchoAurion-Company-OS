@@ -94,7 +94,7 @@ export function findForbiddenPiiKey(value: unknown, path = ''): string | null {
 
 export function knowledgeIngestAuthorized(req: Request): {
   ok: true
-} | { ok: false; status: number; error: string } {
+} | { ok: false; status: number; error: string; code: string } {
   const secret =
     process.env.KNOWLEDGE_INGEST_SECRET?.trim() ||
     process.env.SUPPORT_INGEST_SECRET?.trim()
@@ -103,12 +103,13 @@ export function knowledgeIngestAuthorized(req: Request): {
       ok: false,
       status: 503,
       error: 'Knowledge ingest not configured (set KNOWLEDGE_INGEST_SECRET)',
+      code: 'KNOWLEDGE_DISABLED',
     }
   }
   const header = req.headers.get('authorization') ?? ''
   const match = /^Bearer\s+(.+)$/i.exec(header)
   if (!match || match[1] !== secret) {
-    return { ok: false, status: 401, error: 'Unauthorized' }
+    return { ok: false, status: 401, error: 'Unauthorized', code: 'UNAUTHORIZED' }
   }
   return { ok: true }
 }

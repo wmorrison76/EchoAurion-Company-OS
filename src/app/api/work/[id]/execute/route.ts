@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
+import { publishWorkStatus } from '@/lib/relay-outbox'
+import { standbyMayExecuteWork } from '@/lib/standby'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -45,18 +47,35 @@ export async function POST(
         { status: 409 }
       )
     }
-    await db.workRequest.update({
+    // Hard rule: Knights standby never auto-executes (compile-time false).
+    if (standbyMayExecuteWork()) {
+      return Response.json(
+        { success: false, error: 'Standby cannot execute work', code: 'STANDBY_NO_EXECUTE' },
+        { status: 403 }
+      )
+    }
+
+    const executed = await db.workRequest.update({
       where: { id },
       data: {
         approvedByAdmin: true, // Key 2
         rollbackRef: parsed.data.rollbackRef,
         status: 'EXECUTED',
         executedAt: new Date(),
+        actor: 'william_morrison',
       },
     })
     await audit('william_morrison', 'work.request.execute', id, {
       rollbackRef: parsed.data.rollbackRef,
       total: work.quoteTotal,
+    })
+    await publishWorkStatus({
+      clientKey: executed.clientKey,
+      workId: executed.id,
+      title: executed.title,
+      status: executed.status,
+      plan: executed.draftPlan,
+      rollbackRef: executed.rollbackRef,
     })
     await raiseAlert({
       kind: 'system',

@@ -6,6 +6,7 @@ import { draftAnswer, draftPlan, pickDraftSeat } from '@/lib/support-relay'
 import { dispatch } from '@/lib/board-room/connectors'
 import { ROSTER, knightConfigured } from '@/lib/board-room/knights'
 import { answerDraftSystemPrompt } from '@/lib/support-voice'
+import { maybeStandbyAutoApprove } from '@/lib/standby'
 import type { Seat } from '@/types/board-room'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -156,6 +157,27 @@ export async function POST(
       seats: knightBodies.map((k) => k.seat),
       count: knightBodies.length,
     })
+
+    // When William is unavailable: Knights may auto-answer low-risk TEXT only.
+    if (updated.status === 'AWAITING_APPROVAL') {
+      const standby = await maybeStandbyAutoApprove(id)
+      if (standby.autoApproved) {
+        const refreshed = await db.helpTicket.findUnique({
+          where: { id },
+          include: {
+            messages: { orderBy: { createdAt: 'asc' } },
+            voiceNotes: { orderBy: { createdAt: 'asc' } },
+            _count: { select: { messages: true } },
+          },
+        })
+        if (refreshed) {
+          return Response.json({
+            success: true,
+            data: toDetail(refreshed),
+          } satisfies APIResponse<HelpTicketDetail>)
+        }
+      }
+    }
 
     return Response.json({
       success: true,

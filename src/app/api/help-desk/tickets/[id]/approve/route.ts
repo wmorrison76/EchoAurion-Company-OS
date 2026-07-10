@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
+import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -78,7 +79,7 @@ export async function POST(
       })
 
       if (ticket.customerQuestionId) {
-        await db.customerQuestion.update({
+        const q = await db.customerQuestion.update({
           where: { id: ticket.customerQuestionId },
           data: {
             answer,
@@ -88,6 +89,20 @@ export async function POST(
           },
         })
         await audit('william_morrison', 'support.question.answer', ticket.customerQuestionId)
+        await publishAnswerReady({
+          clientKey: q.clientKey,
+          questionId: q.id,
+          question: q.question,
+          answer,
+          directive: q.directive,
+        })
+      } else if (ticket.clientKey) {
+        await publishAnswerReady({
+          clientKey: ticket.clientKey,
+          questionId: ticket.id,
+          question: ticket.subject,
+          answer,
+        })
       }
 
       const updated = await db.helpTicket.update({
@@ -127,7 +142,7 @@ export async function POST(
       })
 
       if (ticket.workRequestId) {
-        await db.workRequest.update({
+        const work = await db.workRequest.update({
           where: { id: ticket.workRequestId },
           data: {
             approvedByAdmin: true,
@@ -136,6 +151,13 @@ export async function POST(
           },
         })
         await audit('william_morrison', 'work.request.approve_free', ticket.workRequestId)
+        await publishWorkStatus({
+          clientKey: work.clientKey,
+          workId: work.id,
+          title: work.title,
+          status: work.status,
+          plan: work.draftPlan,
+        })
       }
 
       const updated = await db.helpTicket.update({
@@ -177,7 +199,7 @@ export async function POST(
     if (ticket.workRequestId) {
       const work = await db.workRequest.findUnique({ where: { id: ticket.workRequestId } })
       if (work && work.status === 'RECEIVED') {
-        await db.workRequest.update({
+        const quoted = await db.workRequest.update({
           where: { id: ticket.workRequestId },
           data: {
             status: 'QUOTED',
@@ -186,6 +208,13 @@ export async function POST(
           },
         })
         await audit('william_morrison', 'work.request.quote', ticket.workRequestId)
+        await publishWorkStatus({
+          clientKey: quoted.clientKey,
+          workId: quoted.id,
+          title: quoted.title,
+          status: quoted.status,
+          plan: quoted.draftPlan,
+        })
       }
     }
 

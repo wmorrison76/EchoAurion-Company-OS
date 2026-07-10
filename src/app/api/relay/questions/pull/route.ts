@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { relayAuthorized } from '@/lib/relay-auth'
+import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -11,19 +11,25 @@ interface DeliverableAnswer {
   directive: unknown
 }
 
-// A deployment polls for approved answers addressed to it. Returns ANSWERED &
-// undelivered items and marks them delivered so they are handed over exactly
-// once. This is the only outbound channel — William's approval is the gate.
+// Pull fallback — SSE is preferred. Returns ANSWERED & undelivered once.
 export async function GET(req: Request): Promise<Response> {
   const a = relayAuthorized(req)
-  if (!a.ok) return Response.json({ success: false, error: a.error }, { status: a.status })
-  const clientKey = new URL(req.url).searchParams.get('clientKey')
-  if (!clientKey) {
-    return Response.json({ success: false, error: 'clientKey required' }, { status: 400 })
+  if (!a.ok) {
+    return Response.json(
+      { success: false, error: a.error, code: a.code },
+      { status: a.status }
+    )
+  }
+  const key = requireClientKey(new URL(req.url).searchParams.get('clientKey'))
+  if (!key.ok) {
+    return Response.json(
+      { success: false, error: key.error, code: key.code },
+      { status: key.status }
+    )
   }
   try {
     const pending = await db.customerQuestion.findMany({
-      where: { clientKey, status: 'ANSWERED', delivered: false },
+      where: { clientKey: key.clientKey, status: 'ANSWERED', delivered: false },
       orderBy: { answeredAt: 'asc' },
     })
     if (pending.length > 0) {
@@ -41,7 +47,11 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({ success: true, data } satisfies APIResponse<DeliverableAnswer[]>)
   } catch (error) {
     return Response.json(
-      { success: false, error: error instanceof Error ? error.message : 'Pull failed' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Pull failed',
+        code: 'PULL_FAILED',
+      },
       { status: 500 }
     )
   }

@@ -17,7 +17,10 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: Request): Promise<Response> {
   const a = knowledgeIngestAuthorized(req)
   if (!a.ok) {
-    return Response.json({ success: false, error: a.error }, { status: a.status })
+    return Response.json(
+      { success: false, error: a.error, code: a.code },
+      { status: a.status }
+    )
   }
 
   try {

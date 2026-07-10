@@ -7,8 +7,10 @@ import type {
   ActiveUsersHealth,
   DrOsStatus,
   NeonHealth,
+  PilotConnectionHealth,
   PilotHealth,
 } from '@/types/dr-os'
+import { getStandbyConfig } from '@/lib/standby'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -126,15 +128,72 @@ export async function getPilot(): Promise<PilotHealth> {
   }
 }
 
+/** Live SupportClient heartbeats for the Pilot Connection Hub card. */
+async function getPilotConnection(): Promise<PilotConnectionHealth> {
+  try {
+    const now = Date.now()
+    const ONLINE_MS = 5 * 60 * 1000
+    const STREAM_MS = 2 * 60 * 1000
+    const [clients, standby, reviewCount] = await Promise.all([
+      db.supportClient.findMany({
+        select: { lastHeartbeatAt: true, lastStreamAt: true },
+      }),
+      getStandbyConfig(),
+      db.customerQuestion.count({
+        where: {
+          standbyApproved: true,
+          answeredAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+    ])
+    const onlineCount = clients.filter(
+      (c) => c.lastHeartbeatAt && now - c.lastHeartbeatAt.getTime() < ONLINE_MS
+    ).length
+    const streamCount = clients.filter(
+      (c) => c.lastStreamAt && now - c.lastStreamAt.getTime() < STREAM_MS
+    ).length
+    return {
+      level: onlineCount > 0 ? 'ok' : clients.length > 0 ? 'warn' : 'unknown',
+      label: onlineCount > 0 ? 'Online' : clients.length > 0 ? 'Offline' : 'None',
+      onlineCount,
+      totalClients: clients.length,
+      streamCount,
+      standbyMode: standby.mode,
+      standbyReviewCount: reviewCount,
+    }
+  } catch (error) {
+    return {
+      level: 'unknown',
+      label: 'Unknown',
+      onlineCount: 0,
+      totalClients: 0,
+      streamCount: 0,
+      standbyMode: 'off',
+      standbyReviewCount: 0,
+      error: error instanceof Error ? error.message : 'Pilot connection query failed',
+    }
+  }
+}
+
 /** Runs every Dr. OS status check in parallel (CLAUDE.md §10.4). */
 export async function getDrOsStatus(): Promise<DrOsStatus> {
-  const [github, render, neon, stripe, activeUsers, pilot] = await Promise.all([
+  const [github, render, neon, stripe, activeUsers, pilot, pilotConnection] = await Promise.all([
     getAllRepoHealth(),
     getRenderDeployHealth(),
     checkNeon(),
     getStripeMRRHealth(),
     getActiveUsers(),
     getPilot(),
+    getPilotConnection(),
   ])
-  return { github, render, neon, stripe, activeUsers, pilot, generatedAt: new Date().toISOString() }
+  return {
+    github,
+    render,
+    neon,
+    stripe,
+    activeUsers,
+    pilot,
+    pilotConnection,
+    generatedAt: new Date().toISOString(),
+  }
 }
