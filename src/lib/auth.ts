@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { authConfig } from './auth.config'
 import { audit } from './audit'
+import { resolveAdminPasswordHash } from './admin-password'
 
 // Single-admin credentials login. Runs only in the Node runtime (never Edge)
 // because bcrypt and the audit log require Node APIs. See CLAUDE.md §8.
@@ -26,7 +27,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password } = parsed.data
         const adminEmail = process.env.ADMIN_EMAIL
-        const adminHash = process.env.ADMIN_PASSWORD_HASH
+        const adminHash = await resolveAdminPasswordHash()
 
         // Fail closed if the admin identity is not configured.
         if (!adminEmail || !adminHash) return null

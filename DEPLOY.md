@@ -90,8 +90,10 @@ service is live (see **Cron jobs** below).
 | `DATABASE_URL` | yes | Neon pooled |
 | `DATABASE_URL_UNPOOLED` | yes | Neon direct |
 | `ADMIN_EMAIL` | yes | Your login email |
-| `ADMIN_PASSWORD_HASH` | yes | bcrypt hash (no escaping on Render) |
+| `ADMIN_PASSWORD_HASH` | yes | bcrypt hash (no escaping on Render). Bootstrap only — after Forgot Password reset, the live hash lives in DB (`admin_auth`) and is preferred over this env var |
 | `CRON_SECRET` | yes | Guards cron POSTs (needed when you add crons) |
+| `EMAIL_FROM` | for forgot-password | e.g. `noreply@aurion-holdings.com` or Resend’s `onboarding@resend.dev` while testing |
+| `RESEND_API_KEY` | for forgot-password | Preferred mail provider. Without this (or SMTP_*), Forgot Password returns “Email is not configured” |
 
 ### Env vars (turn on Knights + Support)
 
@@ -118,6 +120,16 @@ health from the Company OS DB. Without the key, the page shows Empty / Unknown
 faked as live in production).
 
 Unset integrations show as **Unknown** / unavailable — the app still boots.
+
+### Forgot password (email)
+
+1. Create a [Resend](https://resend.com) API key → set `RESEND_API_KEY` on Render.
+2. Set `EMAIL_FROM` to a verified sender (or `onboarding@resend.dev` for first tests).
+3. Ensure `NEXTAUTH_URL` is the public `https://…` URL so reset links are correct.
+4. On `/login` → **Forgot password?** → enter `ADMIN_EMAIL` → open the link → set a new password (min 12 chars).
+5. The new hash is written to Neon (`admin_auth`). **Do not** paste a hash into Render after reset — login uses the DB override when present.
+
+SMTP alternative: leave `RESEND_API_KEY` empty and set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_PORT` / `SMTP_SECURE`, plus `EMAIL_FROM`.
 
 ## 4. Deploy steps
 
