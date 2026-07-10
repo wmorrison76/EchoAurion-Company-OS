@@ -6,6 +6,11 @@ import useSWR from 'swr'
 import { formatDistanceToNow } from 'date-fns'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { PolicyRecommendationBanner } from '@/components/support/PolicyRecommendation'
+import { PricingReferenceCard } from '@/components/help-desk/PricingReferenceCard'
+import {
+  TestScenarioChecklist,
+  type TestScenarioState,
+} from '@/components/help-desk/TestScenarioChecklist'
 import { HELP_DESK_MACROS } from '@/lib/help-desk'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
 import type { APIResponse } from '@/types'
@@ -68,6 +73,7 @@ export function HelpDeskConsole() {
   const [showVoice, setShowVoice] = useState(false)
   const [showFeature, setShowFeature] = useState(false)
   const [showNew, setShowNew] = useState(false)
+  const [scenario, setScenario] = useState<TestScenarioState | null>(null)
   const [, startTransition] = useTransition()
 
   const listKey = `/api/help-desk/tickets?filter=${filter}`
@@ -213,6 +219,43 @@ export function HelpDeskConsole() {
     }
   }
 
+  async function simulateCustomerChange() {
+    setBusy('test-scenario')
+    setError(null)
+    try {
+      const res = await fetch('/api/help-desk/test-scenario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'seed' }),
+      })
+      const body = (await res.json()) as APIResponse<{
+        ticket: HelpTicketDetail
+        workRequestId: string
+        clientKey: string
+        billingToken: string
+        rollbackRef: string
+      }>
+      if (!body.success) throw new Error(body.error)
+      setScenario({
+        ticketId: body.data.ticket.id,
+        workRequestId: body.data.workRequestId,
+        clientKey: body.data.clientKey,
+        billingToken: body.data.billingToken,
+        rollbackRef: body.data.rollbackRef,
+      })
+      setSelectedId(body.data.ticket.id)
+      setFilter('feature')
+      await mutateList()
+      startTransition(() => {
+        router.replace(`/help-desk?ticket=${body.data.ticket.id}`)
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test scenario failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const policyVerdict: PolicyVerdict | null = useMemo(() => {
     if (!detail?.policy) return null
     return {
@@ -292,6 +335,15 @@ export function HelpDeskConsole() {
         </button>
         <button
           type="button"
+          disabled={!!busy}
+          onClick={() => void simulateCustomerChange()}
+          className="rounded-lg border border-[#f59e0b] bg-[#1a1a26] px-3 py-1.5 text-xs text-white transition-colors duration-150 hover:bg-[#22223a] disabled:opacity-40"
+          aria-label="Simulate customer change request test scenario"
+        >
+          {busy === 'test-scenario' ? 'Seeding…' : 'Simulate customer change request'}
+        </button>
+        <button
+          type="button"
           onClick={() => refresh()}
           className="rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] transition-colors duration-150 hover:border-[#D4AF37] hover:text-[#D4AF37]"
           aria-label="Refresh help desk"
@@ -299,6 +351,16 @@ export function HelpDeskConsole() {
           Refresh
         </button>
       </div>
+
+      {scenario && (
+        <TestScenarioChecklist
+          scenario={scenario}
+          busy={busy}
+          onRefresh={refresh}
+        />
+      )}
+
+      <PricingReferenceCard />
 
       {error && (
         <div className="flex items-center gap-2 text-sm text-[#a0a0b8]">

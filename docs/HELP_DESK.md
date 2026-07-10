@@ -18,6 +18,7 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 | Free vs Charge policy chips | Live (`support-policy.ts`) |
 | Audit log on mutations | Live |
 | Customer relay intake | Later (stubs only) |
+| Guided E2E test scenario | Live — **Simulate customer change request** |
 | Twilio / real phone number | **Not yet** — do not block on it |
 
 ---
@@ -137,6 +138,7 @@ After merge/push to the deploy branch:
 1. Render runs `prisma migrate deploy` (migration `20260710180000_help_desk`)
 2. Confirm `/help-desk` appears in the sidebar
 3. Smoke: New ticket → Ask Knights → Approve & send; Log voice call; Request custom build
+4. Guided change-request test: **Simulate customer change request** — see `docs/CUSTOMER_CHANGE_REQUEST_FLOW.md`
 
 ---
 
