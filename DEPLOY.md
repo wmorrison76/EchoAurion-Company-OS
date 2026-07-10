@@ -11,6 +11,7 @@ approve free or charge before anything ships.
 |---|---|
 | `/dr-os` | Live system status (Render, Neon, Stripe, GitHub, pilots) |
 | `/board-room` | Knights of the Round Table — multi-AI counsel |
+| `/fleet-nexus` | Operational fleet map — Render services + Support health, blast radius |
 | `/support` | Client health, Ask-the-Board questions, billable/free change requests |
 | `/financial` · `/crm` · `/revenue` | Money, pipeline, MRR |
 | `/aurion-index` | AWS infra panel (CDK scaffold; deploy later) |
@@ -110,6 +111,12 @@ service is live (see **Cron jobs** below).
 `RENDER_API_KEY`, `RENDER_SERVICE_ID`, `GITHUB_TOKEN`, `STRIPE_*`, `PLAID_*`,
 `MERCURY_API_KEY`, `PRODUCT_DATABASE_URL` (read-only product DB for active users).
 
+**Fleet Nexus** (`/fleet-nexus`) uses `RENDER_API_KEY` to list **all** services in
+the Render account (not only `RENDER_SERVICE_ID`) and merges Support client
+health from the Company OS DB. Without the key, the page shows Empty / Unknown
+(or a clearly labeled Demo graph in local `NODE_ENV=development` only — never
+faked as live in production).
+
 Unset integrations show as **Unknown** / unavailable — the app still boots.
 
 ## 4. Deploy steps
@@ -156,6 +163,7 @@ For the briefing job, swap the path to `/api/board-room/briefing`.
 
 - [ ] `GET /api/health` → `{ "status": "ok", "database": "ok" }`
 - [ ] Login with `ADMIN_EMAIL`
+- [ ] `/fleet-nexus` loads (Live/Partial/Empty banner; graph when Render key set)
 - [ ] `/board-room` shows Knights (Unavailable until keys set)
 - [ ] `/support` loads Questions + Change Requests + Alerts
 - [ ] Approve free / Send quote / Decline buttons visible on a work card

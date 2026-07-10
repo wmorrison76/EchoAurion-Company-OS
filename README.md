@@ -17,6 +17,7 @@ Do not import from or modify the product from here.
 |---|---|
 | Dr. OS Dashboard | Super-admin panel — all systems, Render, Neon, Stripe, GitHub, pilot status |
 | Board Room | Knights of the Round Table — multi-AI counsel (draft only) |
+| Fleet Nexus | Operational map — Render services + Support client health, blast-radius triage |
 | Support | Client health, Ask-the-Board Q&A, free/charge change-request gate ([policy](./SUPPORT_POLICY.md)) |
 | AurionIndex | AWS CDK infrastructure scaffold (ECS, RDS, CloudFront, S3, Route 53) |
 | Plaid Financial Monitor | Wells Fargo + Mercury — burn rate, bill calendar, runway calculator |
@@ -42,6 +43,7 @@ Start with Step 1 in §15 of CLAUDE.md.
 | 7 | Board Room (Knights) | ✅ Complete |
 | 8 | Support + Ask-the-Board + free/charge gate | ✅ Complete |
 | 9 | PWA + push alerts | ✅ Complete |
+| 10 | Fleet Nexus (Render + Support ops map) | ✅ Complete |
 | — | Production deploy (Render + Neon) | ◻ See DEPLOY.md |
 
 ## Local Development
