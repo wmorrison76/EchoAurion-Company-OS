@@ -9,7 +9,8 @@ EchoCoder live at [Echo_Aurion-LUCCCA_Framework](https://github.com/wmorrison76/
 Do not import from or modify the product from here.
 
 **Deploy guide:** see [DEPLOY.md](./DEPLOY.md).  
-**Support Free vs Charge:** see [SUPPORT_POLICY.md](./SUPPORT_POLICY.md) (10-minute answer rule + matrix).
+**Support Free vs Charge:** see [SUPPORT_POLICY.md](./SUPPORT_POLICY.md) (10-minute answer rule + matrix).  
+**Help Desk:** see [docs/HELP_DESK.md](./docs/HELP_DESK.md) (tickets · voice dictation · Knights · planning gaps).
 
 ## What This Builds
 
@@ -17,11 +18,12 @@ Do not import from or modify the product from here.
 |---|---|
 | Public homepage (`/`) | Aurion Holdings marketing → Operator Login → Dr. OS |
 | Dr. OS Dashboard | Super-admin panel — all systems, Render, Neon, Stripe, GitHub, pilot status |
-| Board Room | Knights of the Round Table — multi-AI counsel (draft only) |
+| Board Room | Knights counsel (strategy) — multi-AI orchestration (draft only) |
 | Fleet Nexus | Operational map — Render services + Support client health, blast-radius triage |
 | Knowledge Plane | Aurion Knowledge Plane / Echo Resonance Network — anonymized learning (no guest PII) |
-| Support | Client health, Ask-the-Board Q&A, free/charge change-request gate ([policy](./SUPPORT_POLICY.md)) |
-| Support Inbox | Unified triage queue for questions + work |
+| Support | Client health · diagnostics · free/charge gate ([policy](./SUPPORT_POLICY.md)) |
+| Support Inbox | Unified triage queue → deep-links into Help Desk |
+| Help Desk | Live tickets — text · voice dictation · Ask Knights · custom builds ([guide](./docs/HELP_DESK.md)) |
 | AurionIndex | AWS CDK infrastructure scaffold (ECS, RDS, CloudFront, S3, Route 53) |
 | Plaid Financial Monitor | Wells Fargo + Mercury — burn rate, bill calendar, runway calculator |
 | CRM | Partnership, investor, and advisor pipeline |
@@ -50,6 +52,7 @@ Start with Step 1 in §15 of CLAUDE.md.
 | 9 | PWA + push alerts | ✅ Complete |
 | 10 | Fleet Nexus (Render + Support ops map) | ✅ Complete |
 | 11 | Public homepage + Knowledge Plane scaffold | ✅ Complete |
+| 12 | Help Desk (tickets · voice · Knights · custom builds) | ✅ Complete |
 | — | Production deploy (Render + Neon) | ◻ See DEPLOY.md |
 
 ## Local Development

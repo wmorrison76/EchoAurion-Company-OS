@@ -621,3 +621,90 @@ enum VendorAccessStatus {
   DENIED
   REVOKED
 }
+
+// ── Help Desk (Knights of the Round Table operator workspace) ───────────────
+// Live ticket workspace for text, voice dictation, Ask Knights, and custom
+// builds. Distinct from Board Room (strategy counsel) and Support (client
+// health + approve gate). See docs/HELP_DESK.md.
+
+model HelpTicket {
+  id                 String            @id @default(cuid())
+  channel            HelpTicketChannel @default(TEXT)
+  status             HelpTicketStatus  @default(OPEN)
+  priority           String            @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
+  subject            String
+  clientKey          String?
+  clientId           String?
+  requesterName      String?
+  workRequestId      String?
+  customerQuestionId String?
+  boardSessionId     String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  resolvedAt         DateTime?
+
+  messages   HelpMessage[]
+  voiceNotes HelpVoiceNote[]
+
+  @@index([status, updatedAt])
+  @@index([channel, status])
+  @@index([clientKey])
+  @@index([customerQuestionId])
+  @@index([workRequestId])
+  @@map("help_tickets")
+}
+
+enum HelpTicketChannel {
+  TEXT
+  VOICE
+  FEATURE
+  SYSTEM
+}
+
+enum HelpTicketStatus {
+  OPEN
+  WAITING
+  WITH_KNIGHTS
+  AWAITING_APPROVAL
+  RESOLVED
+  CLOSED
+}
+
+model HelpMessage {
+  id        String          @id @default(cuid())
+  ticketId  String
+  ticket    HelpTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  role      HelpMessageRole
+  body      String
+  seat      String? // knight seat when role = KNIGHT
+  createdAt DateTime        @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("help_messages")
+}
+
+enum HelpMessageRole {
+  CUSTOMER
+  ADMIN
+  KNIGHT
+  SYSTEM
+}
+
+model HelpVoiceNote {
+  id          String              @id @default(cuid())
+  ticketId    String
+  ticket      HelpTicket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  transcript  String
+  durationSec Int?
+  source      HelpVoiceNoteSource @default(PASTE)
+  createdAt   DateTime            @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("help_voice_notes")
+}
+
+enum HelpVoiceNoteSource {
+  UPLOAD
+  DICTATION
+  PASTE
+}

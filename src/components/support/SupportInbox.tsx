@@ -126,18 +126,25 @@ export function SupportInbox() {
                 </div>
                 <div className="flex flex-shrink-0 flex-col gap-2 sm:items-end">
                   <Link
-                    href={item.href}
+                    href={`/help-desk?import=${item.kind}:${item.id}`}
                     className="rounded-lg border border-[#D4AF37] px-3 py-1.5 text-xs text-[#D4AF37] transition-colors duration-150 hover:bg-[#1a1a26]"
+                    aria-label={`Open ${item.title} in Help Desk`}
+                  >
+                    Open in Help Desk
+                  </Link>
+                  <Link
+                    href={item.kind === 'work' ? '/support#work' : '/support#questions'}
+                    className="rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] transition-colors duration-150 hover:border-[#D4AF37] hover:text-[#D4AF37]"
                     aria-label={`Open ${item.title} in Support`}
                   >
                     Open in Support
                   </Link>
                   {item.kind === 'work' ? (
                     <p className="text-[10px] text-[#5a5a78]">
-                      Use Approve free / Send quote on the work card
+                      Help Desk · Approve free / Send quote
                     </p>
                   ) : (
-                    <p className="text-[10px] text-[#5a5a78]">Draft + Approve &amp; send on the question card</p>
+                    <p className="text-[10px] text-[#5a5a78]">Help Desk · Ask Knights · Approve</p>
                   )}
                 </div>
               </div>

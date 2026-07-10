@@ -9,7 +9,7 @@ export default function SupportInboxPage() {
   return (
     <AppShell
       title="Support Inbox"
-      subtitle="Unified queue — questions · change requests · Approve free / Quote"
+      subtitle="Unified triage — open in Help Desk for live tickets · Support for health panels"
     >
       <SupportInbox />
     </AppShell>

@@ -9,7 +9,7 @@ export default function SupportPage() {
   return (
     <AppShell
       title="Support"
-      subtitle="Client health · Ask the Knights · Free vs Charge policy · approve before any fix ships"
+      subtitle="Client health · diagnostics · Free vs Charge · approve gate (tickets live in Help Desk)"
     >
       <SupportConsole />
     </AppShell>

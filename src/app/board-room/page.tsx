@@ -9,7 +9,7 @@ export default function BoardRoomPage() {
   return (
     <AppShell
       title="Board Room"
-      subtitle="Knights of the Round Table — multi-AI orchestration"
+      subtitle="Knights counsel (strategy) — multi-AI orchestration"
     >
       <BoardRoom />
     </AppShell>

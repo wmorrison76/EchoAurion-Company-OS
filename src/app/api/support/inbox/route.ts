@@ -91,7 +91,7 @@ export async function GET(): Promise<Response> {
           operatorHint: verdict.operatorHint,
           suggestedTier: verdict.suggestedTier,
         },
-        href: '/support#questions',
+        href: `/help-desk?import=question:${q.id}`,
       })
     }
 
@@ -118,7 +118,7 @@ export async function GET(): Promise<Response> {
           operatorHint: verdict.operatorHint,
           suggestedTier: verdict.suggestedTier,
         },
-        href: '/support#work',
+        href: `/help-desk?import=work:${w.id}`,
       })
     }
 

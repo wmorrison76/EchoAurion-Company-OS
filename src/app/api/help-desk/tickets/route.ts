@@ -1,0 +1,169 @@
+import { auth } from '@/lib/auth'
+import { db } from '@/lib/db'
+import { audit } from '@/lib/audit'
+import { toDetail, toListItem } from '@/lib/help-desk'
+import type { APIResponse } from '@/types'
+import type {
+  HelpTicketChannel,
+  HelpTicketDetail,
+  HelpTicketListItem,
+  HelpTicketStatus,
+} from '@/types/help-desk'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET(req: Request): Promise<Response> {
+  const session = await auth()
+  if (!session?.user) {
+    return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
+  }
+
+  try {
+    const url = new URL(req.url)
+    const filter = url.searchParams.get('filter') // open | voice | feature | awaiting | all
+    const openStatuses: HelpTicketStatus[] = [
+      'OPEN',
+      'WAITING',
+      'WITH_KNIGHTS',
+      'AWAITING_APPROVAL',
+    ]
+    const where =
+      filter === 'voice'
+        ? { channel: 'VOICE' as const }
+        : filter === 'feature'
+          ? { channel: 'FEATURE' as const }
+          : filter === 'awaiting'
+            ? { status: 'AWAITING_APPROVAL' as const }
+            : filter === 'all'
+              ? {}
+              : { status: { in: openStatuses } }
+
+    const tickets = await db.helpTicket.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: 80,
+      include: { _count: { select: { messages: true } } },
+    })
+
+    const data = tickets.map(toListItem)
+    return Response.json({
+      success: true,
+      data,
+      meta: { lastUpdated: new Date().toISOString() },
+    } satisfies APIResponse<HelpTicketListItem[]>)
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Help Desk list failed',
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(req: Request): Promise<Response> {
+  const session = await auth()
+  if (!session?.user) {
+    return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
+  }
+
+  try {
+    const body = (await req.json()) as {
+      channel?: HelpTicketChannel
+      subject?: string
+      body?: string
+      clientKey?: string
+      clientId?: string
+      requesterName?: string
+      priority?: string
+      workRequestId?: string
+      customerQuestionId?: string
+      boardSessionId?: string
+      spawnWorkRequest?: boolean
+    }
+
+    const subject = body.subject?.trim()
+    if (!subject) {
+      return Response.json({ success: false, error: 'subject is required' }, { status: 400 })
+    }
+
+    const channel: HelpTicketChannel = body.channel ?? 'TEXT'
+    let workRequestId = body.workRequestId ?? null
+
+    if (channel === 'FEATURE' && body.spawnWorkRequest && !workRequestId) {
+      const work = await db.workRequest.create({
+        data: {
+          clientKey: body.clientKey?.trim() || 'manual',
+          clientId: body.clientId ?? null,
+          kind: 'ADDON',
+          title: subject,
+          detail: body.body?.trim() || subject,
+          requesterName: body.requesterName ?? null,
+          status: 'RECEIVED',
+          actor: 'william_morrison',
+        },
+      })
+      workRequestId = work.id
+      await audit('william_morrison', 'work.request.create', work.id, {
+        from: 'help_desk',
+        title: subject,
+      })
+    }
+
+    const ticket = await db.helpTicket.create({
+      data: {
+        channel,
+        status: 'OPEN',
+        priority: body.priority?.trim() || 'NORMAL',
+        subject,
+        clientKey: body.clientKey?.trim() || null,
+        clientId: body.clientId ?? null,
+        requesterName: body.requesterName?.trim() || null,
+        workRequestId,
+        customerQuestionId: body.customerQuestionId ?? null,
+        boardSessionId: body.boardSessionId ?? null,
+        messages: {
+          create: [
+            {
+              role: 'SYSTEM',
+              body: `Ticket opened · channel ${channel}`,
+            },
+            ...(body.body?.trim()
+              ? [
+                  {
+                    role: (channel === 'FEATURE' ? 'CUSTOMER' : 'ADMIN') as 'CUSTOMER' | 'ADMIN',
+                    body: body.body.trim(),
+                  },
+                ]
+              : []),
+          ],
+        },
+      },
+      include: {
+        messages: { orderBy: { createdAt: 'asc' } },
+        voiceNotes: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { messages: true } },
+      },
+    })
+
+    await audit('william_morrison', 'help_desk.ticket.create', ticket.id, {
+      channel,
+      subject,
+      workRequestId,
+    })
+
+    return Response.json({
+      success: true,
+      data: toDetail(ticket),
+    } satisfies APIResponse<HelpTicketDetail>)
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Help Desk create failed',
+      },
+      { status: 500 }
+    )
+  }
+}
