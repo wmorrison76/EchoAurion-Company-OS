@@ -36,13 +36,14 @@ export function ForgotPasswordForm() {
       }
 
       if (!res.ok || !data.success) {
-        setStatus({
-          kind: 'error',
-          message:
-            data.error === 'Email is not configured' || data.code === 'EMAIL_NOT_CONFIGURED'
-              ? 'Email is not configured. Set RESEND_API_KEY and EMAIL_FROM on Render, then try again.'
-              : data.error ?? 'Unable to send reset email',
-        })
+        const message =
+          data.code === 'EMAIL_NOT_CONFIGURED' || data.error === 'Email is not configured'
+            ? 'Email is not configured. On Render set RESEND_API_KEY and EMAIL_FROM (see DEPLOY.md), then try again.'
+            : data.code === 'EMAIL_SEND_FAILED'
+              ? data.error ??
+                'Unable to send reset email. Check Resend dashboard and that ADMIN_EMAIL matches the Resend account inbox when using onboarding@resend.dev.'
+              : (data.error ?? 'Unable to send reset email')
+        setStatus({ kind: 'error', message })
         return
       }
 

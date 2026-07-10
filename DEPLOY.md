@@ -92,8 +92,8 @@ service is live (see **Cron jobs** below).
 | `ADMIN_EMAIL` | yes | Your login email |
 | `ADMIN_PASSWORD_HASH` | yes | bcrypt hash (no escaping on Render). Bootstrap only — after Forgot Password reset, the live hash lives in DB (`admin_auth`) and is preferred over this env var |
 | `CRON_SECRET` | yes | Guards cron POSTs (needed when you add crons) |
-| `EMAIL_FROM` | for forgot-password | e.g. `noreply@aurion-holdings.com` or Resend’s `onboarding@resend.dev` while testing |
-| `RESEND_API_KEY` | for forgot-password | Preferred mail provider. Without this (or SMTP_*), Forgot Password returns “Email is not configured” |
+| `EMAIL_FROM` | for forgot-password | Test: `onboarding@resend.dev`. Prod: verified domain sender. See **Forgot password** below |
+| `RESEND_API_KEY` | for forgot-password | Required for mail. Without it (or SMTP_*), form shows “Email is not configured”. Health: `emailConfigured` |
 
 ### Env vars (turn on Knights + Support)
 
@@ -121,13 +121,47 @@ faked as live in production).
 
 Unset integrations show as **Unknown** / unavailable — the app still boots.
 
-### Forgot password (email)
+### Forgot password (email) — Resend setup (get mail today)
 
-1. Create a [Resend](https://resend.com) API key → set `RESEND_API_KEY` on Render.
-2. Set `EMAIL_FROM` to a verified sender (or `onboarding@resend.dev` for first tests).
-3. Ensure `NEXTAUTH_URL` is the public `https://…` URL so reset links are correct.
-4. On `/login` → **Forgot password?** → enter `ADMIN_EMAIL` → open the link → set a new password (min 12 chars).
-5. The new hash is written to Neon (`admin_auth`). **Do not** paste a hash into Render after reset — login uses the DB override when present.
+**Root cause of “success but no email”:** if `RESEND_API_KEY` / `EMAIL_FROM` are
+missing, the API returns `EMAIL_NOT_CONFIGURED` (503) and the form shows an error.
+If keys are set but Resend rejects the send (free-tier recipient rules), the API
+returns `EMAIL_SEND_FAILED` (502). Wrong email still shows the generic success
+message (anti-enumeration).
+
+Check live config without secrets:
+
+```bash
+curl -sS https://echoaurion-company-os.onrender.com/api/health
+# expect: "emailConfigured": true
+```
+
+#### Steps (testing with Resend free tier — fastest)
+
+1. Create an account at [resend.com](https://resend.com) **using the same inbox as `ADMIN_EMAIL`** (e.g. William’s Gmail).
+2. **API Keys** → Create → copy the key → Render → Environment → `RESEND_API_KEY` = that value.
+3. Set `EMAIL_FROM` = `onboarding@resend.dev` (Resend’s shared test sender).
+4. Confirm `ADMIN_EMAIL` on Render is **exactly** the email on the Resend account (same inbox). With `onboarding@resend.dev`, Resend **only delivers to that verified account email** until you verify a custom domain.
+5. Confirm `NEXTAUTH_URL` = `https://echoaurion-company-os.onrender.com` (no trailing slash) so the reset link is correct.
+6. **Save** env vars → **Manual Deploy** (or wait for auto-deploy) so the new keys load.
+7. Open `/login` → **Forgot password?** → enter `ADMIN_EMAIL` exactly → check that inbox (and spam).
+8. Open the link → set a new password (min 12 chars). The hash is written to Neon (`admin_auth`). **Do not** paste a new hash into Render after reset.
+
+#### Production sender (optional, after testing)
+
+1. In Resend → **Domains** → add `aurion-holdings.com` (or your sending domain) → add the DNS records Resend shows.
+2. After the domain is **Verified**, set `EMAIL_FROM` to e.g. `noreply@aurion-holdings.com`.
+3. You can then send to any `ADMIN_EMAIL`, not only the Resend signup inbox.
+
+#### Render env checklist (forgot-password)
+
+| Variable | Required | Example / note |
+|---|---|---|
+| `RESEND_API_KEY` | yes (or SMTP_*) | `re_…` from Resend |
+| `EMAIL_FROM` | yes | `onboarding@resend.dev` (test) or `noreply@your-verified-domain` |
+| `ADMIN_EMAIL` | yes | Must match Resend account email when using `onboarding@resend.dev` |
+| `NEXTAUTH_URL` | yes | Public `https://echoaurion-company-os.onrender.com` |
+| `ADMIN_PASSWORD_HASH` | bootstrap | Ignored for login once DB override exists after reset |
 
 SMTP alternative: leave `RESEND_API_KEY` empty and set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_PORT` / `SMTP_SECURE`, plus `EMAIL_FROM`.
 

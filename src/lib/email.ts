@@ -52,7 +52,17 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         console.error(`[email] Resend error ${res.status}: ${body}`)
-        return { ok: false, reason: 'send_failed', detail: `Resend ${res.status}` }
+        // Common free-tier failure: can only send TO the Resend account owner's email
+        // unless a custom domain is verified.
+        const freeTierHint =
+          /only send (testing|to)|verified|domain/i.test(body)
+            ? ' (Resend free tier: recipient must be the Resend account email, or verify a domain)'
+            : ''
+        return {
+          ok: false,
+          reason: 'send_failed',
+          detail: `Resend ${res.status}${freeTierHint}`,
+        }
       }
       return { ok: true, provider: 'resend' }
     } catch (err) {

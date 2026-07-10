@@ -13,12 +13,21 @@ const bodySchema = z.object({
   email: z.string().email(),
 })
 
+const GENERIC_SUCCESS = {
+  success: true as const,
+  data: {
+    message:
+      'If that email is registered, a reset link has been sent. Check your inbox.',
+  },
+} satisfies APIResponse<{ message: string }>
+
 /**
  * POST /api/auth/forgot-password
- * Always returns a generic success message when the request is well-formed
- * (does not reveal whether the email matched ADMIN_EMAIL), except when email
- * delivery is not configured — then returns a clear setup error without
- * leaking match status.
+ *
+ * Anti-enumeration: wrong / unknown email → generic success.
+ * Distinguishes ops failures so the UI can guide setup:
+ *   - EMAIL_NOT_CONFIGURED (503) — RESEND/SMTP + EMAIL_FROM missing
+ *   - EMAIL_SEND_FAILED (502) — provider rejected or network error
  */
 export async function POST(req: Request) {
   let json: unknown
@@ -39,21 +48,7 @@ export async function POST(req: Request) {
     )
   }
 
-  const email = parsed.data.email.trim().toLowerCase()
-  const ip = clientIp(req)
-  const rateKey = `forgot:${ip}:${email}`
-
-  if (!checkRateLimit(rateKey)) {
-    // Same generic message — do not reveal rate-limit vs success to attackers.
-    return Response.json({
-      success: true,
-      data: {
-        message:
-          'If that email is registered, a reset link has been sent. Check your inbox.',
-      },
-    } satisfies APIResponse<{ message: string }>)
-  }
-
+  // Config check before rate-limit so retries never mask "not configured" as success.
   if (!isEmailConfigured()) {
     console.error(
       '[forgot-password] Email is not configured (set RESEND_API_KEY + EMAIL_FROM, or SMTP_* + EMAIL_FROM)'
@@ -68,16 +63,18 @@ export async function POST(req: Request) {
     )
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
-  const genericSuccess = {
-    success: true as const,
-    data: {
-      message:
-        'If that email is registered, a reset link has been sent. Check your inbox.',
-    },
-  } satisfies APIResponse<{ message: string }>
+  const email = parsed.data.email.trim().toLowerCase()
+  const ip = clientIp(req)
+  const rateKey = `forgot:${ip}:${email}`
 
-  // Only create/send when email matches admin — still return generic success.
+  if (!checkRateLimit(rateKey)) {
+    // Same generic message — do not reveal rate-limit vs success to attackers.
+    return Response.json(GENERIC_SUCCESS)
+  }
+
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase()
+
+  // Only create/send when email matches admin — still return generic success on miss.
   if (adminEmail && email === adminEmail) {
     try {
       const { raw, hash, expiresAt } = generateResetToken()
@@ -104,16 +101,40 @@ export async function POST(req: Request) {
             { status: 503 }
           )
         }
+
         console.error('[forgot-password] send failed:', sent.detail)
-        // Still generic to the client — do not leak match; log for ops.
-        return Response.json(genericSuccess)
+        await audit('computer_agent', 'auth.password_reset.send_failed', undefined, {
+          detail: sent.detail ?? 'send_failed',
+        }).catch(() => {})
+
+        return Response.json(
+          {
+            success: false,
+            error:
+              'Unable to send reset email. Check Resend (API key, EMAIL_FROM, and that ADMIN_EMAIL can receive mail on the free tier).',
+            code: 'EMAIL_SEND_FAILED',
+          } satisfies APIResponse<never>,
+          { status: 502 }
+        )
       }
 
       await audit('computer_agent', 'auth.password_reset.request').catch(() => {})
     } catch (err) {
       console.error('[forgot-password] failed:', err)
+      await audit('computer_agent', 'auth.password_reset.send_failed', undefined, {
+        detail: err instanceof Error ? err.message : 'unknown',
+      }).catch(() => {})
+
+      return Response.json(
+        {
+          success: false,
+          error: 'Unable to send reset email. Try again or check server logs.',
+          code: 'EMAIL_SEND_FAILED',
+        } satisfies APIResponse<never>,
+        { status: 502 }
+      )
     }
   }
 
-  return Response.json(genericSuccess)
+  return Response.json(GENERIC_SUCCESS)
 }
