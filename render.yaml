@@ -12,7 +12,9 @@ services:
   - type: web
     name: echoaurion-company-os
     runtime: node
-    buildCommand: npm install && npx prisma generate && npm run build
+    # --include=dev: Render sets NODE_ENV=production during install, which would
+    # skip devDependencies (tailwindcss, postcss, typescript, etc.) that Next needs to build.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
     startCommand: npx prisma migrate deploy && npm start
     healthCheckPath: /api/health
     envVars:

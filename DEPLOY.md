@@ -48,6 +48,14 @@ The Support console shows the same guidance as chips on each question/request.
 - Copy **pooled** URL → `DATABASE_URL`
 - Copy **direct** URL → `DATABASE_URL_UNPOOLED`
 
+**Region note:** Neon in `us-east-1` with Render in Oregon (or any other region) is
+fine for v1. Cross-region latency is not a deploy blocker. Same-region is optional
+later if you want to shave a few ms off DB round-trips.
+
+**Build note:** `render.yaml` uses `npm install --include=dev` so Next can compile
+even when Render sets `NODE_ENV=production` during install (otherwise `tailwindcss`
+and other build-time packages are skipped).
+
 ## 2. Generate secrets
 
 ```bash
