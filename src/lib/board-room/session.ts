@@ -2,8 +2,11 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { dispatch } from './connectors'
 import { ROSTER, MAESTRO, KNIGHT_SEATS } from './knights'
-import { buildKnightContext } from './context'
+import { buildKnightContext, getCompanySnapshot, type CompanySnapshot } from './context'
 import type { BoardRoomSessionDTO, KnightResponseDTO, Seat } from '@/types/board-room'
+
+/** Overall convene budget — must stay under Render/route maxDuration (60s). */
+const CONVENE_BUDGET_MS = 55_000
 
 /**
  * Hard write-guard (spec note #5): a sandbox session must NEVER mutate
@@ -28,12 +31,17 @@ function knightSystemPrompt(seat: Seat): string {
   ].join(' ')
 }
 
-async function runKnight(sessionId: string, seat: Seat, problem: string): Promise<void> {
+async function runKnight(
+  sessionId: string,
+  seat: Seat,
+  problem: string,
+  snap: CompanySnapshot
+): Promise<void> {
   const config = ROSTER[seat]
   const result = await dispatch(config, {
     system: knightSystemPrompt(seat),
     // Live DB context with the per-seat permission layer (Phase 3).
-    user: await buildKnightContext(seat, problem),
+    user: await buildKnightContext(seat, problem, snap),
   })
   await db.knightResponse.updateMany({
     where: { sessionId, seat },
@@ -68,7 +76,35 @@ async function synthesize(problem: string, responses: KnightResponseDTO[]): Prom
   return `Maestro synthesis unavailable (${result.status}: ${result.error ?? 'no detail'}). ${responses.filter((r) => r.status === 'RESPONDED').length} of ${responses.length} knights responded.`
 }
 
-/** Creates a session, dispatches every knight in parallel, then synthesizes. */
+async function markPendingTimedOut(sessionId: string): Promise<void> {
+  await db.knightResponse.updateMany({
+    where: { sessionId, status: 'PENDING' },
+    data: {
+      status: 'TIMEOUT',
+      error: 'Convene budget exceeded before this knight finished',
+    },
+  })
+}
+
+async function loadResponseDtos(sessionId: string): Promise<KnightResponseDTO[]> {
+  const responses = await db.knightResponse.findMany({ where: { sessionId } })
+  return responses.map((r) => ({
+    id: r.id,
+    seat: r.seat as Seat,
+    name: ROSTER[r.seat as Seat]?.name ?? r.seat,
+    model: r.model,
+    status: r.status,
+    content: r.content,
+    error: r.error,
+    latencyMs: r.latencyMs,
+  }))
+}
+
+/**
+ * Creates a session, dispatches every knight in parallel, then synthesizes.
+ * Always returns a session id — partial knight results are kept even if the
+ * overall budget is hit or synthesis fails.
+ */
 export async function convene(
   problem: string,
   sandbox: boolean,
@@ -92,33 +128,74 @@ export async function convene(
 
   await audit(actor, 'board_room.session.create', session.id, { sandbox })
 
-  // Parallel dispatch — knights stream in independently (spec note #4).
-  await Promise.allSettled(KNIGHT_SEATS.map((seat) => runKnight(session.id, seat, problem)))
+  const started = Date.now()
+  const remaining = () => Math.max(0, CONVENE_BUDGET_MS - (Date.now() - started))
 
-  await db.boardRoomSession.update({
-    where: { id: session.id },
-    data: { status: 'SYNTHESIZING' },
-  })
+  try {
+    // One snapshot for all knights — avoids N parallel Stripe/revenue fetches.
+    const snap = await getCompanySnapshot()
 
-  const responses = await db.knightResponse.findMany({ where: { sessionId: session.id } })
-  const dtos: KnightResponseDTO[] = responses.map((r) => ({
-    id: r.id,
-    seat: r.seat as Seat,
-    name: ROSTER[r.seat as Seat]?.name ?? r.seat,
-    model: r.model,
-    status: r.status,
-    content: r.content,
-    error: r.error,
-    latencyMs: r.latencyMs,
-  }))
+    // Parallel dispatch — knights stream in independently (spec note #4).
+    // Race against remaining budget so we never hang past maxDuration.
+    const dispatchWork = Promise.allSettled(
+      KNIGHT_SEATS.map((seat) => runKnight(session.id, seat, problem, snap))
+    )
+    await Promise.race([
+      dispatchWork,
+      new Promise<void>((resolve) => setTimeout(resolve, remaining())),
+    ])
+    // Let in-flight knight writes settle briefly, then force-timeout leftovers.
+    await Promise.race([
+      dispatchWork,
+      new Promise<void>((resolve) => setTimeout(resolve, 1_500)),
+    ])
+    await markPendingTimedOut(session.id)
 
-  const synthesis = await synthesize(problem, dtos)
+    await db.boardRoomSession.update({
+      where: { id: session.id },
+      data: { status: 'SYNTHESIZING' },
+    })
 
-  await db.boardRoomSession.update({
-    where: { id: session.id },
-    data: { status: 'COMPLETE', synthesis },
-  })
-  await audit(actor, 'board_room.session.synthesize', session.id)
+    const dtos = await loadResponseDtos(session.id)
+
+    let synthesis: string
+    if (remaining() < 3_000) {
+      synthesis = `Maestro synthesis skipped (convene budget). ${dtos.filter((r) => r.status === 'RESPONDED').length} of ${dtos.length} knights responded.`
+    } else {
+      synthesis = await Promise.race([
+        synthesize(problem, dtos),
+        new Promise<string>((resolve) =>
+          setTimeout(
+            () =>
+              resolve(
+                `Maestro synthesis timed out. ${dtos.filter((r) => r.status === 'RESPONDED').length} of ${dtos.length} knights responded.`
+              ),
+            remaining()
+          )
+        ),
+      ])
+    }
+
+    await db.boardRoomSession.update({
+      where: { id: session.id },
+      data: { status: 'COMPLETE', synthesis },
+    })
+    await audit(actor, 'board_room.session.synthesize', session.id)
+  } catch (error) {
+    await markPendingTimedOut(session.id)
+    const message = error instanceof Error ? error.message : 'Convene failed'
+    const dtos = await loadResponseDtos(session.id)
+    const partial = `${dtos.filter((r) => r.status === 'RESPONDED').length} of ${dtos.length} knights responded before failure.`
+    await db.boardRoomSession.update({
+      where: { id: session.id },
+      data: {
+        status: 'FAILED',
+        synthesis: `Convene failed: ${message}. ${partial}`,
+      },
+    })
+    await audit(actor, 'board_room.session.failed', session.id, { error: message })
+    // Still return the id so the UI can open partial results instead of hanging.
+  }
 
   return session.id
 }

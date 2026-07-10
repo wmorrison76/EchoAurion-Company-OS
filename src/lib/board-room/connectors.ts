@@ -1,6 +1,7 @@
 import type { KnightConfig, KnightProvider } from '@/types/board-room'
+import { googleAiApiKey } from './knights'
 
-const KNIGHT_TIMEOUT_MS = 30_000 // 30s per knight (spec note #4)
+const KNIGHT_TIMEOUT_MS = 25_000 // 25s per knight — leave headroom under Render maxDuration
 
 export class NotConfiguredError extends Error {}
 
@@ -73,9 +74,11 @@ async function callAnthropic(model: string, p: Prompt, signal: AbortSignal): Pro
 }
 
 async function callGoogle(model: string, p: Prompt, signal: AbortSignal): Promise<string> {
-  const key = process.env.GOOGLE_AI_API_KEY
-  if (!key) throw new NotConfiguredError('GOOGLE_AI_API_KEY not set')
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
+  const key = googleAiApiKey()
+  if (!key) {
+    throw new NotConfiguredError('GOOGLE_AI_API_KEY or GEMINI_API_KEY not set')
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -85,7 +88,16 @@ async function callGoogle(model: string, p: Prompt, signal: AbortSignal): Promis
     }),
     signal,
   })
-  if (!res.ok) throw new Error(`Google AI ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const errBody = (await res.json()) as { error?: { message?: string } }
+      detail = errBody.error?.message ? `: ${errBody.error.message}` : ''
+    } catch {
+      /* ignore parse errors */
+    }
+    throw new Error(`Google AI ${res.status}${detail}`)
+  }
   const body = (await res.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
   }
@@ -143,7 +155,7 @@ export async function dispatch(config: KnightConfig, prompt: Prompt): Promise<Di
       return { status: 'UNAVAILABLE', content: null, error: error.message, latencyMs }
     }
     if (error instanceof DOMException && error.name === 'TimeoutError') {
-      return { status: 'TIMEOUT', content: null, error: 'Knight timed out (30s)', latencyMs }
+      return { status: 'TIMEOUT', content: null, error: 'Knight timed out (25s)', latencyMs }
     }
     return {
       status: 'ERROR',

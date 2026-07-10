@@ -1,5 +1,24 @@
 import type { KnightConfig, Seat } from '@/types/board-room'
 
+/** Accepted env names for Google / Gemini (Scout). First match wins. */
+export const GOOGLE_AI_KEY_ENVS = [
+  'GOOGLE_AI_API_KEY',
+  'GEMINI_API_KEY',
+  'GOOGLE_GENERATIVE_AI_API_KEY',
+] as const
+
+export function resolveEnv(names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]
+    if (value && value.trim()) return value
+  }
+  return undefined
+}
+
+export function googleAiApiKey(): string | undefined {
+  return resolveEnv(GOOGLE_AI_KEY_ENVS)
+}
+
 // The roster — seats, roles, and the env var that activates each (spec §"The
 // Knights"). Models default to the spec's recommendations and can be overridden
 // by env later. The Maestro (Perplexity) is the conductor: it routes and
@@ -27,7 +46,8 @@ export const ROSTER: Record<Seat, KnightConfig> = {
   scout: {
     seat: 'scout',
     name: 'The Scout',
-    model: 'gemini-1.5-pro',
+    // gemini-1.5-pro is deprecated on Generative Language API; flash is current.
+    model: 'gemini-2.0-flash',
     provider: 'google',
     role: 'Real-time web intelligence and competitive monitoring',
     apiKeyEnv: 'GOOGLE_AI_API_KEY',
@@ -70,5 +90,19 @@ export const KNIGHT_SEATS: Seat[] = (Object.keys(ROSTER) as Seat[]).filter(
 )
 
 export function knightConfigured(config: KnightConfig): boolean {
-  return Boolean(process.env[config.apiKeyEnv])
+  if (config.provider === 'google') return Boolean(googleAiApiKey())
+  if (config.provider === 'echo') return Boolean(process.env.ECHO_AI_URL?.trim())
+  return Boolean(process.env[config.apiKeyEnv]?.trim())
+}
+
+/** Operator-facing hint when a seat is inactive (never includes secret values). */
+export function configHint(config: KnightConfig): string | null {
+  if (knightConfigured(config)) return null
+  if (config.provider === 'google') {
+    return 'set GOOGLE_AI_API_KEY or GEMINI_API_KEY'
+  }
+  if (config.provider === 'echo') {
+    return 'set ECHO_AI_URL (optional — Chef\'s Brain stays Unavailable until set)'
+  }
+  return `set ${config.apiKeyEnv}`
 }

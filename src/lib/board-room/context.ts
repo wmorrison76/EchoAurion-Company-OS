@@ -102,9 +102,13 @@ function redactedContext(snap: CompanySnapshot): string {
   ].join('\n')
 }
 
-export async function buildKnightContext(seat: Seat, problem: string): Promise<string> {
-  const snap = await getCompanySnapshot()
-  const body = ROSTER[seat].hasDbAccess ? fullContext(snap) : redactedContext(snap)
+export async function buildKnightContext(
+  seat: Seat,
+  problem: string,
+  snap?: CompanySnapshot
+): Promise<string> {
+  const snapshot = snap ?? (await getCompanySnapshot())
+  const body = ROSTER[seat].hasDbAccess ? fullContext(snapshot) : redactedContext(snapshot)
   const access = ROSTER[seat].hasDbAccess
     ? 'You have live Company OS data below.'
     : 'You have a redacted summary below (no raw platform data).'

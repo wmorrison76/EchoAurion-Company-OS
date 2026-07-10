@@ -108,6 +108,8 @@ export interface ConnectorState {
   provider: KnightProvider
   apiKeyEnv: string
   configured: boolean
+  /** Operator hint when not configured (env var names only — never secrets). */
+  hint: string | null
   hasDbAccess: boolean
   conductor: boolean
 }

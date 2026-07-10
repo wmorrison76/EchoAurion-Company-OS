@@ -63,7 +63,9 @@ export function ConnectorPanel() {
                 <tr key={c.seat} className={i % 2 === 0 ? 'bg-[#12121a]' : 'bg-[#0a0a0f]'}>
                   <td className="py-2 pr-4 text-white">{c.name}</td>
                   <td className="py-2 pr-4 text-[#a0a0b8]">{c.provider}</td>
-                  <td className="py-2 pr-4 font-mono text-xs text-[#5a5a78]">{c.apiKeyEnv}</td>
+                  <td className="py-2 pr-4 font-mono text-xs text-[#5a5a78]">
+                    {c.configured ? c.apiKeyEnv : c.hint ?? c.apiKeyEnv}
+                  </td>
                   <td className="py-2 pr-4 text-[#a0a0b8]">{scope(c)}</td>
                   <td className="py-2 text-right">
                     <StatusBadge

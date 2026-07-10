@@ -24,9 +24,12 @@ interface RosterSeat {
   model: string
   role: string
   configured: boolean
+  hint: string | null
   hasDbAccess: boolean
   conductor: boolean
 }
+
+const CONVENE_CLIENT_TIMEOUT_MS = 70_000
 
 async function jsonFetcher<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: 'no-store' })
@@ -62,20 +65,38 @@ export function BoardRoom() {
   const convene = useCallback(async () => {
     setConvening(true)
     setError(null)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), CONVENE_CLIENT_TIMEOUT_MS)
     try {
       const res = await fetch('/api/board-room/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ problem, sandbox, persona: sandbox ? persona ?? undefined : undefined }),
+        signal: controller.signal,
       })
-      const body = (await res.json()) as APIResponse<{ id: string }>
+      let body: APIResponse<{ id: string }>
+      try {
+        body = (await res.json()) as APIResponse<{ id: string }>
+      } catch {
+        throw new Error(
+          res.ok
+            ? 'Convene returned an unreadable response'
+            : `Convene failed (HTTP ${res.status})`
+        )
+      }
       if (!body.success) throw new Error(body.error)
       setProblem('')
       await openSession(body.data.id)
-      sessions.mutate()
+      void sessions.mutate()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not convene the Board')
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setError('Convene timed out — check Sessions for a partial result, then retry.')
+        void sessions.mutate()
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not convene the Board')
+      }
     } finally {
+      clearTimeout(timer)
       setConvening(false)
     }
   }, [problem, sandbox, persona, openSession, sessions])
@@ -112,9 +133,10 @@ export function BoardRoom() {
             </label>
             <button
               type="button"
-              onClick={convene}
+              onClick={() => void convene()}
               disabled={convening || problem.trim().length < 8}
               aria-label="Convene the Board"
+              aria-busy={convening}
               className="rounded-xl border border-[#D4AF37] bg-[#D4AF37] px-5 py-2.5 text-sm font-semibold text-[#0a0a0f] transition-colors duration-150 hover:bg-[#f0c840] disabled:opacity-50"
             >
               {convening ? 'Convening…' : 'Convene the Board'}
@@ -185,6 +207,11 @@ export function BoardRoom() {
                   />
                 </div>
                 <p className="text-xs text-[#a0a0b8]">{k.role}</p>
+                {!k.configured && k.hint ? (
+                  <p className="text-[11px] text-[#5a5a78]" aria-label={`Setup hint: ${k.hint}`}>
+                    Unavailable — {k.hint}
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-widest text-[#5a5a78]">
                   {k.conductor ? <span className="text-[#D4AF37]">Conductor</span> : null}
                   {k.hasDbAccess ? <span>DB access</span> : null}
@@ -214,7 +241,7 @@ export function BoardRoom() {
               <li key={s.id} className={i % 2 === 0 ? 'bg-[#12121a]' : 'bg-[#0a0a0f]'}>
                 <button
                   type="button"
-                  onClick={() => openSession(s.id)}
+                  onClick={() => void openSession(s.id)}
                   className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-[#22223a]"
                   aria-label={`Open session: ${s.problem}`}
                 >

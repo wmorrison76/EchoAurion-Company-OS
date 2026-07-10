@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth'
-import { ROSTER, knightConfigured } from '@/lib/board-room/knights'
+import { ROSTER, knightConfigured, configHint } from '@/lib/board-room/knights'
 import type { APIResponse } from '@/types'
 import type { Seat } from '@/types/board-room'
 
@@ -11,12 +11,13 @@ interface RosterSeat {
   model: string
   role: string
   configured: boolean
+  hint: string | null
   hasDbAccess: boolean
   conductor: boolean
 }
 
 // The roster with per-seat configured status (does its API key exist?). Never
-// exposes key values — only whether each seat is active.
+// exposes key values — only whether each seat is active + a setup hint.
 export async function GET(): Promise<Response> {
   const session = await auth()
   if (!session?.user) {
@@ -30,6 +31,7 @@ export async function GET(): Promise<Response> {
       model: k.model,
       role: k.role,
       configured: knightConfigured(k),
+      hint: configHint(k),
       hasDbAccess: k.hasDbAccess,
       conductor: Boolean(k.conductor),
     }

@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth'
-import { ROSTER, knightConfigured } from '@/lib/board-room/knights'
+import { ROSTER, knightConfigured, configHint } from '@/lib/board-room/knights'
 import type { APIResponse } from '@/types'
 import type { ConnectorState, Seat } from '@/types/board-room'
 
@@ -20,6 +20,7 @@ export async function GET(): Promise<Response> {
       provider: k.provider,
       apiKeyEnv: k.apiKeyEnv,
       configured: knightConfigured(k),
+      hint: configHint(k),
       hasDbAccess: k.hasDbAccess,
       conductor: Boolean(k.conductor),
     }

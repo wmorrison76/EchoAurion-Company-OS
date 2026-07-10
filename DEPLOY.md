@@ -105,13 +105,17 @@ service is live (see **Cron jobs** below).
 | `PERPLEXITY_API_KEY` | Maestro |
 | `OPENAI_API_KEY` | Analyst |
 | `ANTHROPIC_API_KEY` | Strategist + Architect |
-| `GOOGLE_AI_API_KEY` | Scout |
-| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional) |
+| `GOOGLE_AI_API_KEY` | Scout (preferred). Also accepts `GEMINI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` |
+| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional — stays Unavailable until set) |
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/*` and `/api/relay/*` |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Phone push |
 | `WORK_SENIOR_RATE` / `WORK_VALUE_MULTIPLIER` | Quote math (defaults 185 / 2.5) |
 
+**Scout note:** If you set `GEMINI_API_KEY` on Render but not `GOOGLE_AI_API_KEY`,
+that is fine after this deploy — both names are accepted. Prefer
+`GOOGLE_AI_API_KEY`. Scout model is `gemini-2.0-flash` (Generative Language API).
+Restart the web service after changing env vars, then hard-refresh Board Room.
 ### Env vars (live panels)
 
 `RENDER_API_KEY`, `RENDER_SERVICE_ID`, `GITHUB_TOKEN`, `STRIPE_*`, `PLAID_*`,
