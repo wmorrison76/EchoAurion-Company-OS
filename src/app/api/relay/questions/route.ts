@@ -43,7 +43,7 @@ export async function POST(req: Request): Promise<Response> {
       title: 'New customer question',
       body: question.slice(0, 140),
       entityRef: created.id,
-      url: '/support',
+      url: '/support/inbox',
     })
     return Response.json(
       { success: true, data: { id: created.id } } satisfies APIResponse<{ id: string }>,

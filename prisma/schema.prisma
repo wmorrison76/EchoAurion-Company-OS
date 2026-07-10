@@ -552,3 +552,72 @@ model BillingContact {
   @@index([clientKey])
   @@map("billing_contacts")
 }
+
+// ── Aurion Knowledge Plane (Echo Resonance Network) ─────────────────────────
+// Anonymized telemetry + assembled insights. No guest PII. See
+// docs/AURION_KNOWLEDGE_PLANE.md.
+
+model KnowledgeSignal {
+  id                String   @id @default(cuid())
+  clientKey         String // opaque property/edge id — never guest identity
+  schemaVersion     String   @default("1")
+  signalType        String // ops_pattern | menu_hotspot | buying_pattern | system_health | knowledge_meta
+  territoryCode     String?
+  aggregationLevel  String   @default("property") // property | territory | network
+  windowStart       DateTime?
+  windowEnd         DateTime?
+  payload           Json // allowlisted fields only (PII keys rejected at ingest)
+  sampleSize        Int?
+  confidence        Float?
+  createdAt         DateTime @default(now())
+
+  @@index([signalType, createdAt])
+  @@index([clientKey, createdAt])
+  @@index([territoryCode, createdAt])
+  @@map("knowledge_signals")
+}
+
+model KnowledgeInsight {
+  id               String   @id @default(cuid())
+  title            String
+  summary          String
+  insightClass     String // territory_food_trend | product_hotspot | buying_pattern | ops_pattern | other
+  aggregationLevel String   @default("territory") // property | territory | network
+  territoryCode    String?
+  confidence       Float?
+  sampleSize       Int?
+  sourceSeat       String? // e.g. maestro | perplexity
+  payload          Json?
+  published        Boolean  @default(false)
+  actor            String // william_morrison | computer_agent
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([insightClass, createdAt])
+  @@index([published, createdAt])
+  @@map("knowledge_insights")
+}
+
+model VendorAccessRequest {
+  id           String              @id @default(cuid())
+  vendorName   String
+  contactEmail String?
+  useCase      String
+  scopeNotes   String?
+  status       VendorAccessStatus  @default(PENDING)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  actor        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@map("vendor_access_requests")
+}
+
+enum VendorAccessStatus {
+  PENDING
+  APPROVED
+  DENIED
+  REVOKED
+}

@@ -100,11 +100,25 @@ export function SupportConsole() {
         </KPICard>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <a
+          href="/support/inbox"
+          className="rounded-lg border border-[#D4AF37] px-3 py-1.5 text-xs text-[#D4AF37] transition-colors duration-150 hover:bg-[#1a1a26]"
+          aria-label="Open unified Support inbox"
+        >
+          Unified inbox →
+        </a>
+      </div>
+
       <SupportPolicyCard />
 
       {/* Ask the Board + billable change requests + Alerts */}
-      <QuestionsPanel />
-      <WorkRequestsPanel />
+      <div id="questions">
+        <QuestionsPanel />
+      </div>
+      <div id="work">
+        <WorkRequestsPanel />
+      </div>
       <AlertsPanel />
 
       {/* Client health */}

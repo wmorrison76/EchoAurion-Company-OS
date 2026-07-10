@@ -75,23 +75,40 @@ export function NotifyButton() {
   const label: Record<State, string> = {
     idle: 'Checking…',
     unsupported: 'Alerts not supported on this browser',
-    disabled: 'Phone alerts not configured',
-    ready: 'Enable alerts on this device',
-    enabled: '✓ Alerts enabled on this device',
+    disabled: 'Phone alerts not configured (set VAPID keys)',
+    ready: '🔔 Enable alerts on this device',
+    enabled: '✓ Alerts enabled — questions & work ping here',
     working: 'Enabling…',
   }
 
   const interactive = state === 'ready' || state === 'working'
+  const hint =
+    state === 'disabled'
+      ? 'Set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY on Render, then refresh.'
+      : state === 'enabled'
+        ? 'New customer questions and work requests raise an alert + push when VAPID is live.'
+        : state === 'ready'
+          ? 'Tap to allow notifications — fires on new questions / work requests.'
+          : null
 
   return (
-    <button
-      type="button"
-      onClick={state === 'ready' ? enable : undefined}
-      disabled={!interactive}
-      aria-label={label[state]}
-      className="rounded-lg border border-[#2a2a3f] bg-[#12121a] px-3 py-2 text-xs font-medium text-[#a0a0b8] transition-colors duration-150 enabled:hover:border-[#D4AF37] enabled:hover:text-white disabled:opacity-70"
-    >
-      {label[state]}
-    </button>
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={state === 'ready' ? enable : undefined}
+        disabled={!interactive}
+        aria-label={label[state]}
+        className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors duration-150 disabled:opacity-70 ${
+          state === 'enabled'
+            ? 'border-[#22c55e]/50 bg-[#12121a] text-[#22c55e]'
+            : state === 'ready'
+              ? 'border-[#D4AF37] bg-[#12121a] text-[#D4AF37] hover:bg-[#1a1a26]'
+              : 'border-[#2a2a3f] bg-[#12121a] text-[#a0a0b8]'
+        }`}
+      >
+        {label[state]}
+      </button>
+      {hint ? <p className="max-w-[220px] text-[10px] leading-snug text-[#5a5a78]">{hint}</p> : null}
+    </div>
   )
 }

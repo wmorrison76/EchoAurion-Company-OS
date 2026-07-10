@@ -38,6 +38,8 @@ export function ActionPanel({ sessionId, synthesis }: { sessionId: string; synth
   )
   const [busy, setBusy] = useState(false)
   const [architect, setArchitect] = useState<string | null>(null)
+  const [workMsg, setWorkMsg] = useState<string | null>(null)
+  const [billingPolicy, setBillingPolicy] = useState<'FREE' | 'CHARGE'>('FREE')
 
   const generate = useCallback(async () => {
     setBusy(true)
@@ -73,6 +75,29 @@ export function ActionPanel({ sessionId, synthesis }: { sessionId: string; synth
     setArchitect(body.success ? body.data.detail : body.error)
   }, [synthesis])
 
+  const createSupportWork = useCallback(async () => {
+    if (!synthesis) return
+    setWorkMsg('Creating…')
+    const res = await fetch(`/api/board-room/sessions/${sessionId}/work-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ billingPolicy }),
+    })
+    const body = (await res.json()) as APIResponse<{
+      id: string
+      billingPolicy: string
+      policyLabel: string
+      href: string
+    }>
+    if (!body.success) {
+      setWorkMsg(body.error)
+      return
+    }
+    setWorkMsg(
+      `✓ Sandbox WorkRequest created (${body.data.billingPolicy === 'FREE' ? '✓ Free' : '$ Quote'}) — open Support Inbox`
+    )
+  }, [sessionId, synthesis, billingPolicy])
+
   const actions = data ?? []
 
   return (
@@ -99,6 +124,64 @@ export function ActionPanel({ sessionId, synthesis }: { sessionId: string; synth
           </button>
           {architect ? <span className="text-xs text-[#5a5a78]">{architect}</span> : null}
         </div>
+
+        <div className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-3">
+          <p className="mb-2 text-[11px] uppercase tracking-widest text-[#D4AF37]">
+            Board → Support
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1" role="group" aria-label="Free or charge policy">
+              <button
+                type="button"
+                aria-pressed={billingPolicy === 'FREE'}
+                onClick={() => setBillingPolicy('FREE')}
+                className={`${btn} ${
+                  billingPolicy === 'FREE'
+                    ? 'border-[#22c55e] text-[#22c55e]'
+                    : 'border-[#2a2a3f] text-[#a0a0b8]'
+                }`}
+              >
+                ✓ Free
+              </button>
+              <button
+                type="button"
+                aria-pressed={billingPolicy === 'CHARGE'}
+                onClick={() => setBillingPolicy('CHARGE')}
+                className={`${btn} ${
+                  billingPolicy === 'CHARGE'
+                    ? 'border-[#f59e0b] text-[#f59e0b]'
+                    : 'border-[#2a2a3f] text-[#a0a0b8]'
+                }`}
+              >
+                $ Quote
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={createSupportWork}
+              disabled={!synthesis}
+              className={`${btn} border-[#D4AF37] text-[#D4AF37] hover:bg-[#1a1a26]`}
+              aria-label="Create Support work request from Board Room synthesis"
+            >
+              Create WorkRequest
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-[#5a5a78]">
+            One-click sandbox draft from this session&apos;s synthesis. Opens in Support Inbox for
+            Approve free / Send quote.
+          </p>
+          {workMsg ? (
+            <p className="mt-2 text-xs text-[#a0a0b8]">
+              {workMsg}{' '}
+              {workMsg.includes('Inbox') ? (
+                <a href="/support/inbox" className="text-[#D4AF37] underline">
+                  Open inbox
+                </a>
+              ) : null}
+            </p>
+          ) : null}
+        </div>
+
         <p className="text-[11px] text-[#5a5a78]">
           Approve → Execute. Execute prepares a draft and records it — nothing is sent or booked
           automatically.

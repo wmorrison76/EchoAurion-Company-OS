@@ -21,6 +21,17 @@ export type FleetNodeKind =
 
 export type FleetHealth = 'ok' | 'warn' | 'error' | 'unknown'
 
+export interface FleetDeployHistoryItem {
+  id: string
+  label: string
+  level: FleetHealth
+  triggeredAt: string
+  ago: string | null
+  commitSha: string | null
+  commitMessage: string | null
+  durationSeconds: number | null
+}
+
 export interface FleetNodeMeta {
   region?: string
   serviceType?: string
@@ -35,8 +46,11 @@ export interface FleetNodeMeta {
   queueDepth?: number
   errorCount?: number
   lastSeenAt?: string | null
+  /** Support client health as text label (GREEN / AMBER / RED / UNKNOWN). */
+  clientHealthLabel?: string | null
   source?: 'render' | 'support' | 'demo' | 'derived'
-  [key: string]: string | number | boolean | null | undefined
+  deployHistory?: FleetDeployHistoryItem[]
+  [key: string]: string | number | boolean | null | undefined | FleetDeployHistoryItem[]
 }
 
 export interface FleetNode {
@@ -87,6 +101,10 @@ export interface FleetNexusPayload {
     renderServices: number
     supportClients: number
     unhealthy: number
+    /** Support clients with RED health (shape+label in UI). */
+    supportRed: number
+    /** Support clients with AMBER health. */
+    supportAmber: number
   }
   graphs: Record<FleetScope, FleetGraph>
   generatedAt: string

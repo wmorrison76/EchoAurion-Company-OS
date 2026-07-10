@@ -3,9 +3,9 @@
 #
 # Blueprint notes (Render 2025/2026):
 # - Use `runtime:` (not deprecated `env:`).
-# - Cron jobs are NOT in this Blueprint for first deploy (see DEPLOY.md § Cron jobs).
-#   Unquoted curl startCommands with `Authorization: Bearer …` break YAML parsing
-#   (colon after Authorization is read as a mapping key).
+# - Cron startCommands MUST be single-quoted YAML strings. Unquoted
+#   `Authorization: Bearer …` breaks YAML (colon parsed as mapping).
+# - Prefer Node 18+ fetch over curl (Node images may lack curl).
 # - Secrets are prompted in the dashboard via sync: false — never commit values.
 
 services:
@@ -35,6 +35,36 @@ services:
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: KNOWLEDGE_INGEST_SECRET
+        sync: false
+      - key: SUPPORT_INGEST_SECRET
+        sync: false
+
+  # Optional crons — single-quoted startCommands (valid YAML). Set WEB_SERVICE_URL
+  # to the web service public URL (e.g. https://echoaurion-company-os.onrender.com).
+  - type: cron
+    name: echoaurion-company-os-sync
+    runtime: node
+    schedule: "0 8 * * *"
+    buildCommand: "true"
+    startCommand: 'node -e ''fetch(process.env.WEB_SERVICE_URL+"/api/financial/sync",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'''
+    envVars:
+      - key: WEB_SERVICE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: echoaurion-company-os-briefing
+    runtime: node
+    schedule: "0 11 * * *"
+    buildCommand: "true"
+    startCommand: 'node -e ''fetch(process.env.WEB_SERVICE_URL+"/api/board-room/briefing",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'''
+    envVars:
+      - key: WEB_SERVICE_URL
         sync: false
       - key: CRON_SECRET
         sync: false

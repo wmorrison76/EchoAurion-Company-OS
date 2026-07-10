@@ -50,7 +50,7 @@ export async function POST(req: Request): Promise<Response> {
       title: `New ${d.kind === 'ADDON' ? 'add-on' : 'fix'} request: ${d.title}`,
       body: `${client?.label ?? d.clientKey}${d.requesterName ? ` — ${d.requesterName}` : ''}`,
       entityRef: created.id,
-      url: '/support',
+      url: '/support/inbox',
     })
     return Response.json(
       { success: true, data: { id: created.id } } satisfies APIResponse<{ id: string }>,

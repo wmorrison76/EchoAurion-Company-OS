@@ -48,10 +48,10 @@ const LENSES: { value: FleetLens; label: string }[] = [
 ]
 
 function modeBadge(mode: FleetNexusPayload['mode']): { level: FleetHealth; label: string } {
-  if (mode === 'live') return { level: 'ok', label: 'Live' }
-  if (mode === 'partial') return { level: 'warn', label: 'Partial' }
-  if (mode === 'demo') return { level: 'warn', label: 'Demo' }
-  return { level: 'unknown', label: 'Empty' }
+  if (mode === 'live') return { level: 'ok', label: '✓ Live' }
+  if (mode === 'partial') return { level: 'warn', label: '⚠ Partial' }
+  if (mode === 'demo') return { level: 'warn', label: '⚠ Demo' }
+  return { level: 'unknown', label: '? Empty' }
 }
 
 export function FleetNexusViewer() {
@@ -121,6 +121,12 @@ export function FleetNexusViewer() {
             label="Attention"
             count={data.counts.unhealthy}
           />
+          {data.counts.supportRed > 0 ? (
+            <StatusBadge level="error" label="Support RED" count={data.counts.supportRed} />
+          ) : null}
+          {data.counts.supportAmber > 0 ? (
+            <StatusBadge level="warn" label="Support AMBER" count={data.counts.supportAmber} />
+          ) : null}
           <span className="font-mono text-xs tabular-nums text-[#a0a0b8]">
             {data.counts.renderServices} svc · {data.counts.supportClients} clients
           </span>
@@ -184,8 +190,20 @@ export function FleetNexusViewer() {
         </div>
       </div>
 
-      <p className="text-xs leading-relaxed text-[#a0a0b8]">{data.banner}</p>
-      <p className="text-xs text-[#5a5a78]">{graph.title}</p>
+      <div
+        className={`rounded-xl border px-4 py-3 text-sm ${
+          data.mode === 'live'
+            ? 'border-[#22c55e]/40 bg-[#12121a] text-[#a0a0b8]'
+            : data.mode === 'partial' || data.mode === 'demo'
+              ? 'border-[#f59e0b]/40 bg-[#12121a] text-[#a0a0b8]'
+              : 'border-[#2a2a3f] bg-[#12121a] text-[#a0a0b8]'
+        }`}
+        role="status"
+        aria-label={`Fleet data mode: ${mb.label}`}
+      >
+        <p className="font-medium text-white">{data.banner}</p>
+        <p className="mt-1 text-xs text-[#5a5a78]">{graph.title}</p>
+      </div>
 
       <div className="grid min-h-[min(70vh,640px)] grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
         <div className="relative min-h-[420px] overflow-hidden rounded-xl border border-[#2a2a3f]">
@@ -303,6 +321,9 @@ function DetailPanel({
         {typeof node.meta.online === 'boolean' ? (
           <Stat label="Online" value={node.meta.online ? 'Yes' : 'No'} />
         ) : null}
+        {node.meta.clientHealthLabel ? (
+          <Stat label="Client health" value={String(node.meta.clientHealthLabel)} />
+        ) : null}
         {node.meta.lastSeenAt ? <Stat label="Last seen" value={String(node.meta.lastSeenAt)} /> : null}
         {node.meta.source ? <Stat label="Source" value={String(node.meta.source)} /> : null}
         {node.meta.url ? (
@@ -325,6 +346,33 @@ function DetailPanel({
           <div className="py-2 text-xs text-[#5a5a78]">{String(node.meta.note)}</div>
         ) : null}
       </dl>
+
+      {Array.isArray(node.meta.deployHistory) && node.meta.deployHistory.length > 0 ? (
+        <div className="mt-4">
+          <h3 className="mb-2 text-[11px] uppercase tracking-widest text-[#5a5a78]">
+            Deploy history ({node.meta.deployHistory.length})
+          </h3>
+          <ul className="flex flex-col gap-1.5">
+            {node.meta.deployHistory.map((h) => (
+              <li
+                key={h.id}
+                className="rounded border border-[#2a2a3f] bg-[#0a0a0f] px-2 py-1.5 text-[11px]"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge level={h.level} label={h.label} />
+                  {h.commitSha ? (
+                    <span className="font-mono text-[#a0a0b8]">{h.commitSha}</span>
+                  ) : null}
+                  <span className="text-[#5a5a78]">{h.ago ?? h.triggeredAt}</span>
+                </div>
+                {h.commitMessage ? (
+                  <p className="mt-0.5 truncate text-[#a0a0b8]">{h.commitMessage}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {isBottleneck(node) ? (
         <div className="mt-3">

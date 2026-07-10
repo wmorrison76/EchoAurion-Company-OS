@@ -9,10 +9,13 @@ approve free or charge before anything ships.
 
 | Surface | Purpose |
 |---|---|
+| `/` | Public Aurion Holdings marketing homepage → Login → Dr. OS |
 | `/dr-os` | Live system status (Render, Neon, Stripe, GitHub, pilots) |
 | `/board-room` | Knights of the Round Table — multi-AI counsel |
 | `/fleet-nexus` | Operational fleet map — Render services + Support health, blast radius |
+| `/knowledge-plane` | Aurion Knowledge Plane — anonymized learning (no guest PII) |
 | `/support` | Client health, Ask-the-Board questions, billable/free change requests |
+| `/support/inbox` | Unified triage queue (questions + work · Approve free / Quote) |
 | `/financial` · `/crm` · `/revenue` | Money, pipeline, MRR |
 | `/aurion-index` | AWS infra panel (CDK scaffold; deploy later) |
 
@@ -105,6 +108,7 @@ service is live (see **Cron jobs** below).
 | `GOOGLE_AI_API_KEY` | Scout |
 | `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional) |
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/*` and `/api/relay/*` |
+| `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Phone push |
 | `WORK_SENIOR_RATE` / `WORK_VALUE_MULTIPLIER` | Quote math (defaults 185 / 2.5) |
 
@@ -176,41 +180,47 @@ SMTP alternative: leave `RESEND_API_KEY` empty and set `SMTP_HOST`, `SMTP_USER`,
 6. Optional: `npm run prisma:seed` once against production (bills, CRM seed) via
    a one-off shell, or run locally pointed at Neon.
 
-## 4b. Cron jobs (optional follow-up — after web is live)
+## 4b. Cron jobs (in `render.yaml`)
 
-Blueprint crons were removed so first deploy is not blocked by YAML/validation
-issues. Unquoted `curl … -H "Authorization: Bearer $CRON_SECRET"` is **invalid
-YAML** (the colon after `Authorization` is parsed as a mapping). Node native
-images also may not ship `curl`.
-
-After the web service is healthy, add two **Cron Jobs** in the Render dashboard
-(or a later Blueprint revision) with `runtime: node`:
+Blueprint includes two optional cron services with **single-quoted** Node `fetch`
+startCommands (valid YAML — unquoted `Authorization: Bearer …` breaks parsers;
+Node images may lack `curl`):
 
 | Name | Schedule (UTC) | Purpose |
 |---|---|---|
 | `echoaurion-company-os-sync` | `0 8 * * *` | `POST /api/financial/sync` |
 | `echoaurion-company-os-briefing` | `0 11 * * *` | `POST /api/board-room/briefing` |
 
-**Env vars on each cron:** `WEB_SERVICE_URL` = web service public URL,
+**Env on each cron:** `WEB_SERVICE_URL` = web service public URL (no trailing slash),
 `CRON_SECRET` = same value as the web service.
 
-**Recommended `startCommand`** (single-quoted YAML / paste as one line; uses
-Node 18+ `fetch`, no `curl`):
+If Blueprint cron create fails in your Render account, add the same jobs manually
+in the dashboard with this one-line startCommand:
 
 ```bash
 node -e 'fetch(process.env.WEB_SERVICE_URL+"/api/financial/sync",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'
 ```
 
-For the briefing job, swap the path to `/api/board-room/briefing`.
+Swap the path for `/api/board-room/briefing` on the second job. `buildCommand` can be `true`.
 
-`buildCommand` can be `true` (quoted string) if Render requires one.
+## 4c. Knowledge Plane
+
+See [docs/AURION_KNOWLEDGE_PLANE.md](./docs/AURION_KNOWLEDGE_PLANE.md) and
+[docs/RELAY_CONTRACTS.md](./docs/RELAY_CONTRACTS.md).
+
+- Admin UI: `/knowledge-plane`
+- Ingest: `POST /api/knowledge/ingest` with `Authorization: Bearer $KNOWLEDGE_INGEST_SECRET`
+- Privacy: no guest PII; PII-like keys are rejected at ingest
 
 ## 5. Post-deploy smoke check
 
+- [ ] `GET /` → public Aurion homepage (Login → `/login` → Dr. OS)
 - [ ] `GET /api/health` → `{ "status": "ok", "database": "ok" }`
 - [ ] Login with `ADMIN_EMAIL`
 - [ ] `/fleet-nexus` loads (Live/Partial/Empty banner; graph when Render key set)
-- [ ] `/board-room` shows Knights (Unavailable until keys set)
+- [ ] `/knowledge-plane` shows privacy banner + empty signals/insights
+- [ ] `/support/inbox` loads unified queue
+- [ ] `/board-room` shows Knights (Unavailable until keys set) + Board → Support
 - [ ] `/support` loads Questions + Change Requests + Alerts
 - [ ] Approve free / Send quote / Decline buttons visible on a work card
 - [ ] Phone: Add to Home Screen → enable Notify (needs VAPID)
@@ -227,6 +237,7 @@ beyond a thin client):
 - Change requests: `POST /api/relay/work`, customer authorize
   `POST /api/relay/work/:id/authorize`, pull results
   `GET /api/relay/work/pull`
+- Knowledge telemetry: `POST /api/knowledge/ingest` (allowlisted schemas only)
 
 Until that client exists, you can still operate Company OS as the admin console
 and exercise Board Room + Support manually.

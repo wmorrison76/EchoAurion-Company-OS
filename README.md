@@ -15,14 +15,19 @@ Do not import from or modify the product from here.
 
 | Module | Purpose |
 |---|---|
+| Public homepage (`/`) | Aurion Holdings marketing → Operator Login → Dr. OS |
 | Dr. OS Dashboard | Super-admin panel — all systems, Render, Neon, Stripe, GitHub, pilot status |
 | Board Room | Knights of the Round Table — multi-AI counsel (draft only) |
 | Fleet Nexus | Operational map — Render services + Support client health, blast-radius triage |
+| Knowledge Plane | Aurion Knowledge Plane / Echo Resonance Network — anonymized learning (no guest PII) |
 | Support | Client health, Ask-the-Board Q&A, free/charge change-request gate ([policy](./SUPPORT_POLICY.md)) |
+| Support Inbox | Unified triage queue for questions + work |
 | AurionIndex | AWS CDK infrastructure scaffold (ECS, RDS, CloudFront, S3, Route 53) |
 | Plaid Financial Monitor | Wells Fargo + Mercury — burn rate, bill calendar, runway calculator |
 | CRM | Partnership, investor, and advisor pipeline |
 | Revenue Dashboard | Stripe MRR, runway, investor raise tracker |
+
+**Vision docs:** [docs/AURION_KNOWLEDGE_PLANE.md](./docs/AURION_KNOWLEDGE_PLANE.md) · [docs/RELAY_CONTRACTS.md](./docs/RELAY_CONTRACTS.md)
 
 ## For Claude Code
 
@@ -44,6 +49,7 @@ Start with Step 1 in §15 of CLAUDE.md.
 | 8 | Support + Ask-the-Board + free/charge gate | ✅ Complete |
 | 9 | PWA + push alerts | ✅ Complete |
 | 10 | Fleet Nexus (Render + Support ops map) | ✅ Complete |
+| 11 | Public homepage + Knowledge Plane scaffold | ✅ Complete |
 | — | Production deploy (Render + Neon) | ◻ See DEPLOY.md |
 
 ## Local Development
@@ -63,7 +69,7 @@ cp .env.example .env.local
 # Database (requires a reachable Postgres / Neon project)
 npx prisma migrate dev
 
-npm run dev          # http://localhost:3000 → redirects to /dr-os → /login
+npm run dev          # http://localhost:3000 → public homepage; /login → Dr. OS
 ```
 
 Generate an admin password hash:

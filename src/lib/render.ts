@@ -105,15 +105,70 @@ export async function getRenderDeployHealth(): Promise<RenderDeployHealth> {
   }
 }
 
-async function fetchLatestDeploy(apiKey: string, serviceId: string): Promise<RenderDeploy | null> {
-  const res = await fetch(`${RENDER_API}/services/${serviceId}/deploys?limit=1`, {
+export interface RenderDeployHistoryItem {
+  id: string
+  status: string
+  level: StatusLevel
+  label: string
+  triggeredAt: string
+  finishedAt: string | null
+  durationSeconds: number | null
+  commitSha: string | null
+  commitMessage: string | null
+}
+
+async function fetchDeploys(
+  apiKey: string,
+  serviceId: string,
+  limit = 1
+): Promise<RenderDeploy[]> {
+  const res = await fetch(`${RENDER_API}/services/${serviceId}/deploys?limit=${limit}`, {
     headers: authHeaders(apiKey),
     signal: AbortSignal.timeout(8000),
     cache: 'no-store',
   })
   if (!res.ok) throw new Error(`Render API ${res.status}`)
   const body = (await res.json()) as Array<{ deploy: RenderDeploy }>
-  return body[0]?.deploy ?? null
+  return body.map((row) => row.deploy).filter(Boolean)
+}
+
+async function fetchLatestDeploy(apiKey: string, serviceId: string): Promise<RenderDeploy | null> {
+  const list = await fetchDeploys(apiKey, serviceId, 1)
+  return list[0] ?? null
+}
+
+/** Recent deploys for Fleet Nexus detail (Render API allows history). */
+export async function listRenderDeployHistory(
+  serviceId: string,
+  limit = 5
+): Promise<RenderDeployHistoryItem[]> {
+  const apiKey = process.env.RENDER_API_KEY
+  if (!apiKey || !serviceId) return []
+  try {
+    const deploys = await fetchDeploys(apiKey, serviceId, Math.min(limit, 10))
+    return deploys.map((deploy) => {
+      const { level, label } = mapStatus(deploy.status)
+      const duration =
+        deploy.finishedAt && deploy.createdAt
+          ? Math.round(
+              (new Date(deploy.finishedAt).getTime() - new Date(deploy.createdAt).getTime()) / 1000
+            )
+          : null
+      return {
+        id: deploy.id,
+        status: deploy.status,
+        level,
+        label,
+        triggeredAt: deploy.createdAt,
+        finishedAt: deploy.finishedAt ?? null,
+        durationSeconds: duration,
+        commitSha: deploy.commit?.id?.slice(0, 7) ?? null,
+        commitMessage: deploy.commit?.message?.slice(0, 80) ?? null,
+      }
+    })
+  } catch {
+    return []
+  }
 }
 
 /**

@@ -1,9 +1,14 @@
 import { formatDistanceToNow } from 'date-fns'
 import { db } from '@/lib/db'
-import { listRenderServicesWithDeploys, type RenderServiceWithDeploy } from '@/lib/render'
+import {
+  listRenderDeployHistory,
+  listRenderServicesWithDeploys,
+  type RenderServiceWithDeploy,
+} from '@/lib/render'
 import type { ClientHealth } from '@/types/support'
 import type {
   FleetDataMode,
+  FleetDeployHistoryItem,
   FleetEdge,
   FleetGraph,
   FleetHealth,
@@ -138,7 +143,8 @@ function finalizeGraph(nodes: FleetNode[], edges: FleetEdge[], scope: FleetScope
 
 function buildFleetGraph(
   services: RenderServiceWithDeploy[],
-  clients: SupportRow[]
+  clients: SupportRow[],
+  deployHistoryByService: Map<string, FleetDeployHistoryItem[]>
 ): FleetGraph {
   const nodes: FleetNode[] = []
   const edges: FleetEdge[] = []
@@ -154,6 +160,7 @@ function buildFleetGraph(
   for (const svc of services) {
     const id = `render/${svc.id}`
     const company = isCompanyOsService(svc)
+    const history = deployHistoryByService.get(svc.id) ?? []
     nodes.push({
       id,
       label: svc.name,
@@ -175,6 +182,7 @@ function buildFleetGraph(
         deployStatus: svc.deploy.label,
         source: 'render',
         branch: svc.branch,
+        deployHistory: history,
       },
       deps: [],
       dependents: [],
@@ -209,6 +217,7 @@ function buildFleetGraph(
         lastSeenAt: ago(c.lastSeenAt),
         source: 'support',
         clientKey: c.clientKey,
+        clientHealthLabel: c.health,
       },
       deps: [],
       dependents: [],
@@ -304,6 +313,7 @@ function buildChainGraph(clients: SupportRow[]): FleetGraph {
           errorCount: c.errorCount,
           lastSeenAt: ago(c.lastSeenAt),
           source: 'support',
+          clientHealthLabel: c.health,
         },
         deps: [],
         dependents: [],
@@ -615,7 +625,7 @@ function demoPayload(): FleetNexusPayload {
     mode: 'demo',
     banner: 'DEMO MODE — synthetic nodes for local UX only. Not live. Set RENDER_API_KEY for real fleet data.',
     sources: { render: false, support: false, demo: true },
-    counts: { renderServices: 0, supportClients: 0, unhealthy: 0 },
+    counts: { renderServices: 0, supportClients: 0, unhealthy: 0, supportRed: 0, supportAmber: 0 },
     graphs: { fleet, chain, deployment },
     generatedAt: new Date().toISOString(),
   }
@@ -627,6 +637,32 @@ export async function buildFleetNexusPayload(): Promise<FleetNexusPayload> {
     hasRenderKey ? listRenderServicesWithDeploys() : Promise.resolve([]),
     loadSupportClients(),
   ])
+
+  const deployHistoryByService = new Map<string, FleetDeployHistoryItem[]>()
+  if (hasRenderKey && services.length > 0) {
+    const CONCURRENCY = 4
+    for (let i = 0; i < services.length; i += CONCURRENCY) {
+      const chunk = services.slice(i, i + CONCURRENCY)
+      await Promise.all(
+        chunk.map(async (svc) => {
+          const hist = await listRenderDeployHistory(svc.id, 5)
+          deployHistoryByService.set(
+            svc.id,
+            hist.map((h) => ({
+              id: h.id,
+              label: h.label,
+              level: statusToFleet(h.level),
+              triggeredAt: h.triggeredAt,
+              ago: ago(h.triggeredAt),
+              commitSha: h.commitSha,
+              commitMessage: h.commitMessage,
+              durationSeconds: h.durationSeconds,
+            }))
+          )
+        })
+      )
+    }
+  }
 
   const renderOk = services.length > 0
   const supportOk = clients.length > 0
@@ -640,9 +676,15 @@ export async function buildFleetNexusPayload(): Promise<FleetNexusPayload> {
     return {
       mode: 'empty',
       banner:
-        'No live fleet data — set RENDER_API_KEY (lists all account services) and/or wait for Support diagnostics. Never shows fake live data in production.',
+        'EMPTY — no live fleet data. Set RENDER_API_KEY and/or wait for Support diagnostics. Never shows fake live data in production.',
       sources: { render: false, support: false, demo: false },
-      counts: { renderServices: 0, supportClients: 0, unhealthy: 0 },
+      counts: {
+        renderServices: 0,
+        supportClients: 0,
+        unhealthy: 0,
+        supportRed: 0,
+        supportAmber: 0,
+      },
       graphs: {
         fleet: empty('fleet', 'Fleet — empty'),
         chain: empty('chain', 'Chain — empty'),
@@ -653,27 +695,30 @@ export async function buildFleetNexusPayload(): Promise<FleetNexusPayload> {
   }
 
   const graphs: Record<FleetScope, FleetGraph> = {
-    fleet: buildFleetGraph(services, clients),
+    fleet: buildFleetGraph(services, clients, deployHistoryByService),
     chain: buildChainGraph(clients),
     deployment: buildDeploymentGraph(services, clients),
   }
 
+  const supportRed = clients.filter((c) => c.health === 'RED').length
+  const supportAmber = clients.filter((c) => c.health === 'AMBER').length
   const unhealthy =
     services.filter((s) => s.deploy.level === 'error' || s.deploy.level === 'warn').length +
-    clients.filter((c) => c.health === 'AMBER' || c.health === 'RED').length
+    supportRed +
+    supportAmber
 
   const mode: FleetDataMode = renderOk && supportOk ? 'live' : 'partial'
   const parts: string[] = []
   if (renderOk) parts.push(`Render (${services.length} services)`)
   else if (hasRenderKey) parts.push('Render configured but returned 0 services')
   else parts.push('Render not configured')
-  if (supportOk) parts.push(`Support (${clients.length} clients)`)
+  if (supportOk) parts.push(`Support (${clients.length} clients · ${supportRed} RED · ${supportAmber} AMBER)`)
   else parts.push('no Support clients yet')
 
   const banner =
     mode === 'live'
-      ? `Live Render + Support data — ${parts.join(' · ')}`
-      : `Partial data — ${parts.join(' · ')}. Chain/Deployment scopes are thinner without product nexus snapshots.`
+      ? `✓ LIVE — Render + Support · ${parts.join(' · ')}`
+      : `⚠ PARTIAL — ${parts.join(' · ')}. Chain/Deployment scopes are thinner without product nexus snapshots.`
 
   return {
     mode,
@@ -683,6 +728,8 @@ export async function buildFleetNexusPayload(): Promise<FleetNexusPayload> {
       renderServices: services.length,
       supportClients: clients.length,
       unhealthy,
+      supportRed,
+      supportAmber,
     },
     graphs,
     generatedAt: new Date().toISOString(),
