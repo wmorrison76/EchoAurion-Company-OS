@@ -196,7 +196,7 @@ SMTP alternative: leave `RESEND_API_KEY` empty and set `SMTP_HOST`, `SMTP_USER`,
 
 ## 4b. Cron jobs (in `render.yaml`)
 
-Blueprint includes two optional cron services with **single-quoted** Node `fetch`
+Blueprint includes optional cron services with **single-quoted** Node `fetch`
 startCommands (valid YAML — unquoted `Authorization: Bearer …` breaks parsers;
 Node images may lack `curl`):
 
@@ -204,9 +204,18 @@ Node images may lack `curl`):
 |---|---|---|
 | `echoaurion-company-os-sync` | `0 8 * * *` | `POST /api/financial/sync` |
 | `echoaurion-company-os-briefing` | `0 11 * * *` | `POST /api/board-room/briefing` |
+| `echoaurion-company-os-maintenance` | `0 * * * *` | `POST /api/maintenance/dispatch` (due scheduled notices) |
 
 **Env on each cron:** `WEB_SERVICE_URL` = web service public URL (no trailing slash),
 `CRON_SECRET` = same value as the web service.
+
+**Maintenance notices:** compose at `/maintenance`. Send now or schedule; hourly cron
+fires due `SCHEDULED` rows. Manual:
+
+```bash
+curl -X POST "$WEB_SERVICE_URL/api/maintenance/dispatch" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
 
 If Blueprint cron create fails in your Render account, add the same jobs manually
 in the dashboard with this one-line startCommand:
@@ -215,7 +224,7 @@ in the dashboard with this one-line startCommand:
 node -e 'fetch(process.env.WEB_SERVICE_URL+"/api/financial/sync",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'
 ```
 
-Swap the path for `/api/board-room/briefing` on the second job. `buildCommand` can be `true`.
+Swap the path for `/api/board-room/briefing` or `/api/maintenance/dispatch` on the other jobs. `buildCommand` can be `true`.
 
 ## 4c. Knowledge Plane
 
@@ -234,6 +243,7 @@ See [docs/AURION_KNOWLEDGE_PLANE.md](./docs/AURION_KNOWLEDGE_PLANE.md) and
 - [ ] `/fleet-nexus` loads (Live/Partial/Empty banner; graph when Render key set)
 - [ ] `/knowledge-plane` shows privacy banner + empty signals/insights
 - [ ] `/support/inbox` loads unified queue
+- [ ] `/maintenance` loads compose + notice history
 - [ ] `/board-room` shows Knights (Unavailable until keys set) + Board → Support
 - [ ] `/support` loads Questions + Change Requests + Alerts
 - [ ] Approve free / Send quote / Decline buttons visible on a work card

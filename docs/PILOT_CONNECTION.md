@@ -91,6 +91,7 @@ Server helper: `createStreamToken(clientKey)` in `src/lib/relay-auth.ts`.
 | `show_message` | Operator pushed an in-app message to the client |
 | `open_panel` | Operator asked the pilot to open a panel (`panelId` + optional `params`) |
 | `navigate` | Operator asked the pilot to navigate to a path |
+| `maintenance_notice` | Scheduled or immediate maintenance / major-update blast (also mirrored as `show_message`) |
 | `ping` | Live keep-alive (~25s); not persisted to outbox |
 
 ### Directive payloads
@@ -99,7 +100,19 @@ Server helper: `createStreamToken(clientKey)` in `src/lib/relay-auth.ts`.
 { "type": "show_message", "title": "Support reply", "body": "…", "severity": "info" }
 { "type": "open_panel", "panelId": "beo", "params": null }
 { "type": "navigate", "path": "/settings" }
+{ "type": "maintenance_notice", "noticeId": "…", "title": "…", "body": "…", "severity": "info"|"warning"|"error", "windowStart": null, "windowEnd": null }
 ```
+
+### Maintenance notices
+
+Compose and schedule at `/maintenance` (Super Admin). Delivery:
+
+1. Resolves targets: all `support_clients`, one `clientKey`, or `property` match
+2. Writes `RelayOutbox` rows: `maintenance_notice` + `show_message` + `directive`
+3. Raises an in-app Alert (+ optional web push) for William when it fires
+4. Cron: `POST /api/maintenance/dispatch` with `Authorization: Bearer $CRON_SECRET` (hourly in `render.yaml`)
+
+Pilots should honor `event: maintenance_notice` when present; older builds can fall back to the mirrored `show_message`.
 
 Panel IDs are listed in Company OS `src/lib/help-panels.ts` (Echo-like: beo, schedule, purchasing, settings, support, …). Help Desk **Send to client** / **Open panel** / **Send article** publish these into `relay_outbox`. See `docs/HELP_DESK.md`.
 

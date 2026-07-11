@@ -761,7 +761,7 @@ model HelpArticle {
 model RelayOutbox {
   id          String    @id @default(cuid())
   clientKey   String
-  type        String // answer_ready | work_status | directive | show_message | open_panel | navigate | ping
+  type        String // answer_ready | work_status | directive | show_message | open_panel | navigate | maintenance_notice | ping
   payload     Json
   createdAt   DateTime  @default(now())
   deliveredAt DateTime?
@@ -845,4 +845,29 @@ model BreakGlassSession {
   @@index([clientKey, status])
   @@index([expiresAt])
   @@map("break_glass_sessions")
+}
+
+// ── Maintenance / major-update notices (pilot blast) ─────────────────────────
+// Scheduled or immediate notices pushed via RelayOutbox (maintenance_notice +
+// show_message). See /maintenance UI and POST /api/maintenance/dispatch.
+
+model MaintenanceNotice {
+  id           String    @id @default(cuid())
+  title        String
+  body         String
+  severity     String    @default("INFO") // INFO | WARN | CRITICAL
+  status       String    @default("DRAFT") // DRAFT | SCHEDULED | SENT | CANCELLED
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  windowStart  DateTime? // optional maintenance window start (client display)
+  windowEnd    DateTime? // optional maintenance window end
+  targetScope  String    @default("ALL") // ALL | CLIENT_KEY | PROPERTY
+  targetValue  String? // clientKey or property name when scoped
+  createdBy    String    @default("william_morrison")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([createdAt])
+  @@map("maintenance_notices")
 }

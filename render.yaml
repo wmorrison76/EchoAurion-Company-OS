@@ -68,3 +68,16 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+
+  # Hourly: fire due SCHEDULED maintenance / major-update notices to pilots.
+  - type: cron
+    name: echoaurion-company-os-maintenance
+    runtime: node
+    schedule: "0 * * * *"
+    buildCommand: "true"
+    startCommand: 'node -e ''fetch(process.env.WEB_SERVICE_URL+"/api/maintenance/dispatch",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'''
+    envVars:
+      - key: WEB_SERVICE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false

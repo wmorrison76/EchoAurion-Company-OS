@@ -65,6 +65,17 @@ export function PilotLinksPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-sm text-[#a0a0b8]">
+        Schedule downtime or major-update blasts for pilots from{' '}
+        <a
+          href="/maintenance"
+          className="text-[#D4AF37] underline"
+          aria-label="Open maintenance notices"
+        >
+          Maintenance
+        </a>
+        .
+      </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KPICard
           title="Pilots online"

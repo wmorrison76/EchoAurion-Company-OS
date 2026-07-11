@@ -12,6 +12,7 @@ import {
   Inbox,
   Link2,
   BookOpen,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -26,6 +27,7 @@ export interface NavItem {
 // (text / voice / custom builds). Support = client health + approve gate.
 // Inbox = unified triage queue. Pilot links = connection hub. Fleet Nexus = ops map.
 // Help Files = searchable KB / macros for Knights + send-to-client.
+// Maintenance = scheduled major-update / downtime notices to pilots.
 export const navItems: NavItem[] = [
   { href: '/dr-os', label: 'Dr. OS', icon: Terminal, description: 'System overview' },
   {
@@ -45,6 +47,12 @@ export const navItems: NavItem[] = [
     label: 'Pilot links',
     icon: Link2,
     description: 'Heartbeat · SSE · standby',
+  },
+  {
+    href: '/maintenance',
+    label: 'Maintenance',
+    icon: Megaphone,
+    description: 'Notices · pilot blast',
   },
   {
     href: '/help-desk',

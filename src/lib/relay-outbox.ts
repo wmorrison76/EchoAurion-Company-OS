@@ -9,6 +9,7 @@ export type RelayEventType =
   | 'show_message'
   | 'open_panel'
   | 'navigate'
+  | 'maintenance_notice'
   | 'ping'
 
 export interface RelayEvent {
