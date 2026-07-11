@@ -11,6 +11,7 @@ import {
   TestScenarioChecklist,
   type TestScenarioState,
 } from '@/components/help-desk/TestScenarioChecklist'
+import { ClientAssistPanel } from '@/components/help-desk/ClientAssistPanel'
 import { HELP_DESK_MACROS } from '@/lib/help-desk'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
 import type { APIResponse } from '@/types'
@@ -684,6 +685,20 @@ export function HelpDeskConsole() {
                   Mark resolved
                 </button>
               </div>
+
+              <ClientAssistPanel
+                ticket={detail}
+                reply={reply}
+                busy={busy}
+                onBusy={setBusy}
+                onError={setError}
+                onTicket={(t) => {
+                  setSelectedId(t.id)
+                  void mutateDetail()
+                  void mutateList()
+                }}
+                onSetReply={setReply}
+              />
             </>
           )}
         </section>

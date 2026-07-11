@@ -3,120 +3,92 @@
 Operator workspace for live support tickets in EchoAurion Company OS.
 
 **Route:** `/help-desk`  
+**Help Files:** `/help-files`  
 **Not this:** Board Room (strategy counsel), Support (client health + approve gate), Inbox (unified triage).
 
 ---
 
-## What v1 does
+## What v1+ does
 
 | Capability | Status |
 |---|---|
 | Text tickets (CRUD + thread) | Live |
-| Voice call **dictation / paste** → `HelpVoiceNote` | Live (browser SpeechRecognition + textarea) |
+| Voice call **dictation / paste** → `HelpVoiceNote` | Live |
 | Ask the Knights → drafts in-thread | Live (approve before official) |
 | Feature / “can you add this” → FEATURE + optional `WorkRequest` | Live |
-| Free vs Charge policy chips | Live (`support-policy.ts`) |
-| Audit log on mutations | Live |
-| Customer relay intake | Later (stubs only) |
-| Guided E2E test scenario | Live — **Simulate customer change request** |
-| Twilio / real phone number | **Not yet** — do not block on it |
+| Free vs Charge policy chips | Live |
+| **Send to client now** → outbox `show_message` + `answer_ready` | Live |
+| **Open panel for client** → `open_panel` directive | Live |
+| **Send help article** → message + optional panel | Live |
+| **Contextual Help** (KB search + Knights + suggested directives) | Live |
+| Client delivery status (outbox pending/delivered) | Live |
+| Help File KB (`HelpArticle`) | Live — `/help-files` |
+| Guided E2E test scenario | Live |
+| Twilio / real phone number | **Not yet** |
 
 ---
 
-## IA map (so William can find it)
+## Where to click
 
-| Surface | Job |
+| Goal | Where |
 |---|---|
-| **Help Desk** | Live tickets: reply, Ask Knights, voice log, custom builds |
-| **Inbox** | Triage queue → deep-link into Help Desk (`?import=question:id` / `work:id`) |
-| **Support** | Client health, diagnostics, questions/work panels |
-| **Board Room** | Multi-AI strategy counsel — not the help desk |
+| Live tickets | Sidebar → **Help Desk** |
+| Knowledge base / macros | Sidebar → **Help Files** |
+| Contextual ask from overview | **Dr. OS** → Contextual Help widget |
+| Heartbeat / SSE / standby | **Pilot links** |
+
+### Ticket actions (need `clientKey` on the ticket)
+
+| Button | What it does |
+|---|---|
+| **Approve & send** | Official answer → `answer_ready` (+ nested directive if any) |
+| **Send to client now** | Posts reply + `show_message` + `answer_ready` (does not require resolve) |
+| **Send + open panel** | Same as send, plus `open_panel` for the selected panelId |
+| **Open panel** | Only `open_panel` / `directive` for that clientKey |
+| **Insert / Send article** | Insert into reply box, or push article body (+ article.panelId if set) |
+| **Ask Knights (contextual)** | Searches Help Files, drafts answer, suggests directives — **nothing sent until you approve/send** |
+
+Pilot must be on product branch `feat/company-os-relay-wiring` (flag on) to honor `open_panel` / `show_message`. Until then, events sit in `relay_outbox` (pending → delivered when SSE connects).
 
 ---
 
-## What you weren’t asking — but should decide
+## Directive schema (client-facing)
 
-These gaps will bite once volume rises. Plan them before the first busy week.
+Pushed via `RelayOutbox` and SSE (`event:` name matches `type`, plus a mirrored `directive` event):
 
-### 1. SLA / response time targets
-You already want **&lt;10 minutes** for free informational answers (`FREE_ANSWER_TARGET_MINUTES`). Decide:
-- Target for WAITING / AWAITING_APPROVAL
-- What “breached” looks like in the UI (shape + label, not color alone)
-- Whether voice calls get a tighter SLA than text
+```ts
+// show_message
+{ type: "show_message", title: string, body: string, severity?: "info"|"success"|"warning"|"error" }
 
-### 2. Escalation matrix
-| Tier | Who | When |
+// open_panel — panelIds in src/lib/help-panels.ts
+{ type: "open_panel", panelId: string, params?: Record<string, unknown> }
+
+// navigate
+{ type: "navigate", path: string }
+
+// answer_ready (existing)
+{ questionId, question, answer, directive, standbyApproved? }
+```
+
+Known Echo-like panels: `beo`, `schedule`, `purchasing`, `settings`, `support`, `menu`, `inventory`, `forecast`, `close`, `fleet`, plus Company OS stubs (`company-os.help-desk`, …).
+
+---
+
+## Help Files API
+
+| Method | Path | Notes |
 |---|---|---|
-| L1 | You (William) | Free answers, triage, Approve free |
-| L2 | Knights drafts | How-to, diagnosis, plan drafts — you still approve |
-| L3 | Billable engineer / Architect seat | Quoted T2+ work after billing contact authorizes |
+| GET/POST/PATCH | `/api/help-files` | Auth; CRUD list/create/update |
+| GET | `/api/help-files/search?q=` | Auth; title/body/slug/tags |
 
-Write the handoff rules so Knights never silently become “the answer.”
+Seed: 14 starter articles (login, BEO print, Ask support, Fleet, Company OS operator topics, …).
 
-### 3. Identity of requester
-Only the **designated billing contact** can authorize spend (`BillingContact` model). Capture:
-- Role at property (GM, FOH lead, IT, billing)
-- Whether the person asking can authorize — if not, route quote to billing contact
+---
 
-### 4. Audit trail
-`audit_log` already exists. Help Desk writes:
-- `help_desk.ticket.create` / `.update` / `.import`
-- `help_desk.message.create`
-- `help_desk.knights.dispatch`
-- `help_desk.ticket.approve`
-- `help_desk.voice.create`
+## Standby (24/7)
 
-Keep every Approve / Quote / Resolve audited.
-
-### 5. After-hours / on-call
-PWA push is already in the stack. Decide:
-- Quiet hours vs always-on for CRITICAL
-- Who gets woken for voice vs text
-- Auto-ack macros for after-hours
-
-### 6. Knowledge base / macros
-v1 ships a stub macro list in the Help Desk reply box. Next:
-- Expand canned replies per property type
-- Link macros to Knowledge Plane insights (no guest PII)
-
-### 7. Multilingual
-Hospitality crews are often bilingual. Decide:
-- Which languages you answer in
-- Whether Knights draft in the requester’s language
-- Translation review before Approve
-
-### 8. Guest-facing vs operator/system issues (privacy)
-Separate:
-- **Guest issues** (PII-sensitive, property-owned) — minimize retention in Company OS
-- **Operator / system issues** (sync, config, product behavior) — normal Help Desk tickets
-
-Never put guest PII into Knowledge Plane or vendor exports.
-
-### 9. Intake channels
-| Channel | Now | Later |
-|---|---|---|
-| Manual Help Desk | ✓ | |
-| Inbox → Help Desk import | ✓ | |
-| In-app relay (`/api/relay/...`) | Partial (questions/work) | Wire to auto-create HelpTicket |
-| Email | — | Inbound parse → ticket |
-| Phone number | — | Twilio → transcript → VOICE ticket |
-
-### 10. CSAT / close reason
-On RESOLVED/CLOSED, capture:
-- Close reason (answered / quoted / duplicate / spam / escalated)
-- Optional 1–5 CSAT when relay can ask the property
-
-### 11. When NOT to use Knights
-Do **not** Ask the Knights for:
-- Secrets, credentials, API keys
-- Legal advice or contract interpretation as final counsel
-- HR / personnel issues
-- Anything that must not leave your device / vault
-
-Use Board Room Strategist only with deliberate, redacted prompts — or handle yourself.
-
-### 12. Vendor vs client help desk (later)
-Knowledge Plane vendor scrutiny is separate. A future **vendor help desk** must not share client ticket threads. Keep client Help Desk isolated.
+Modes: `off` | `draft_only` | `auto_answer_low_risk`.  
+Auto-answer is **TEXT how-to only** — never auto-execute code or FEATURE work. See `docs/PILOT_CONNECTION.md`.
 
 ---
 
@@ -124,7 +96,7 @@ Knowledge Plane vendor scrutiny is separate. A future **vendor help desk** must 
 
 ```
 OPEN → WAITING (customer msg)
-     → WITH_KNIGHTS → AWAITING_APPROVAL → (Approve) → RESOLVED
+     → WITH_KNIGHTS → AWAITING_APPROVAL → (Approve / Send to client) → RESOLVED or WAITING
      → RESOLVED / CLOSED
 FEATURE: Approve free → RESOLVED | Send quote → WAITING (+ WorkRequest QUOTED)
 ```
@@ -133,12 +105,10 @@ FEATURE: Approve free → RESOLVED | Send quote → WAITING (+ WorkRequest QUOTE
 
 ## Redeploy
 
-After merge/push to the deploy branch:
-
-1. Render runs `prisma migrate deploy` (migration `20260710180000_help_desk`)
-2. Confirm `/help-desk` appears in the sidebar
-3. Smoke: New ticket → Ask Knights → Approve & send; Log voice call; Request custom build
-4. Guided change-request test: **Simulate customer change request** — see `docs/CUSTOMER_CHANGE_REQUEST_FLOW.md`
+1. `prisma migrate deploy` (includes `20260710220000_help_articles`)
+2. Optional: `npx prisma db seed` for Help Articles if empty
+3. Confirm `/help-files` and Help Desk client-delivery panel
+4. Smoke: ticket with clientKey → Send to client now → outbox Pending → pilot SSE → Delivered
 
 ---
 

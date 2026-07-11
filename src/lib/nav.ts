@@ -11,6 +11,7 @@ import {
   Brain,
   Inbox,
   Link2,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -24,6 +25,7 @@ export interface NavItem {
 // Board Room = Knights counsel (strategy). Help Desk = live operator tickets
 // (text / voice / custom builds). Support = client health + approve gate.
 // Inbox = unified triage queue. Pilot links = connection hub. Fleet Nexus = ops map.
+// Help Files = searchable KB / macros for Knights + send-to-client.
 export const navItems: NavItem[] = [
   { href: '/dr-os', label: 'Dr. OS', icon: Terminal, description: 'System overview' },
   {
@@ -49,6 +51,12 @@ export const navItems: NavItem[] = [
     label: 'Help Desk',
     icon: Headset,
     description: 'Knights · text · voice',
+  },
+  {
+    href: '/help-files',
+    label: 'Help Files',
+    icon: BookOpen,
+    description: 'KB · macros · send to client',
   },
   { href: '/revenue', label: 'Revenue', icon: TrendingUp, description: 'Stripe MRR' },
   { href: '/aurion-index', label: 'AurionIndex', icon: Cloud, description: 'AWS infra' },

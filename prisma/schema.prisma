@@ -714,6 +714,23 @@ enum HelpVoiceNoteSource {
   PASTE
 }
 
+// ── Help File / Knowledge Base (searchable macros Knights + operators cite) ─
+// See docs/HELP_DESK.md. panelId optionally opens a pilot panel via directive.
+
+model HelpArticle {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  body      String
+  tags      String[] // e.g. ["login", "beo", "fleet", "company-os"]
+  panelId   String? // optional Echo-like panel to open when sent (see help-panels.ts)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([updatedAt])
+  @@map("help_articles")
+}
+
 // ── Pilot Connection Hub (relay outbox + Knights standby) ───────────────────
 // Company OS pushes events to pilots via SSE; undelivered rows survive restarts.
 // Pull endpoints remain the fallback. See docs/PILOT_CONNECTION.md.
@@ -721,7 +738,7 @@ enum HelpVoiceNoteSource {
 model RelayOutbox {
   id          String    @id @default(cuid())
   clientKey   String
-  type        String // answer_ready | work_status | directive | ping
+  type        String // answer_ready | work_status | directive | show_message | open_panel | navigate | ping
   payload     Json
   createdAt   DateTime  @default(now())
   deliveredAt DateTime?

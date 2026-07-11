@@ -16,7 +16,7 @@ const MAX_MS = 25 * 60 * 1000 // Render/proxy friendly upper bound
 /**
  * GET /api/relay/stream?clientKey=… — SSE push to pilot.
  * Auth: Bearer SUPPORT_INGEST_SECRET or signed ?token= (EventSource-safe).
- * Events: answer_ready | work_status | directive | ping
+ * Events: answer_ready | work_status | directive | show_message | open_panel | navigate | ping
  * Flushes undelivered RelayOutbox rows on connect; marks delivered when sent.
  */
 export async function GET(req: Request): Promise<Response> {

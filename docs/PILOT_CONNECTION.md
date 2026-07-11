@@ -85,10 +85,23 @@ Server helper: `createStreamToken(clientKey)` in `src/lib/relay-auth.ts`.
 
 | `event:` | When |
 |---|---|
-| `answer_ready` | William or standby approved a question |
+| `answer_ready` | William, Help Desk send, or standby approved a question |
 | `work_status` | Work quoted / in progress / executed / rolled back |
-| `directive` | Structured directive attached to an answer |
+| `directive` | Structured directive (mirrors open_panel / show_message / navigate / answer directive) |
+| `show_message` | Operator pushed an in-app message to the client |
+| `open_panel` | Operator asked the pilot to open a panel (`panelId` + optional `params`) |
+| `navigate` | Operator asked the pilot to navigate to a path |
 | `ping` | Live keep-alive (~25s); not persisted to outbox |
+
+### Directive payloads
+
+```json
+{ "type": "show_message", "title": "Support reply", "body": "…", "severity": "info" }
+{ "type": "open_panel", "panelId": "beo", "params": null }
+{ "type": "navigate", "path": "/settings" }
+```
+
+Panel IDs are listed in Company OS `src/lib/help-panels.ts` (Echo-like: beo, schedule, purchasing, settings, support, …). Help Desk **Send to client** / **Open panel** / **Send article** publish these into `relay_outbox`. See `docs/HELP_DESK.md`.
 
 Payload shape (data JSON):
 
@@ -104,7 +117,7 @@ Payload shape (data JSON):
 
 ### Outbox durability
 
-Table `relay_outbox` (`RelayOutbox`): undelivered rows survive restarts. On connect, the stream flushes undelivered events then marks `deliveredAt`. In-memory bus fans out to live subscribers.
+Table `relay_outbox` (`RelayOutbox`): undelivered rows survive restarts. On connect, the stream flushes undelivered events then marks `deliveredAt`. In-memory bus fans out to live subscribers. Help Desk shows pending/delivered per ticket clientKey.
 
 ### Pull fallback (keep working)
 
@@ -149,8 +162,9 @@ Work requests: Knights may **draft + suggest quote** in standby; only William **
 | Route | Purpose |
 |---|---|
 | `/support/pilot-links` | Clients, heartbeat, stream, standby toggle, review queue |
-| `/dr-os` | “Pilot connection” online count card |
-| `/help-desk` | Ask Knights → optional standby auto-answer |
+| `/dr-os` | “Pilot connection” online count + Contextual Help widget |
+| `/help-desk` | Ask Knights → send to client / open panel / Help Files |
+| `/help-files` | Searchable KB articles (cite + send to client) |
 
 ---
 
