@@ -672,6 +672,7 @@ model HelpTicket {
 
   messages   HelpMessage[]
   voiceNotes HelpVoiceNote[]
+  timeline   HelpTimelineEvent[]
 
   @@index([status, updatedAt])
   @@index([channel, status])
@@ -771,12 +772,77 @@ model RelayOutbox {
 }
 
 /// Single-row operator settings for Knights standby when William is unavailable.
+/// mode also accepts elite autonomy dial: assist | standby | autopilot
+/// (mapped in src/lib/autonomy.ts). Legacy: off | draft_only | auto_answer_low_risk
 model StandbySettings {
   id             String   @id @default("default")
-  mode           String   @default("off") // off | draft_only | auto_answer_low_risk
+  mode           String   @default("off") // off | draft_only | auto_answer_low_risk | assist | standby | autopilot
   maxAutoPerHour Int      @default(10)
   updatedAt      DateTime @updatedAt
   updatedBy      String? // william_morrison | computer_agent
 
   @@map("standby_settings")
+}
+
+// ── Elite Help Desk (constitution / eval / break-glass / timeline) ───────────
+// See docs/ELITE_DR_OS.md, docs/HELP_EVAL.md, docs/CONSTITUTION.md
+
+model HelpTimelineEvent {
+  id                String   @id @default(cuid())
+  ticketId          String
+  ticket            HelpTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  kind              String // received | drafting | quoted | agreement_signed | shipping | done
+  label             String
+  detail            String?
+  actor             String   @default("william_morrison")
+  visibleToCustomer Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("help_timeline_events")
+}
+
+model HelpEvalCase {
+  id                    String   @id
+  prompt                String
+  expectedChannel       String // TEXT | VOICE | FEATURE | SYSTEM
+  mustInclude           String[]
+  mustNotInclude        String[]
+  expectedRecommendation String?
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+
+  @@map("help_eval_cases")
+}
+
+model HelpEvalRun {
+  id         String   @id @default(cuid())
+  score      Float
+  total      Int
+  passed     Int
+  failed     Int
+  withDrafts Boolean  @default(false)
+  results    Json
+  actor      String   @default("william_morrison")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("help_eval_runs")
+}
+
+/// Scaffold only — NOT TeamViewer / RDP. See docs/ELITE_DR_OS.md
+model BreakGlassSession {
+  id          String   @id @default(cuid())
+  clientKey   String
+  reason      String
+  requestedBy String
+  approvedBy  String?
+  status      String   @default("REQUESTED") // REQUESTED | APPROVED | EXPIRED | REVOKED | ENDED
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientKey, status])
+  @@index([expiresAt])
+  @@map("break_glass_sessions")
 }

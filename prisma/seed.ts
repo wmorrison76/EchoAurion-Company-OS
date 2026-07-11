@@ -266,12 +266,35 @@ async function seedHelpArticles() {
   console.log(`helpArticles: seeded ${HELP_ARTICLES.length}`)
 }
 
+async function seedHelpEvalCases() {
+  const { EVAL_CASE_SEEDS } = await import('../src/lib/help-eval')
+  let created = 0
+  for (const c of EVAL_CASE_SEEDS) {
+    const existing = await db.helpEvalCase.findUnique({ where: { id: c.id } })
+    if (existing) continue
+    await db.helpEvalCase.create({
+      data: {
+        id: c.id,
+        prompt: c.prompt,
+        expectedChannel: c.expectedChannel,
+        mustInclude: c.mustInclude,
+        mustNotInclude: c.mustNotInclude,
+        expectedRecommendation: c.expectedRecommendation ?? null,
+        active: true,
+      },
+    })
+    created += 1
+  }
+  console.log(`helpEvalCases: seeded ${created} new (${EVAL_CASE_SEEDS.length} total defined)`)
+}
+
 async function main() {
   await seedBills()
   await seedPilot()
   await seedRaiseConfig()
   await seedContacts()
   await seedHelpArticles()
+  await seedHelpEvalCases()
 }
 
 main()

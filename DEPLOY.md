@@ -92,13 +92,13 @@ service is live (see **Cron jobs** below).
 | `AUTH_TRUST_HOST` | yes | `true` |
 | `DATABASE_URL` | yes | Neon pooled |
 | `DATABASE_URL_UNPOOLED` | yes | Neon direct |
-| `ADMIN_EMAIL` | yes | Your login email |
+| `ADMIN_EMAIL` | yes | Canonical Super Admin: `william@echoaurion.com` |
 | `ADMIN_PASSWORD_HASH` | yes | bcrypt hash (no escaping on Render). Bootstrap only — after Forgot Password reset, the live hash lives in DB (`admin_auth`) and is preferred over this env var |
 | `CRON_SECRET` | yes | Guards cron POSTs (needed when you add crons) |
 | `EMAIL_FROM` | for forgot-password | Test: `onboarding@resend.dev`. Prod: verified domain sender. See **Forgot password** below |
 | `RESEND_API_KEY` | for forgot-password | Required for mail. Without it (or SMTP_*), form shows “Email is not configured”. Health: `emailConfigured` |
 
-### Env vars (turn on Knights + Support)
+### Env vars (turn on Knights + Support + Elite)
 
 | Variable | Purpose |
 |---|---|
@@ -109,10 +109,15 @@ service is live (see **Cron jobs** below).
 | `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional — stays Unavailable until set) |
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/diagnostics` and `/api/relay/*` (whoami, heartbeat, stream, questions, work) |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
-| `KNIGHTS_STANDBY_MODE` | `off` \| `draft_only` \| `auto_answer_low_risk` (Pilot links UI can override in DB) |
+| `KNIGHTS_STANDBY_MODE` | Legacy: `off` \| `draft_only` \| `auto_answer_low_risk`. Elite dial also accepted: `assist` \| `standby` \| `autopilot` |
+| `AUTONOMY_DIAL` | Preferred elite dial when DB unset (`assist` default intent) |
 | `STANDBY_MAX_AUTO_PER_HOUR` | Cap on standby auto-answers per hour (default `10`) |
+| `BUILD_SPEND_CAP_USD` | Per-client monthly quote cap (default `5000`) — warn/block on `/api/work/:id/quote` |
+| `GITHUB_BUILD_REPO` / `GITHUB_BUILD_BASE` | Optional Architect draft-PR target (see `docs/PR_FROM_BUILD.md`) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Phone push |
 | `WORK_SENIOR_RATE` / `WORK_VALUE_MULTIPLIER` | Quote math (defaults 185 / 2.5) |
+
+**Elite Help Desk:** `/lab/elite` checklist, `/lab/echo-chrome`, constitution, safe tools, eval — see `docs/ELITE_DR_OS.md`.
 
 **Pilot Connection Hub:** see `docs/PILOT_CONNECTION.md` for SSE contract, heartbeat, and standby accuracy rules.
 After deploy, set `SUPPORT_INGEST_SECRET` on Render before any pilot connects.

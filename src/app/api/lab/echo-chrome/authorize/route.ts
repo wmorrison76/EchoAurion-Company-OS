@@ -78,6 +78,16 @@ export async function POST(req: Request): Promise<Response> {
       approver: agreementGate.agreement.signerName,
     })
 
+    const ticket = await db.helpTicket.findFirst({ where: { workRequestId } })
+    if (ticket) {
+      const { recordTimelineEvent } = await import('@/lib/help-timeline')
+      await recordTimelineEvent({
+        ticketId: ticket.id,
+        kind: 'agreement_signed',
+        detail: `Authorized by ${agreementGate.agreement.signerName}`,
+      }).catch(() => {})
+    }
+
     return Response.json({
       success: true,
       data: {

@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail, toListItem } from '@/lib/help-desk'
+import { ensureReceivedEvent } from '@/lib/help-timeline'
 import type { APIResponse } from '@/types'
 import type {
   HelpTicketChannel,
@@ -152,6 +153,7 @@ export async function POST(req: Request): Promise<Response> {
       subject,
       workRequestId,
     })
+    await ensureReceivedEvent(ticket.id, subject).catch(() => {})
 
     return Response.json({
       success: true,

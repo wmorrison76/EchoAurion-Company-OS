@@ -136,18 +136,21 @@ export function PilotLinksPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-[#D4AF37]">
-              Standby: Knights may approve low-risk
+              Autonomy dial
             </p>
             <p className="mt-1 text-xs text-[#a0a0b8]">
               Mode:{' '}
-              <span className="font-mono text-white">{standby?.mode ?? data?.standbyMode ?? 'off'}</span>
-              {' · '}TEXT how-to only · never auto-execute work
+              <span className="font-mono text-white">{standby?.mode ?? data?.standbyMode ?? 'assist'}</span>
+              {' · '}assist = draft · standby/autopilot = auto TEXT · never merge/paid/T3+
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {(
               [
-                ['off', 'Off'],
+                ['assist', 'Assist'],
+                ['standby', 'Standby'],
+                ['autopilot', 'Autopilot'],
+                ['off', 'Off (legacy)'],
                 ['draft_only', 'Draft only'],
                 ['auto_answer_low_risk', 'Auto low-risk'],
               ] as const
@@ -158,7 +161,7 @@ export function PilotLinksPanel() {
                   key={mode}
                   type="button"
                   disabled={busy}
-                  aria-label={`Set standby mode to ${label}`}
+                  aria-label={`Set autonomy/standby mode to ${label}`}
                   aria-pressed={active}
                   onClick={() => void setMode(mode)}
                   className={

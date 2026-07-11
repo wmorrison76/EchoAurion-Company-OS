@@ -12,6 +12,8 @@ import {
   type TestScenarioState,
 } from '@/components/help-desk/TestScenarioChecklist'
 import { ClientAssistPanel } from '@/components/help-desk/ClientAssistPanel'
+import { ToolbeltPanel } from '@/components/help-desk/ToolbeltPanel'
+import { TicketTimeline } from '@/components/help-desk/TicketTimeline'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
 import { HELP_DESK_MACROS } from '@/lib/help-desk'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
@@ -701,6 +703,14 @@ export function HelpDeskConsole() {
                   void mutateList()
                 }}
                 onSetReply={setReply}
+              />
+
+              <TicketTimeline ticketId={detail.id} />
+
+              <ToolbeltPanel
+                clientKey={detail.clientKey}
+                ticketId={detail.id}
+                workRequestId={detail.workRequestId}
               />
             </>
           )}

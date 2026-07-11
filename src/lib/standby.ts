@@ -6,9 +6,28 @@ import { raiseAlert } from '@/lib/alerts'
 import { dispatch } from '@/lib/board-room/connectors'
 import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
 
-export type StandbyMode = 'off' | 'draft_only' | 'auto_answer_low_risk'
+/** Legacy standby modes + elite autonomy dial strings (stored in same column). */
+export type StandbyMode =
+  | 'off'
+  | 'draft_only'
+  | 'auto_answer_low_risk'
+  | 'assist'
+  | 'standby'
+  | 'autopilot'
 
-export const STANDBY_MODES: StandbyMode[] = ['off', 'draft_only', 'auto_answer_low_risk']
+export const STANDBY_MODES: StandbyMode[] = [
+  'off',
+  'draft_only',
+  'auto_answer_low_risk',
+  'assist',
+  'standby',
+  'autopilot',
+]
+
+/** Modes that may auto-answer low-risk TEXT. */
+export function modeAllowsAutoAnswer(mode: string): boolean {
+  return mode === 'auto_answer_low_risk' || mode === 'standby' || mode === 'autopilot'
+}
 
 export interface StandbyConfig {
   mode: StandbyMode
@@ -22,8 +41,21 @@ const CODE_CHANGE_SIGNAL =
   /\b(needs? code change|requires? code|hand to architect|architect seat|open a pr|pull request|deploy(ment)?|schema change|migration|implement(ation)?|refactor|ship a (fix|feature))\b/i
 
 function envMode(): StandbyMode {
+  const autonomy = (process.env.AUTONOMY_DIAL ?? '').trim().toLowerCase()
+  if (autonomy === 'assist' || autonomy === 'standby' || autonomy === 'autopilot') {
+    return autonomy
+  }
   const raw = (process.env.KNIGHTS_STANDBY_MODE ?? 'off').trim().toLowerCase()
-  if (raw === 'draft_only' || raw === 'auto_answer_low_risk' || raw === 'off') return raw
+  if (
+    raw === 'draft_only' ||
+    raw === 'auto_answer_low_risk' ||
+    raw === 'off' ||
+    raw === 'assist' ||
+    raw === 'standby' ||
+    raw === 'autopilot'
+  ) {
+    return raw as StandbyMode
+  }
   return 'off'
 }
 
@@ -203,8 +235,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   reason: string
 }> {
   const config = await getStandbyConfig()
-  if (config.mode !== 'auto_answer_low_risk') {
-    return { autoApproved: false, reason: `Standby mode is ${config.mode}` }
+  if (!modeAllowsAutoAnswer(config.mode)) {
+    return { autoApproved: false, reason: `Standby/autonomy mode is ${config.mode}` }
   }
 
   const ticket = await db.helpTicket.findUnique({

@@ -1,11 +1,13 @@
 'use client'
 
 import { TIERS, COMPLEXITY_TIERS, formatUSD, seniorRate, valueMultiplier } from '@/lib/pricing'
+import { buildSpendCapUsd } from '@/lib/spend-cap-config'
 
 /** Read-only display of billable change-request tiers from `src/lib/pricing.ts`. */
 export function PricingReferenceCard() {
   const rate = seniorRate()
   const vm = valueMultiplier()
+  const spendCap = buildSpendCapUsd()
 
   return (
     <div className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4">
@@ -16,6 +18,9 @@ export function PricingReferenceCard() {
       </p>
       <p className="mt-2 font-mono text-[11px] tabular-nums text-[#a0a0b8]">
         WORK_SENIOR_RATE={formatUSD(rate)} · WORK_VALUE_MULTIPLIER={vm}
+      </p>
+      <p className="mt-1 font-mono text-[11px] tabular-nums text-[#a0a0b8]" aria-label="Monthly build spend cap">
+        BUILD_SPEND_CAP_USD={formatUSD(spendCap)} / client / month — quotes over remaining are blocked
       </p>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[480px] text-left text-[11px]">
