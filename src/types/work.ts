@@ -34,6 +34,8 @@ export interface WorkRequestView {
   rollbackRef: string | null
   status: WorkStatus
   createdAt: string
+  /** Present when paid-via-profile agreement has been signed. */
+  hasAgreement?: boolean
 }
 
 export const WORK_STATUS_LABEL: Record<WorkStatus, string> = {

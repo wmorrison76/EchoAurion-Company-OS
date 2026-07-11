@@ -119,8 +119,20 @@ Exact list enforced in `src/lib/knowledge-ingest.ts`.
 
 ## Product client
 
-**Not implemented here.** When product wires a thin relay client later, it must:
+**Not implemented here.** When product wires a thin relay client later (`feat/company-os-relay-wiring`), it must:
 
 1. Authenticate per property to the hub (no P2P).
 2. Emit only allowlisted knowledge schemas.
 3. Never attach guest PII to diagnostics, questions, work, or knowledge payloads.
+
+### Chrome / paid-via-profile test contract (Company OS)
+
+Before mounting Help Desk + avatar chrome in LUCCCA production UI, prove the contract on Company OS:
+
+| Path | Purpose |
+|---|---|
+| `/lab/echo-chrome` | Mock top-right chrome: Help Desk icon **left of** mini EchoAI avatar; Tech \| Build; role gate; paid agreement |
+| `docs/PAID_VIA_PROFILE.md` | Signer = logged-in profile; `WorkAgreement` required before authorize |
+| `/install` | Dr. OS iPhone 15 PWA (Add to Home Screen) |
+
+Product avatar placement waits for pilot branch enable — do not fully wire production UI yet.

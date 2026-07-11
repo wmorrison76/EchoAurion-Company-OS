@@ -1,7 +1,7 @@
 {
-  "name": "EchoAurion Company OS",
-  "short_name": "EchoAurion",
-  "description": "Founder operating system — status, support, and the AI Board Room, in your pocket.",
+  "name": "EchoAurion Dr. OS",
+  "short_name": "Dr. OS",
+  "description": "Founder operating system — status, Help Desk, and the AI Board Room, in your pocket.",
   "start_url": "/dr-os",
   "scope": "/",
   "display": "standalone",
@@ -11,6 +11,7 @@
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/help-desk-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
   ]
 }

@@ -523,9 +523,31 @@ model WorkRequest {
   executedAt   DateTime?
   rolledBackAt DateTime?
 
+  agreement WorkAgreement?
+
   @@index([status])
   @@index([clientKey, delivered])
   @@map("work_requests")
+}
+
+// Paid-via-profile agreement — signer is the logged-in product profile
+// (ADMIN / DIRECTOR / EXEC only). Authorize is blocked without this row.
+// See docs/PAID_VIA_PROFILE.md.
+model WorkAgreement {
+  id            String   @id @default(cuid())
+  workRequestId String   @unique
+  workRequest   WorkRequest @relation(fields: [workRequestId], references: [id], onDelete: Cascade)
+  signerName    String
+  signerEmail   String?
+  signerRole    String // ADMIN | DIRECTOR | EXEC (normalized)
+  typedSignature String // must match signerName (case-insensitive trim)
+  agreedAt      DateTime @default(now())
+  quoteTotal    Float? // frozen amount acknowledged at agree time
+  source        String   @default("profile") // profile | lab | relay
+  createdAt     DateTime @default(now())
+
+  @@index([signerRole])
+  @@map("work_agreements")
 }
 
 enum WorkKind {

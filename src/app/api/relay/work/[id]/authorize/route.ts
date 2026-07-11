@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
 import { relayAuthorized } from '@/lib/relay-auth'
+import { requireWorkAgreement } from '@/lib/work-agreement'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -10,10 +11,10 @@ export const dynamic = 'force-dynamic'
 const schema = z.object({ token: z.string().min(1) })
 
 /**
- * SPEND GATE — the property's designated billing contact authorizes a quote.
- * Requires a valid, active billing-contact token scoped to THIS request's
- * clientKey. A staff member without a billing token cannot approve spend.
- * This is one of the two keys; William's execute approval is the other.
+ * SPEND GATE — billing contact token + WorkAgreement (paid-via-profile).
+ * Authorize is blocked without a signed WorkAgreement. Token must still be
+ * an active BillingContact for this clientKey. William's execute is the other key.
+ * See docs/PAID_VIA_PROFILE.md.
  */
 export async function POST(
   req: Request,
@@ -35,6 +36,15 @@ export async function POST(
         { status: 409 }
       )
     }
+
+    const agreementGate = await requireWorkAgreement(id)
+    if (!agreementGate.ok) {
+      return Response.json(
+        { success: false, error: agreementGate.error, code: agreementGate.code },
+        { status: agreementGate.status }
+      )
+    }
+
     // Gate: token must belong to an active billing contact for THIS property.
     const contact = await db.billingContact.findUnique({ where: { token: parsed.data.token } })
     if (!contact || !contact.active || contact.clientKey !== work.clientKey) {
@@ -52,12 +62,16 @@ export async function POST(
         authorizedAt: new Date(),
       },
     })
-    await audit('computer_agent', 'work.request.authorize', id, { approver: contact.name })
+    await audit('computer_agent', 'work.request.authorize', id, {
+      approver: contact.name,
+      agreementId: agreementGate.agreement.id,
+      signerRole: agreementGate.agreement.signerRole,
+    })
     await raiseAlert({
       kind: 'question',
       severity: 'WARN',
       title: `Quote authorized: ${work.title}`,
-      body: `${contact.name} approved $${work.quoteTotal ?? 0}. Awaiting your execute.`,
+      body: `${contact.name} approved $${work.quoteTotal ?? 0} (agreement signed by ${agreementGate.agreement.signerName}). Awaiting your execute.`,
       entityRef: id,
       url: '/support',
     })

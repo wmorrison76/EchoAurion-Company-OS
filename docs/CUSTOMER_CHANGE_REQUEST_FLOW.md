@@ -31,9 +31,11 @@ How a property asks for a product change, how Company OS identifies who is askin
 | Pricing (T1–T5, floors, quote freeze) | **In Company OS** | `src/lib/pricing.ts`, `POST /api/work/:id/quote` |
 | Knights draft (plan / answer) | **In Company OS** | Help Desk Ask Knights; `POST /api/work/:id/draft` |
 | Approve free / Send quote | **In Company OS** | Help Desk + Work panel |
-| BillingContact authorize | **In Company OS** | `POST /api/relay/work/:id/authorize` (+ admin test helper) |
+| BillingContact authorize | **In Company OS** | `POST /api/relay/work/:id/authorize` (+ admin test helper) — **requires `WorkAgreement`** |
+| Paid-via-profile agreement | **In Company OS** | `WorkAgreement` + role gate ADMIN/DIRECTOR/EXEC — see `docs/PAID_VIA_PROFILE.md` |
+| Echo chrome lab (test harness) | **In Company OS** | `/lab/echo-chrome` — Help icon left of avatar; not product UI |
 | William Execute + `rollbackRef` | **In Company OS** | `POST /api/work/:id/execute` |
-| Product “Ask from inside EchoAurion” UI | **Not wired** | Relay **API contracts** exist (`docs/RELAY_CONTRACTS.md`, `/api/relay/work`) — product client does not call them yet |
+| Product “Ask from inside EchoAurion” UI | **Not wired** | Relay **API contracts** exist (`docs/RELAY_CONTRACTS.md`, `/api/relay/work`) — product client does not call them yet; mount after lab proves contract |
 | Admin-simulated intake | **Test path** | `POST /api/help-desk/test-scenario` + Help Desk button |
 
 Until the product client is wired, William runs the guided test as **admin-simulated intake** (same models and gates as production).
@@ -102,4 +104,6 @@ Authorize helper: `POST /api/help-desk/test-scenario` body `{ "action": "authori
 
 - `docs/HELP_DESK.md` — operator workspace
 - `docs/RELAY_CONTRACTS.md` — product ↔ Company OS stubs
+- `docs/PAID_VIA_PROFILE.md` — profile signer + WorkAgreement gate
+- `/lab/echo-chrome` — chrome + paid path test harness
 - Support Change Requests panel — quote / execute UI for all work items

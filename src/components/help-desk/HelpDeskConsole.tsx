@@ -12,6 +12,7 @@ import {
   type TestScenarioState,
 } from '@/components/help-desk/TestScenarioChecklist'
 import { ClientAssistPanel } from '@/components/help-desk/ClientAssistPanel'
+import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
 import { HELP_DESK_MACROS } from '@/lib/help-desk'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
 import type { APIResponse } from '@/types'
@@ -285,6 +286,8 @@ export function HelpDeskConsole() {
 
   return (
     <div className="flex flex-col gap-4">
+      <LabInstallLinks />
+
       {/* Standby toggle — Knights may approve low-risk when William unavailable */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2a2a3f] bg-[#12121a] px-4 py-3">
         <div>

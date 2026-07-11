@@ -230,6 +230,26 @@ async function authorizeSimulated(workRequestId: string): Promise<Response> {
     })
   }
 
+  // Paid-via-profile: authorize requires WorkAgreement (create lab stub if missing).
+  let agreement = await db.workAgreement.findUnique({ where: { workRequestId } })
+  if (!agreement) {
+    agreement = await db.workAgreement.create({
+      data: {
+        workRequestId,
+        signerName: contact.name,
+        signerEmail: null,
+        signerRole: 'EXEC',
+        typedSignature: contact.name,
+        quoteTotal: work.quoteTotal,
+        source: 'lab',
+      },
+    })
+    await audit('william_morrison', 'work.agreement.create', agreement.id, {
+      workRequestId,
+      source: 'help_desk.test_scenario.authorize',
+    })
+  }
+
   await db.workRequest.update({
     where: { id: workRequestId },
     data: {
@@ -242,6 +262,7 @@ async function authorizeSimulated(workRequestId: string): Promise<Response> {
 
   await audit('william_morrison', 'help_desk.test_scenario.authorize', workRequestId, {
     approver: contact.name,
+    agreementId: agreement.id,
     simulated: true,
   })
 

@@ -23,6 +23,6 @@ export const config = {
   // Protect everything except the public homepage, login, auth endpoints,
   // health check, webhooks, relay/knowledge ingest, and static assets.
   matcher: [
-    '/((?!login|api/auth|api/health|api/financial/webhook|api/financial/sync|api/support/diagnostics|api/relay|api/knowledge/ingest|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon-|apple-touch-icon).*)',
+    '/((?!login|api/auth|api/health|api/financial/webhook|api/financial/sync|api/support/diagnostics|api/relay|api/knowledge/ingest|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon-|apple-touch-icon|help-desk-icon).*)',
   ],
 }
