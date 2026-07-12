@@ -1,9 +1,10 @@
 # Paid work via profile
 
-**Status:** Company OS contract + lab harness ready. Product chrome mount waits for `feat/company-os-relay-wiring`.  
+**Status:** Live on laughing-noether — Help Desk chrome + avatar **Request a build**.  
 **Lab:** [`/lab/echo-chrome`](/lab/echo-chrome)  
 **Price source:** `src/lib/pricing.ts`  
-**Role gate:** `src/lib/work-roles.ts`
+**Role gate:** `src/lib/work-roles.ts`  
+**Connect:** `docs/CONNECT_PILOT_TO_COMPANY_OS.md`
 
 ---
 
@@ -58,10 +59,10 @@ Linked 1:1 to `WorkRequest`. Cascade delete with the work row.
 
 ## Product placement
 
-Top-right chrome (product — `feat/company-os-relay-wiring` / laughing-noether):
+Top-right chrome (product — laughing-noether):
 
 1. **Help Desk icon** — immediately **left of the language flag** (tech support)
-2. Avatar click → profile menu → **Request a build / Pay for development** (Phase 2)
+2. Avatar click → profile menu → **Request a build / Pay for development** (live)
 3. Role gate + WorkAgreement modal → `POST /api/company-os-relay/work` → `/api/relay/work`
 
 Lab harness remains at Company OS `/lab/echo-chrome` for contract proof without product session.

@@ -43,6 +43,14 @@ services:
         sync: false
       - key: SUPPORT_INGEST_SECRET
         sync: false
+      # Chef's Brain — full URL to luccca-web echo-brain proxy
+      - key: ECHO_AI_URL
+        sync: false
+      - key: ECHO_AI_KEY
+        sync: false
+      # Auto-draft inbound tech questions with Knights (default true)
+      - key: AUTO_KNIGHTS_ON_QUESTION
+        value: "true"
 
   # Optional crons — scripts live in repo; buildCommand "true" keeps checkout only.
   - type: cron

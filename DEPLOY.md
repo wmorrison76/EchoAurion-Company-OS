@@ -106,8 +106,9 @@ service is live (see **Cron jobs** below).
 | `OPENAI_API_KEY` | Analyst |
 | `ANTHROPIC_API_KEY` | Strategist + Architect |
 | `GOOGLE_AI_API_KEY` | Scout (preferred). Also accepts `GEMINI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` |
-| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain (optional — stays Unavailable until set) |
+| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain — set URL to `https://luccca-web.onrender.com/api/company-os/echo-brain` and KEY to luccca-web `ECHO_BRAIN_SECRET` (or ingest secret). See `docs/CONNECT_PILOT_TO_COMPANY_OS.md` |
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/diagnostics` and `/api/relay/*` (whoami, heartbeat, stream, questions, work) |
+| `AUTO_KNIGHTS_ON_QUESTION` | Default `true` — inbound relay questions auto-run Knights + HelpTicket TEXT |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
 | `KNIGHTS_STANDBY_MODE` | Legacy: `off` \| `draft_only` \| `auto_answer_low_risk`. Elite dial also accepted: `assist` \| `standby` \| `autopilot` |
 | `AUTONOMY_DIAL` | Preferred elite dial when DB unset (`assist` default intent) |
@@ -119,7 +120,7 @@ service is live (see **Cron jobs** below).
 
 **Elite Help Desk:** `/lab/elite` checklist, `/lab/echo-chrome`, constitution, safe tools, eval — see `docs/ELITE_DR_OS.md`.
 
-**Pilot Connection Hub:** see `docs/PILOT_CONNECTION.md` for SSE contract, heartbeat, and standby accuracy rules.
+**Pilot Connection Hub:** see `docs/PILOT_CONNECTION.md` and `docs/CONNECT_PILOT_TO_COMPANY_OS.md` for SSE contract, heartbeat, shared secret, and Chef's Brain URL.  
 After deploy, set `SUPPORT_INGEST_SECRET` on Render before any pilot connects.
 
 **Scout note:** If you set `GEMINI_API_KEY` on Render but not `GOOGLE_AI_API_KEY`,
