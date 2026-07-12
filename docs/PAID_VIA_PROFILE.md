@@ -49,6 +49,7 @@ Linked 1:1 to `WorkRequest`. Cascade delete with the work row.
 | Lab tech intake | `POST /api/lab/echo-chrome/tech` | TEXT ticket + optional Knights + outbox |
 | Lab build + agree | `POST /api/lab/echo-chrome/build` | Role gate → FEATURE + quote + `WorkAgreement` |
 | Lab authorize | `POST /api/lab/echo-chrome/authorize` | Requires agreement; marks `AUTHORIZED` |
+| Production work + agree | `POST /api/relay/work` + `agreement` | Role gate → QUOTED + `WorkAgreement` (`source: relay`) |
 | Production authorize | `POST /api/relay/work/:id/authorize` | BillingContact token **and** agreement |
 
 `clientKey` for lab traffic: `lab-echo-chrome` (visible in Help Desk / Inbox).

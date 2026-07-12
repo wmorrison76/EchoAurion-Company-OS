@@ -71,7 +71,33 @@ Pull approved answers: `GET /api/relay/questions/pull?clientKey=…`
 }
 ```
 
-Customer authorize: `POST /api/relay/work/:id/authorize`  
+### Paid-via-profile (optional agreement)
+
+When the product avatar submits a build request with a signed agreement:
+
+```json
+{
+  "clientKey": "opaque-install-id",
+  "kind": "ADDON",
+  "title": "…",
+  "detail": "…",
+  "tier": "T2",
+  "agreement": {
+    "agreed": true,
+    "typedSignature": "Giovanni Genao",
+    "signerName": "Giovanni Genao",
+    "signerEmail": "gio@example.com",
+    "signerRole": "EXEC"
+  }
+}
+```
+
+- `signerRole` must be **ADMIN**, **DIRECTOR**, or **EXEC** (`ROLE_GATE` otherwise).
+- Typed signature must match `signerName` (case-insensitive trim).
+- Creates `WorkRequest` at **QUOTED** + `WorkAgreement` (`source: relay`).
+- Response: `{ id, status, agreementId, quote }`.
+
+Customer authorize: `POST /api/relay/work/:id/authorize` (still needs BillingContact token **and** agreement)  
 Pull: `GET /api/relay/work/pull?clientKey=…`
 
 ---
