@@ -3,10 +3,11 @@
 #
 # Blueprint notes (Render 2025/2026):
 # - Use `runtime:` (not deprecated `env:`).
-# - Cron startCommands MUST be single-quoted YAML strings. Unquoted
-#   `Authorization: Bearer …` breaks YAML (colon parsed as mapping).
+# - Cron startCommands call scripts/cron-*.mjs (clear errors, no nested quotes).
 # - Prefer Node 18+ fetch over curl (Node images may lack curl).
 # - Secrets are prompted in the dashboard via sync: false — never commit values.
+# - WEB_SERVICE_URL is copied from the web service's RENDER_EXTERNAL_URL.
+# - CRON_SECRET must match on web + every cron service (Manual Sync after set).
 
 services:
   - type: web
@@ -43,17 +44,19 @@ services:
       - key: SUPPORT_INGEST_SECRET
         sync: false
 
-  # Optional crons — single-quoted startCommands (valid YAML). Set WEB_SERVICE_URL
-  # to the web service public URL (e.g. https://echoaurion-company-os.onrender.com).
+  # Optional crons — scripts live in repo; buildCommand "true" keeps checkout only.
   - type: cron
     name: echoaurion-company-os-sync
     runtime: node
     schedule: "0 8 * * *"
     buildCommand: "true"
-    startCommand: 'node -e ''fetch(process.env.WEB_SERVICE_URL+"/api/financial/sync",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'''
+    startCommand: node scripts/cron-financial-sync.mjs
     envVars:
       - key: WEB_SERVICE_URL
-        sync: false
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
       - key: CRON_SECRET
         sync: false
 
@@ -62,10 +65,13 @@ services:
     runtime: node
     schedule: "0 11 * * *"
     buildCommand: "true"
-    startCommand: 'node -e ''fetch(process.env.WEB_SERVICE_URL+"/api/board-room/briefing",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'''
+    startCommand: node scripts/cron-briefing.mjs
     envVars:
       - key: WEB_SERVICE_URL
-        sync: false
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
       - key: CRON_SECRET
         sync: false
 
@@ -75,9 +81,12 @@ services:
     runtime: node
     schedule: "0 * * * *"
     buildCommand: "true"
-    startCommand: 'node -e ''fetch(process.env.WEB_SERVICE_URL+"/api/maintenance/dispatch",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'''
+    startCommand: node scripts/cron-maintenance-dispatch.mjs
     envVars:
       - key: WEB_SERVICE_URL
-        sync: false
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
       - key: CRON_SECRET
         sync: false
