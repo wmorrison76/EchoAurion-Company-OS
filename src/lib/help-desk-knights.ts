@@ -7,6 +7,7 @@ import { answerDraftSystemPrompt } from '@/lib/support-voice'
 import { maybeStandbyAutoApprove } from '@/lib/standby'
 import { ensureTicketFromInbox, toDetail } from '@/lib/help-desk'
 import { raiseAlert } from '@/lib/alerts'
+import { guardCorePaths } from '@/lib/core-path-guard'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -160,6 +161,21 @@ export async function dispatchKnightsOnTicket(
     })
   }
 
+  // Hallucination / core self-harm guard — scan drafts before standby.
+  const coreGuard = guardCorePaths({
+    planText: knightBodies.map((k) => k.body).join('\n'),
+    subject: ticket.subject,
+  })
+  if (coreGuard.needsHumanCoreReview) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: `NEEDS_HUMAN_CORE_REVIEW — ${coreGuard.reason}\nMatched: ${coreGuard.matched.join(', ') || 'warn-list'}\nStandby auto-approve blocked. Dual control required.`,
+      },
+    })
+  }
+
   // Sync primary draft onto linked CustomerQuestion when present.
   const primaryDraft = knightBodies[0]
   if (ticket.customerQuestionId && primaryDraft?.body) {
@@ -177,6 +193,7 @@ export async function dispatchKnightsOnTicket(
     where: { id: ticketId },
     data: {
       status: knightBodies.length > 0 ? 'AWAITING_APPROVAL' : 'OPEN',
+      ...(coreGuard.needsHumanCoreReview ? { needsHumanCoreReview: true } : {}),
     },
     include: {
       messages: { orderBy: { createdAt: 'asc' } },
@@ -188,11 +205,12 @@ export async function dispatchKnightsOnTicket(
   await audit(actor, 'help_desk.knights.dispatch', ticketId, {
     seats: knightBodies.map((k) => k.seat),
     count: knightBodies.length,
+    coreGuard: coreGuard.flag,
   })
 
   let autoApproved = false
   let reason: string | undefined
-  if (updated.status === 'AWAITING_APPROVAL') {
+  if (updated.status === 'AWAITING_APPROVAL' && !coreGuard.needsHumanCoreReview) {
     const standby = await maybeStandbyAutoApprove(ticketId)
     autoApproved = standby.autoApproved
     reason = standby.reason
@@ -214,6 +232,8 @@ export async function dispatchKnightsOnTicket(
         }
       }
     }
+  } else if (coreGuard.needsHumanCoreReview) {
+    reason = 'NEEDS_HUMAN_CORE_REVIEW — standby blocked'
   }
 
   return {

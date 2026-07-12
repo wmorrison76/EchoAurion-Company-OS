@@ -229,6 +229,26 @@ export function HelpDeskConsole() {
     }
   }
 
+  async function promoteScope(scope: 'USER' | 'ACCOUNT' | 'GLOBAL') {
+    if (!selectedId) return
+    setBusy('promote')
+    setError(null)
+    try {
+      const res = await fetch(`/api/help-desk/tickets/${selectedId}/promote-scope`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      })
+      const body = (await res.json()) as APIResponse<HelpTicketDetail>
+      if (!body.success) throw new Error(body.error)
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Promote failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function simulateCustomerChange() {
     setBusy('test-scenario')
     setError(null)
@@ -490,10 +510,30 @@ export function HelpDeskConsole() {
                   <div className="flex flex-wrap gap-1.5">
                     <StatusBadge level={channelLevel(t.channel)} label={t.channel} />
                     <StatusBadge level={statusLevel(t.status)} label={t.status.replace(/_/g, ' ')} />
+                    {t.errorScope && (
+                      <StatusBadge
+                        level={
+                          t.errorScope === 'GLOBAL'
+                            ? 'error'
+                            : t.errorScope === 'ACCOUNT'
+                              ? 'warn'
+                              : 'unknown'
+                        }
+                        label={`${t.errorScope === 'GLOBAL' ? '⬤' : t.errorScope === 'ACCOUNT' ? '◆' : '○'} ${t.errorScope}`}
+                      />
+                    )}
+                    {t.errorCategory && (
+                      <StatusBadge level="unknown" label={t.errorCategory} />
+                    )}
+                    {t.needsHumanCoreReview && (
+                      <StatusBadge level="error" label="NEEDS HUMAN CORE" />
+                    )}
                   </div>
                   <p className="mt-2 line-clamp-2 text-sm font-medium text-white">{t.subject}</p>
                   <p className="mt-1 font-mono text-[10px] text-[#5a5a78]">
-                    {t.messageCount} msg · {ago(t.updatedAt)}
+                    {t.messageCount} msg
+                    {t.occurrenceCount > 1 ? ` · ×${t.occurrenceCount}` : ''}
+                    {t.productLine ? ` · ${t.productLine}` : ''} · {ago(t.updatedAt)}
                   </p>
                 </button>
               </li>
@@ -533,6 +573,24 @@ export function HelpDeskConsole() {
                     label={detail.status.replace(/_/g, ' ')}
                   />
                   <StatusBadge level="unknown" label={`Priority ${detail.priority}`} />
+                  {detail.errorScope && (
+                    <StatusBadge
+                      level={
+                        detail.errorScope === 'GLOBAL'
+                          ? 'error'
+                          : detail.errorScope === 'ACCOUNT'
+                            ? 'warn'
+                            : 'unknown'
+                      }
+                      label={`Scope ${detail.errorScope}`}
+                    />
+                  )}
+                  {detail.errorCategory && (
+                    <StatusBadge level="unknown" label={`Cat ${detail.errorCategory}`} />
+                  )}
+                  {detail.needsHumanCoreReview && (
+                    <StatusBadge level="error" label="NEEDS_HUMAN_CORE_REVIEW" />
+                  )}
                 </div>
                 <h2 className="mt-2 text-base font-semibold tracking-tight text-white">
                   {detail.subject}
@@ -541,6 +599,39 @@ export function HelpDeskConsole() {
                   {detail.requesterName ?? '—'} · {detail.clientKey ?? 'no client key'} ·{' '}
                   {ago(detail.createdAt)}
                 </p>
+                {(detail.fingerprint || detail.affectedClientKeys.length > 0) && (
+                  <div className="mt-2 rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-2 text-[11px] text-[#a0a0b8]">
+                    {detail.productLine && (
+                      <p>
+                        <span className="text-[#D4AF37]">Product</span> · {detail.productLine}
+                        {detail.moduleHint ? ` / ${detail.moduleHint}` : ''}
+                      </p>
+                    )}
+                    {detail.fingerprint && (
+                      <p className="mt-0.5 font-mono text-[10px] text-[#5a5a78]">
+                        fp {detail.fingerprint.slice(0, 16)}… · ×{detail.occurrenceCount}
+                        {detail.lastOccurredAt ? ` · last ${ago(detail.lastOccurredAt)}` : ''}
+                      </p>
+                    )}
+                    {detail.affectedClientKeys.length > 0 && (
+                      <p className="mt-1">
+                        <span className="text-[#D4AF37]">Affected clients</span> ·{' '}
+                        {detail.affectedClientKeys.join(', ')}
+                      </p>
+                    )}
+                    {detail.channel === 'SYSTEM' && detail.errorScope !== 'GLOBAL' && (
+                      <button
+                        type="button"
+                        disabled={!!busy}
+                        className="mt-2 rounded border border-[#ef4444]/50 px-2 py-1 text-[10px] text-[#ef4444] transition-colors hover:bg-[#1a1a26] disabled:opacity-40"
+                        aria-label="Promote error scope to GLOBAL"
+                        onClick={() => void promoteScope('GLOBAL')}
+                      >
+                        Promote to GLOBAL
+                      </button>
+                    )}
+                  </div>
+                )}
                 {policyVerdict && (
                   <div className="mt-3">
                     <PolicyRecommendationBanner verdict={policyVerdict} />

@@ -685,6 +685,22 @@ model HelpTicket {
   updatedAt          DateTime          @updatedAt
   resolvedAt         DateTime?
 
+  // ── Error capture / blast-radius (ZARO → Help Desk) ──────────────────────
+  // See docs/ERROR_CAPTURE_AND_SCOPE.md. Fingerprint dedupes within 1h.
+  errorScope         ErrorBlastScope?
+  errorCategory      ErrorCategory?
+  productLine        String? // echoaurion | company-os | aurion-index | …
+  fingerprint        String?
+  occurrenceCount    Int              @default(1)
+  affectedClientKeys String[]         @default([])
+  lastOccurredAt     DateTime?
+  notifyWhenFixed    Boolean          @default(true)
+  sessionHint        String? // opaque hash — never PII
+  errorClass         String?
+  moduleHint         String?
+  /// When Architect/Knights propose core-path changes → NEEDS_HUMAN_CORE_REVIEW
+  needsHumanCoreReview Boolean        @default(false)
+
   messages   HelpMessage[]
   voiceNotes HelpVoiceNote[]
   timeline   HelpTimelineEvent[]
@@ -694,7 +710,53 @@ model HelpTicket {
   @@index([clientKey])
   @@index([customerQuestionId])
   @@index([workRequestId])
+  @@index([fingerprint, status])
+  @@index([errorScope, status])
+  @@index([errorCategory, productLine])
   @@map("help_tickets")
+}
+
+/// Blast radius for auto-captured runtime errors (USER / ACCOUNT / GLOBAL).
+enum ErrorBlastScope {
+  USER
+  ACCOUNT
+  GLOBAL
+}
+
+/// Taxonomy for fleet-wide learning (aggregated, no PII).
+enum ErrorCategory {
+  UI
+  API
+  AUTH
+  DATA
+  INTEGRATION
+  INFRA
+  UNKNOWN
+}
+
+/// Aggregated error patterns across sold systems — trend analysis only, no PII.
+model ErrorPattern {
+  id              String          @id @default(cuid())
+  fingerprint     String
+  errorCategory   ErrorCategory
+  errorScope      ErrorBlastScope
+  productLine     String // echoaurion | company-os | …
+  moduleHint      String?
+  errorClass      String?
+  sampleMessage   String // redacted / truncated
+  hitCount        Int             @default(1)
+  distinctClients Int             @default(1)
+  firstSeenAt     DateTime        @default(now())
+  lastSeenAt      DateTime        @default(now())
+  lastTicketId    String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([fingerprint, productLine])
+  @@index([errorCategory, productLine, lastSeenAt])
+  @@index([errorScope, lastSeenAt])
+  @@index([hitCount])
+  @@map("error_patterns")
 }
 
 enum HelpTicketChannel {

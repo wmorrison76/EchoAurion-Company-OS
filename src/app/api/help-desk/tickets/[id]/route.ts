@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
+import { notifyErrorFixed } from '@/lib/error-notify'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail, HelpTicketStatus } from '@/types/help-desk'
 
@@ -76,6 +77,11 @@ export async function PATCH(
       resolvedAt = null
     }
 
+    const becomingResolved =
+      (body.status === 'RESOLVED' || body.status === 'CLOSED') &&
+      existing.status !== 'RESOLVED' &&
+      existing.status !== 'CLOSED'
+
     const ticket = await db.helpTicket.update({
       where: { id },
       data: {
@@ -90,14 +96,24 @@ export async function PATCH(
       include: DETAIL_INCLUDE,
     })
 
+    if (becomingResolved) {
+      await notifyErrorFixed(id).catch((err) => {
+        console.error('[help-desk] notifyErrorFixed failed', err)
+      })
+    }
+
     await audit('william_morrison', 'help_desk.ticket.update', id, {
       status: body.status,
       priority: body.priority,
     })
 
+    const refreshed = becomingResolved
+      ? await db.helpTicket.findUnique({ where: { id }, include: DETAIL_INCLUDE })
+      : ticket
+
     return Response.json({
       success: true,
-      data: toDetail(ticket),
+      data: toDetail(refreshed ?? ticket),
     } satisfies APIResponse<HelpTicketDetail>)
   } catch (error) {
     return Response.json(

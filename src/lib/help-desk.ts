@@ -22,6 +22,18 @@ type TicketRow = {
   createdAt: Date
   updatedAt: Date
   resolvedAt: Date | null
+  errorScope?: string | null
+  errorCategory?: string | null
+  productLine?: string | null
+  fingerprint?: string | null
+  occurrenceCount?: number
+  affectedClientKeys?: string[]
+  lastOccurredAt?: Date | null
+  notifyWhenFixed?: boolean
+  sessionHint?: string | null
+  errorClass?: string | null
+  moduleHint?: string | null
+  needsHumanCoreReview?: boolean
   _count?: { messages: number }
   messages?: Array<{
     id: string
@@ -86,6 +98,13 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     updatedAt: t.updatedAt.toISOString(),
     createdAt: t.createdAt.toISOString(),
     resolvedAt: t.resolvedAt?.toISOString() ?? null,
+    errorScope: (t.errorScope as HelpTicketListItem['errorScope']) ?? null,
+    errorCategory: (t.errorCategory as HelpTicketListItem['errorCategory']) ?? null,
+    productLine: t.productLine ?? null,
+    fingerprint: t.fingerprint ?? null,
+    occurrenceCount: t.occurrenceCount ?? 1,
+    affectedClientKeys: t.affectedClientKeys ?? [],
+    needsHumanCoreReview: t.needsHumanCoreReview ?? false,
   }
 }
 
@@ -102,6 +121,11 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
     ...toListItem(t),
     clientId: t.clientId,
     boardSessionId: t.boardSessionId,
+    lastOccurredAt: t.lastOccurredAt?.toISOString() ?? null,
+    notifyWhenFixed: t.notifyWhenFixed ?? true,
+    sessionHint: t.sessionHint ?? null,
+    errorClass: t.errorClass ?? null,
+    moduleHint: t.moduleHint ?? null,
     messages: (t.messages ?? []).map(toMessageView),
     voiceNotes: (t.voiceNotes ?? []).map(toVoiceView),
     policy: {

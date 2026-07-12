@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { draftPlan } from '@/lib/support-relay'
 import { checkConstitution } from '@/lib/constitution'
+import { guardCorePaths } from '@/lib/core-path-guard'
 import type { WorkKind } from '@/types/work'
 
 export interface PrPlan {
@@ -55,6 +56,11 @@ export async function createDraftPrPlan(workRequestId: string): Promise<PrPlan> 
   const branchName = `build/${slugify(work.title) || 'change'}-${workRequestId.slice(-6)}`
   const prTitle = `[Build] ${work.title}`.slice(0, 120)
   const fileTouchList = extractFileTouches(planText)
+  const coreGuard = guardCorePaths({
+    planText,
+    fileTouchList,
+    subject: work.title,
+  })
 
   const prBody = [
     `## Summary`,
@@ -81,8 +87,20 @@ export async function createDraftPrPlan(workRequestId: string): Promise<PrPlan> 
     `- **Draft PR only** — do not merge from agents or autopilot.`,
     `- Merge is human/CI after review.`,
     `- Execute on the property still requires dual control + rollbackRef.`,
+    coreGuard.needsHumanCoreReview
+      ? `- **NEEDS_HUMAN_CORE_REVIEW** — ${coreGuard.reason}`
+      : `- Core-path guard: clear`,
     ``,
   ].join('\n')
+
+  if (coreGuard.blocked) {
+    // Draft PR still allowed — constitution blocks modify_core / merge / auto-execute.
+    // Flag ticket for dual human review; never silent-merge.
+    checkConstitution('create_draft_pr', {
+      planText,
+      fileTouchList,
+    })
+  }
 
   const plan: PrPlan = {
     branchName,
@@ -98,6 +116,11 @@ export async function createDraftPrPlan(workRequestId: string): Promise<PrPlan> 
   const context = {
     ...((work.context as Record<string, unknown> | null) ?? {}),
     prPlan: plan,
+    coreGuard: {
+      flag: coreGuard.flag,
+      matched: coreGuard.matched,
+      reason: coreGuard.reason,
+    },
   }
 
   await db.workRequest.update({
@@ -106,13 +129,44 @@ export async function createDraftPrPlan(workRequestId: string): Promise<PrPlan> 
       draftPlan: planText,
       draftSeat: seat ?? work.draftSeat,
       context: context as unknown as Prisma.InputJsonValue,
+      ...(coreGuard.needsHumanCoreReview
+        ? {
+            // Keep work in human review lane — never auto-execute core touches.
+            status: work.status === 'EXECUTED' ? work.status : work.status,
+          }
+        : {}),
     },
   })
+
+  // Flag any linked HelpTicket for dual-control core review.
+  if (coreGuard.needsHumanCoreReview) {
+    await db.helpTicket.updateMany({
+      where: { workRequestId },
+      data: {
+        needsHumanCoreReview: true,
+        status: 'AWAITING_APPROVAL',
+      },
+    })
+    const linked = await db.helpTicket.findMany({
+      where: { workRequestId },
+      select: { id: true },
+    })
+    for (const t of linked) {
+      await db.helpMessage.create({
+        data: {
+          ticketId: t.id,
+          role: 'SYSTEM',
+          body: `NEEDS_HUMAN_CORE_REVIEW — ${coreGuard.reason}\nMatched: ${coreGuard.matched.join(', ') || 'warn-list'}`,
+        },
+      })
+    }
+  }
 
   await audit('william_morrison', 'work.request.pr_plan', workRequestId, {
     branchName,
     prTitle,
     fileCount: fileTouchList.length,
+    coreGuard: coreGuard.flag,
   })
 
   return plan

@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
+import { notifyErrorFixed } from '@/lib/error-notify'
 import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -115,11 +116,24 @@ export async function POST(
         },
       })
 
+      await notifyErrorFixed(id).catch((err) => {
+        console.error('[help-desk] notifyErrorFixed failed', err)
+      })
+
       await audit('william_morrison', 'help_desk.ticket.approve', id, { mode: 'reply' })
+
+      const refreshed = await db.helpTicket.findUnique({
+        where: { id },
+        include: {
+          messages: { orderBy: { createdAt: 'asc' } },
+          voiceNotes: { orderBy: { createdAt: 'asc' } },
+          _count: { select: { messages: true } },
+        },
+      })
 
       return Response.json({
         success: true,
-        data: toDetail(updated),
+        data: toDetail(refreshed ?? updated),
       } satisfies APIResponse<HelpTicketDetail>)
     }
 

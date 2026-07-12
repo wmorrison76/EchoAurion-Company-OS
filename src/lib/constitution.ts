@@ -6,7 +6,7 @@
  * checkConstitution before mutating production-affecting state.
  */
 
-export const CONSTITUTION_VERSION = '1.0.0'
+export const CONSTITUTION_VERSION = '1.1.0'
 
 export const CONSTITUTION_RULES = [
   {
@@ -25,7 +25,7 @@ export const CONSTITUTION_RULES = [
     id: 'pr_only_code',
     title: 'PR-only code changes',
     summary:
-      'Architect / Build work produces a draft PR plan (and optional draft GitHub PR). Merge is always human/CI — never autopilot.',
+      'Architect / Build work produces a draft PR plan (and optional draft GitHub PR). Merge is always human/CI — never autopilot. GLOBAL error fixes are draft-PR only.',
   },
   {
     id: 'audit_actors',
@@ -57,6 +57,12 @@ export const CONSTITUTION_RULES = [
     summary:
       'Autonomy dial autopilot may auto-answer low-risk TEXT and emit stub directives. It cannot merge PRs, execute paid work, or auto-approve T3+ quotes.',
   },
+  {
+    id: 'no_core_self_harm',
+    title: 'No core self-harm / hallucination writes',
+    summary:
+      'Knights/Architect must NOT auto-modify Company OS core auth, billing, relay secrets, middleware, or destructive prisma. Deny-list hits force AWAITING_HUMAN + NEEDS_HUMAN_CORE_REVIEW. Dual control required. Never auto-execute schema drops / secret rotation / auth removal.',
+  },
 ] as const
 
 export type ConstitutionRuleId = (typeof CONSTITUTION_RULES)[number]['id']
@@ -71,6 +77,9 @@ export type ConstitutionAction =
   | 'remote_desktop'
   | 'quote_t3_plus'
   | 'break_glass'
+  | 'modify_core'
+  | 'destructive_migrate'
+  | 'rotate_secrets'
 
 export interface ConstitutionCheck {
   ok: boolean
@@ -101,7 +110,13 @@ export function checkNoPii(payload: unknown): ConstitutionCheck {
  */
 export function checkConstitution(
   action: ConstitutionAction,
-  ctx?: { autonomyDial?: string; tier?: string; dryRun?: boolean }
+  ctx?: {
+    autonomyDial?: string
+    tier?: string
+    dryRun?: boolean
+    planText?: string
+    fileTouchList?: string[]
+  }
 ): ConstitutionCheck {
   switch (action) {
     case 'remote_desktop':
@@ -122,6 +137,15 @@ export function checkConstitution(
         ruleId: 'pr_only_code',
         reason: 'Merge is human/CI only — never agent or autopilot',
       }
+    case 'modify_core':
+    case 'destructive_migrate':
+    case 'rotate_secrets':
+      return {
+        ok: false,
+        ruleId: 'no_core_self_harm',
+        reason:
+          'Core auth/billing/relay secrets/destructive migrate/secret rotation require dual human control — agents may only draft',
+      }
     case 'quote_t3_plus':
       if (ctx?.autonomyDial === 'autopilot') {
         return {
@@ -131,12 +155,23 @@ export function checkConstitution(
         }
       }
       return { ok: true, ruleId: null, reason: 'T3+ allowed with human dual control' }
-    case 'create_draft_pr':
+    case 'create_draft_pr': {
+      // Soft-check: if plan touches core, still allow draft but caller must flag NEEDS_HUMAN_CORE_REVIEW
+      if (ctx?.planText || ctx?.fileTouchList?.length) {
+        // Import deferred via dynamic pattern avoided — callers use guardCorePaths.
+        return {
+          ok: true,
+          ruleId: 'pr_only_code',
+          reason:
+            'Draft PR only — merge remains human/CI. Run guardCorePaths; core hits → AWAITING_HUMAN',
+        }
+      }
       return {
         ok: true,
         ruleId: 'pr_only_code',
         reason: 'Draft PR only — merge remains human/CI',
       }
+    }
     case 'invoke_tool':
       if (ctx?.dryRun === false && ctx?.autonomyDial === 'assist') {
         return {

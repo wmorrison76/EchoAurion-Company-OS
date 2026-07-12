@@ -9,6 +9,16 @@ export type HelpTicketStatus =
 export type HelpMessageRole = 'CUSTOMER' | 'ADMIN' | 'KNIGHT' | 'SYSTEM'
 export type HelpVoiceNoteSource = 'UPLOAD' | 'DICTATION' | 'PASTE'
 export type HelpTicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+/** Blast radius for auto-captured SYSTEM errors. */
+export type ErrorBlastScope = 'USER' | 'ACCOUNT' | 'GLOBAL'
+export type ErrorCategory =
+  | 'UI'
+  | 'API'
+  | 'AUTH'
+  | 'DATA'
+  | 'INTEGRATION'
+  | 'INFRA'
+  | 'UNKNOWN'
 
 export interface HelpMessageView {
   id: string
@@ -40,11 +50,23 @@ export interface HelpTicketListItem {
   updatedAt: string
   createdAt: string
   resolvedAt: string | null
+  errorScope: ErrorBlastScope | null
+  errorCategory: ErrorCategory | null
+  productLine: string | null
+  fingerprint: string | null
+  occurrenceCount: number
+  affectedClientKeys: string[]
+  needsHumanCoreReview: boolean
 }
 
 export interface HelpTicketDetail extends HelpTicketListItem {
   clientId: string | null
   boardSessionId: string | null
+  lastOccurredAt: string | null
+  notifyWhenFixed: boolean
+  sessionHint: string | null
+  errorClass: string | null
+  moduleHint: string | null
   messages: HelpMessageView[]
   voiceNotes: HelpVoiceNoteView[]
   policy: {
