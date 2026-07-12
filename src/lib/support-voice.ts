@@ -1,9 +1,34 @@
 /**
- * Shared human-response style guide for Knights drafts (Ask-the-Board answers
- * and change-request plans). Injected into draft system prompts so replies
- * sound like a hospitality operator — not a chatbot.
+ * Support voice TTS framework — separate from guest / Chef Echo voices.
+ * Feature-flagged; no-op when unset. See docs/SUPPORT_VOICE.md.
  */
 
+export type SupportVoiceProvider = 'elevenlabs' | 'none'
+
+export interface SupportVoiceConfig {
+  provider: SupportVoiceProvider
+  voiceId: string | null
+  enabled: boolean
+  /** Never guest-facing by default. */
+  guestFacing: false
+}
+
+export interface SynthesizeInput {
+  text: string
+  /** Optional override; defaults to SUPPORT_VOICE_ID. */
+  voiceId?: string
+}
+
+export interface SynthesizeResult {
+  ok: boolean
+  /** audio/mpeg bytes when provider succeeds; null on no-op/dev. */
+  audio: Buffer | null
+  contentType: string | null
+  skipped: boolean
+  reason?: string
+}
+
+/** Text tone guide for Knights drafts (existing). */
 export const SUPPORT_VOICE_GUIDE = `
 Voice (hospitality operator — human, not robotic):
 - Write like a calm, capable colleague on the property floor: warm, clear, respectful of the guest and the team.
@@ -38,4 +63,111 @@ export function planDraftSystemPrompt(): string {
     'estimated senior-engineer hours, (3) risks and rollback approach, (4) anything that needs ' +
     'clarification. Do not write code or apply changes. Never reveal internal system or product code names.'
   )
+}
+
+export function getSupportVoiceConfig(): SupportVoiceConfig {
+  const providerRaw = (process.env.SUPPORT_VOICE_PROVIDER ?? 'none').trim().toLowerCase()
+  const provider: SupportVoiceProvider =
+    providerRaw === 'elevenlabs' ? 'elevenlabs' : 'none'
+  const voiceId = process.env.SUPPORT_VOICE_ID?.trim() || null
+  const flagOn = process.env.SUPPORT_VOICE_TTS_ENABLED === 'true'
+  const hasKey = Boolean(process.env.ELEVENLABS_API_KEY?.trim() || process.env.SUPPORT_VOICE_API_KEY?.trim())
+  return {
+    provider,
+    voiceId,
+    enabled: flagOn && provider === 'elevenlabs' && Boolean(voiceId) && hasKey,
+    guestFacing: false,
+  }
+}
+
+/**
+ * Synthesize support TTS. No-op / skipped when flag off or keys missing.
+ * Does not call ElevenLabs unless fully configured — safe to wire on notify path.
+ */
+export async function synthesizeSupportVoice(
+  input: SynthesizeInput
+): Promise<SynthesizeResult> {
+  const cfg = getSupportVoiceConfig()
+  if (!cfg.enabled) {
+    return {
+      ok: true,
+      audio: null,
+      contentType: null,
+      skipped: true,
+      reason: 'SUPPORT_VOICE_TTS_ENABLED not fully configured (provider/voice/key)',
+    }
+  }
+
+  const text = input.text.trim().slice(0, 2500)
+  if (!text) {
+    return { ok: false, audio: null, contentType: null, skipped: true, reason: 'empty text' }
+  }
+
+  const apiKey =
+    process.env.SUPPORT_VOICE_API_KEY?.trim() || process.env.ELEVENLABS_API_KEY?.trim()
+  const voiceId = input.voiceId?.trim() || cfg.voiceId
+  if (!apiKey || !voiceId) {
+    return {
+      ok: true,
+      audio: null,
+      contentType: null,
+      skipped: true,
+      reason: 'missing API key or voice id',
+    }
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'audio/mpeg',
+          'xi-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: process.env.SUPPORT_VOICE_MODEL_ID?.trim() || 'eleven_monolingual_v1',
+        }),
+      }
+    )
+    if (!res.ok) {
+      return {
+        ok: false,
+        audio: null,
+        contentType: null,
+        skipped: false,
+        reason: `ElevenLabs HTTP ${res.status}`,
+      }
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    return { ok: true, audio: buf, contentType: 'audio/mpeg', skipped: false }
+  } catch (err) {
+    return {
+      ok: false,
+      audio: null,
+      contentType: null,
+      skipped: false,
+      reason: err instanceof Error ? err.message : 'synthesize failed',
+    }
+  }
+}
+
+/**
+ * Hook from Help Desk send-to-client / notify path.
+ * Fire-and-forget safe — never throws; never blocks reply delivery.
+ */
+export async function maybeSynthesizeSupportReply(text: string): Promise<void> {
+  try {
+    const result = await synthesizeSupportVoice({ text })
+    if (!result.skipped && result.ok && result.audio) {
+      // Future: attach audio URL to outbox / voice note. Framework only for now.
+      console.info(
+        `[support-voice] synthesized ${result.audio.length} bytes (not attached yet)`
+      )
+    }
+  } catch (err) {
+    console.warn('[support-voice] hook failed (non-fatal)', err)
+  }
 }

@@ -13,6 +13,8 @@ type TicketRow = {
   status: string
   priority: string
   subject: string
+  intakeGate?: string | null
+  intakeChannel?: string | null
   clientKey: string | null
   clientId: string | null
   requesterName: string | null
@@ -96,6 +98,8 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     status: t.status as HelpTicketListItem['status'],
     priority: t.priority,
     subject: t.subject,
+    intakeGate: (t.intakeGate as HelpTicketListItem['intakeGate']) ?? null,
+    intakeChannel: (t.intakeChannel as HelpTicketListItem['intakeChannel']) ?? 'IN_APP',
     clientKey: t.clientKey,
     requesterName: t.requesterName,
     workRequestId: t.workRequestId,
@@ -120,7 +124,11 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
 
 export function toDetail(t: TicketRow): HelpTicketDetail {
   const kind =
-    t.channel === 'FEATURE' ? 'ADDON' : t.channel === 'SYSTEM' ? 'FIX' : 'QUESTION'
+    t.channel === 'FEATURE' || t.intakeGate === 'BUILD'
+      ? 'ADDON'
+      : t.channel === 'SYSTEM'
+        ? 'FIX'
+        : 'QUESTION'
   const verdict = classifySupportRequest({
     kind,
     title: t.subject,
@@ -145,7 +153,14 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
       recommendation: verdict.recommendation,
       shape: verdict.shape,
       label: verdict.label,
-      operatorHint: verdict.operatorHint,
+      operatorHint:
+        t.intakeGate === 'BUILD'
+          ? 'BUILD gate → paid WorkAgreement path. ' + verdict.operatorHint
+          : t.intakeGate === 'BILLING'
+            ? 'BILLING gate → billing policy (no code change). ' + verdict.operatorHint
+            : t.intakeGate === 'TECH'
+              ? 'TECH gate → Knights / system. ' + verdict.operatorHint
+              : verdict.operatorHint,
       suggestedTier: verdict.suggestedTier,
       reason: verdict.reason,
     },
@@ -171,9 +186,12 @@ export async function ensureTicketFromInbox(input: {
     const q = await db.customerQuestion.findUnique({ where: { id: input.id } })
     if (!q) throw new Error('Question not found')
 
+    const intakeGate = q.intakeGate ?? null
     const ticket = await db.helpTicket.create({
       data: {
-        channel: 'TEXT',
+        channel: intakeGate === 'BUILD' ? 'FEATURE' : 'TEXT',
+        intakeGate: intakeGate ?? undefined,
+        intakeChannel: 'IN_APP',
         status: 'OPEN',
         subject: q.question.slice(0, 120),
         clientKey: q.clientKey,

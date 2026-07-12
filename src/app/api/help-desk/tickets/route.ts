@@ -21,7 +21,8 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const url = new URL(req.url)
-    const filter = url.searchParams.get('filter') // open | voice | feature | awaiting | all
+    const filter = url.searchParams.get('filter') // open | voice | feature | awaiting | all | gate:TECH
+    const gateFilter = url.searchParams.get('gate') // TECH | BILLING | BUILD | OTHER
     const openStatuses: HelpTicketStatus[] = [
       'OPEN',
       'WAITING',
@@ -40,7 +41,13 @@ export async function GET(req: Request): Promise<Response> {
               : { status: { in: openStatuses } }
 
     const tickets = await db.helpTicket.findMany({
-      where,
+      where: {
+        ...where,
+        ...(gateFilter &&
+        ['TECH', 'BILLING', 'BUILD', 'OTHER'].includes(gateFilter)
+          ? { intakeGate: gateFilter as 'TECH' | 'BILLING' | 'BUILD' | 'OTHER' }
+          : {}),
+      },
       orderBy: { updatedAt: 'desc' },
       take: 80,
       include: { _count: { select: { messages: true } } },

@@ -22,9 +22,20 @@ import type {
   HelpTicketDetail,
   HelpTicketListItem,
   HelpVoiceNoteSource,
+  IntakeGate,
 } from '@/types/help-desk'
 
 type FilterKey = 'open' | 'voice' | 'feature' | 'awaiting' | 'all'
+
+const GATE_BADGE: Record<
+  IntakeGate,
+  { level: 'ok' | 'warn' | 'error' | 'unknown'; label: string }
+> = {
+  TECH: { level: 'ok', label: '◆ Tech' },
+  BILLING: { level: 'warn', label: '● Billing' },
+  BUILD: { level: 'error', label: '■ Build' },
+  OTHER: { level: 'unknown', label: '○ Other' },
+}
 
 async function jsonFetcher<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: 'no-store' })
@@ -68,6 +79,7 @@ export function HelpDeskConsole() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [filter, setFilter] = useState<FilterKey>('open')
+  const [gateFilter, setGateFilter] = useState<IntakeGate | 'ALL'>('ALL')
   const [selectedId, setSelectedId] = useState<string | null>(
     searchParams.get('ticket')
   )
@@ -80,7 +92,9 @@ export function HelpDeskConsole() {
   const [scenario, setScenario] = useState<TestScenarioState | null>(null)
   const [, startTransition] = useTransition()
 
-  const listKey = `/api/help-desk/tickets?filter=${filter}`
+  const listKey = `/api/help-desk/tickets?filter=${filter}${
+    gateFilter !== 'ALL' ? `&gate=${gateFilter}` : ''
+  }`
   const { data: tickets, error: listError, mutate: mutateList, isLoading } = useSWR(
     listKey,
     jsonFetcher<HelpTicketListItem[]>,
@@ -355,6 +369,14 @@ export function HelpDeskConsole() {
     { key: 'all', label: 'All' },
   ]
 
+  const gateFilters: { key: IntakeGate | 'ALL'; label: string }[] = [
+    { key: 'ALL', label: 'All gates' },
+    { key: 'TECH', label: '◆ Tech' },
+    { key: 'BILLING', label: '● Billing' },
+    { key: 'BUILD', label: '■ Build' },
+    { key: 'OTHER', label: '○ Other' },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
       <LabInstallLinks />
@@ -527,6 +549,24 @@ export function HelpDeskConsole() {
               </button>
             ))}
           </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Intake gate filter">
+            {gateFilters.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                onClick={() => setGateFilter(g.key)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors duration-150 ${
+                  gateFilter === g.key
+                    ? 'border-cyan-400 text-cyan-300'
+                    : 'border-[#2a2a3f] text-[#5a5a78] hover:text-[#a0a0b8]'
+                }`}
+                aria-label={`Gate filter ${g.label}`}
+                aria-pressed={gateFilter === g.key}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
 
           {listError && (
             <p className="text-xs text-[#a0a0b8]">
@@ -558,6 +598,12 @@ export function HelpDeskConsole() {
                 >
                   <div className="flex flex-wrap gap-1.5">
                     <StatusBadge level={channelLevel(t.channel)} label={t.channel} />
+                    {t.intakeGate && (
+                      <StatusBadge
+                        level={GATE_BADGE[t.intakeGate].level}
+                        label={GATE_BADGE[t.intakeGate].label}
+                      />
+                    )}
                     <StatusBadge level={statusLevel(t.status)} label={t.status.replace(/_/g, ' ')} />
                     {t.errorScope && (
                       <StatusBadge
@@ -637,6 +683,12 @@ export function HelpDeskConsole() {
                     level={channelLevel(detail.channel)}
                     label={detail.channel}
                   />
+                  {detail.intakeGate && (
+                    <StatusBadge
+                      level={GATE_BADGE[detail.intakeGate].level}
+                      label={GATE_BADGE[detail.intakeGate].label}
+                    />
+                  )}
                   <StatusBadge
                     level={statusLevel(detail.status)}
                     label={detail.status.replace(/_/g, ' ')}

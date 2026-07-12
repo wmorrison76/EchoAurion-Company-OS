@@ -15,6 +15,7 @@ import { PilotConnectionPanel } from './PilotConnectionPanel'
 import { AuditTrailPanel } from './AuditTrailPanel'
 import { ContextualHelpWidget } from './ContextualHelpWidget'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
+import { SupportReliabilityPanel } from './SupportReliabilityPanel'
 
 export function DrOsDashboard() {
   const router = useRouter()
@@ -75,6 +76,8 @@ export function DrOsDashboard() {
       <ContextualHelpWidget />
 
       <LabInstallLinks />
+
+      <SupportReliabilityPanel />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SystemStatusPanel status={status.data} />

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { FleetGraphCanvas, HC, isBottleneck } from '@/components/fleet-nexus/FleetGraphCanvas'
+import { CustomerCostTable } from '@/components/fleet-nexus/CustomerCostTable'
 import { isUnauthorized } from '@/lib/fetchers'
 import type { APIResponse } from '@/types'
 import type {
@@ -275,6 +276,8 @@ export function FleetNexusViewer() {
           )}
         </aside>
       </div>
+
+      <CustomerCostTable />
     </div>
   )
 }

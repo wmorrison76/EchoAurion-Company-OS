@@ -335,11 +335,28 @@ export async function processInboundQuestion(
   const detail = await ensureTicketFromInbox({ kind: 'question', id: questionId })
   const ticketId = detail.id
 
-  if (!shouldAutoKnightsOnQuestion()) {
+  const gateBlocksKnights =
+    detail.intakeGate === 'BILLING' || detail.intakeGate === 'BUILD'
+
+  if (!shouldAutoKnightsOnQuestion() || gateBlocksKnights) {
+    if (gateBlocksKnights) {
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body:
+            detail.intakeGate === 'BUILD'
+              ? 'BUILD gate — paid WorkAgreement path. Auto-Knights skipped; quote / agreement required.'
+              : 'BILLING gate — billing policy path. Auto-Knights skipped.',
+        },
+      })
+    }
     await raiseAlert({
       kind: 'question',
       severity: 'WARN',
-      title: 'New customer question (no auto-Knights)',
+      title: gateBlocksKnights
+        ? `New ${detail.intakeGate} question (no auto-Knights)`
+        : 'New customer question (no auto-Knights)',
       body: detail.subject.slice(0, 140),
       entityRef: ticketId,
       url: `/help-desk?ticket=${ticketId}`,

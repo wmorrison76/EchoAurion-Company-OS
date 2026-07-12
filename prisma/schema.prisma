@@ -370,11 +370,17 @@ model SupportClient {
   lastHeartbeatAt   DateTime? // canonical pilot heartbeat (diagnostics or /api/relay/heartbeat)
   lastHealth        String? // GREEN | AMBER | RED | UNKNOWN from last heartbeat
   lastStreamAt      DateTime? // last successful SSE connect / event delivery
+  /// Optional per-install secret: bcrypt/sha256 hash. When set, relay Bearer must match
+  /// this client instead of (or in addition to) shared SUPPORT_INGEST_SECRET.
+  /// Prefer hash verify — never store plaintext. Shared secret remains fallback until all
+  /// installs migrate. See docs/CUSTOMER_AI_COST.md / OPEN_OPS_CHECKLIST.md.
+  ingestSecretHash  String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   snapshots DiagnosticSnapshot[]
   sessions  SupportSession[]
+  costSnapshots CustomerCostSnapshot[]
 
   @@map("support_clients")
 }
@@ -445,6 +451,8 @@ model CustomerQuestion {
   clientKey       String // opaque deployment id — never reveals the product name
   question        String
   context         Json? // optional structured context from the deployment
+  /// Intake taxonomy from Help Desk gate step (TECH | BILLING | BUILD | OTHER).
+  intakeGate      IntakeGate?
   status          QuestionStatus @default(NEW)
   draftSeat       String? // which AI seat produced the draft
   draftAnswer     String?
@@ -675,6 +683,10 @@ model HelpTicket {
   status             HelpTicketStatus  @default(OPEN)
   priority           String            @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
   subject            String
+  /// Gate taxonomy (in-app first; phone IVR later). Maps to free vs paid path.
+  intakeGate         IntakeGate?
+  /// How the request arrived (extensible). Distinct from HelpTicketChannel (TEXT/VOICE/…).
+  intakeChannel      IntakeChannel     @default(IN_APP)
   clientKey          String?
   clientId           String?
   requesterName      String?
@@ -719,6 +731,8 @@ model HelpTicket {
 
   @@index([status, updatedAt])
   @@index([channel, status])
+  @@index([intakeGate, status])
+  @@index([intakeChannel, status])
   @@index([clientKey])
   @@index([customerQuestionId])
   @@index([workRequestId])
@@ -727,6 +741,21 @@ model HelpTicket {
   @@index([errorScope, status])
   @@index([errorCategory, productLine])
   @@map("help_tickets")
+}
+
+/// In-app / IVR intake taxonomy — free (TECH/BILLING/OTHER) vs paid (BUILD).
+enum IntakeGate {
+  TECH
+  BILLING
+  BUILD
+  OTHER
+}
+
+/// Arrival channel for support (extensible). Not the same as HelpTicketChannel.
+enum IntakeChannel {
+  IN_APP
+  VOICE
+  PHONE_IVR
 }
 
 /// Blast radius for auto-captured runtime errors.
@@ -1053,9 +1082,35 @@ model RequestNonce {
   @@map("request_nonces")
 }
 
+// ── Per-customer AI / seat cost snapshots (Fleet enterprise) ─────────────────
+// Aggregates only — no guest PII. See docs/CUSTOMER_AI_COST.md.
+
+model CustomerCostSnapshot {
+  id              String   @id @default(cuid())
+  clientKey       String
+  clientId        String?
+  client          SupportClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  periodStart     DateTime
+  periodEnd       DateTime
+  /// Estimated USD for Knights/LLM calls this period (heuristic until token metering).
+  estimatedUsd    Float    @default(0)
+  tokenEstimate   Int      @default(0)
+  callCount       Int      @default(0)
+  knightSeatHits  Json? // { maestro: n, analyst: n, … }
+  workSpendUsd    Float    @default(0) // authorized WorkRequest quotes
+  productLine     String?
+  source          String   @default("aggregate") // aggregate | manual | cron
+  createdAt       DateTime @default(now())
+
+  @@index([clientKey, periodStart])
+  @@index([periodStart, periodEnd])
+  @@map("customer_cost_snapshots")
+}
+
 // ── Echo Learning Plane (PII-safe chunks; embeddings optional) ───────────────
 // See docs/ECHO_LEARNING_PLANE.md. No guest/staff PII. GLOBAL/COHORT teachable
 // across Echo instances; ACCOUNT never shared fleet-wide.
+// Retrieve remains GLOBAL/COHORT only — pgvector embeddings TODO (embedding Json?).
 
 model EchoKnowledgeChunk {
   id              String   @id @default(cuid())

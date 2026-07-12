@@ -9,6 +9,8 @@ import {
   processInboundQuestion,
   shouldAutoKnightsOnQuestion,
 } from '@/lib/help-desk-knights'
+import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
+import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +19,8 @@ const schema = z.object({
   clientKey: z.string().min(1).max(200),
   question: z.string().min(1).max(4000),
   context: z.record(z.unknown()).optional(),
+  gate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
+  intakeGate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
 })
 
 /**
@@ -47,27 +51,50 @@ export async function POST(req: Request): Promise<Response> {
         { status: key.status }
       )
     }
+
+    const tenant = await enforcePerTenantSecretIfSet({
+      clientKey: key.clientKey,
+      req,
+      sharedOk: true,
+    })
+    if (!tenant.ok) {
+      return Response.json(
+        { success: false, error: tenant.error, code: tenant.code },
+        { status: tenant.status }
+      )
+    }
+
     const { question, context } = parsed.data
+    const intakeGate = gateFromQuestionPayload({
+      gate: parsed.data.gate,
+      intakeGate: parsed.data.intakeGate,
+      context: context ?? null,
+    })
+
     const client = await upsertSupportClientByKey(key.clientKey)
     const created = await db.customerQuestion.create({
       data: {
         clientKey: key.clientKey,
         clientId: client.id,
         question,
+        intakeGate: intakeGate ?? undefined,
         context: (context ?? undefined) as Prisma.InputJsonValue | undefined,
         actor: 'computer_agent',
       },
     })
-    await audit('computer_agent', 'support.question.receive', created.id)
+    await audit('computer_agent', 'support.question.receive', created.id, {
+      intakeGate,
+    })
 
-    const autoKnights = shouldAutoKnightsOnQuestion()
+    const gateMeta = intakeGate ? INTAKE_GATE_META[intakeGate] : null
+    const autoKnights =
+      shouldAutoKnightsOnQuestion() && (gateMeta?.autoKnightsOk ?? true)
 
-    // Return quickly; ticket + Knights run async so Render/pilot don't time out.
     void processInboundQuestion(created.id)
       .then((r) => {
         if (!autoKnights) return
         console.info(
-          `[relay/questions] processed ${created.id} → ticket ${r.ticketId} knights=${r.knightsRan} auto=${r.autoApproved}`
+          `[relay/questions] processed ${created.id} → ticket ${r.ticketId} knights=${r.knightsRan} auto=${r.autoApproved} gate=${intakeGate ?? 'unset'}`
         )
       })
       .catch((err) => {
@@ -82,14 +109,20 @@ export async function POST(req: Request): Promise<Response> {
         })
       })
 
-    // Immediate inbox alert (Help Desk ticket may still be creating)
+    const alertTitle =
+      intakeGate === 'BUILD'
+        ? 'New BUILD request — paid path'
+        : intakeGate === 'BILLING'
+          ? 'New BILLING question'
+          : autoKnights
+            ? 'New customer question — Knights drafting'
+            : 'New customer question'
+
     await raiseAlert({
       kind: 'question',
       severity: 'WARN',
-      title: autoKnights
-        ? 'New customer question — Knights drafting'
-        : 'New customer question',
-      body: question.slice(0, 140),
+      title: alertTitle,
+      body: `${gateMeta ? `${gateMeta.shape} ${gateMeta.label}: ` : ''}${question.slice(0, 120)}`,
       entityRef: created.id,
       url: '/support/inbox',
     })
@@ -100,8 +133,15 @@ export async function POST(req: Request): Promise<Response> {
         data: {
           id: created.id,
           autoKnights,
+          intakeGate,
+          routeHint: gateMeta?.routeHint ?? null,
         },
-      } satisfies APIResponse<{ id: string; autoKnights: boolean }>,
+      } satisfies APIResponse<{
+        id: string
+        autoKnights: boolean
+        intakeGate: string | null
+        routeHint: string | null
+      }>,
       { status: 201 }
     )
   } catch (error) {

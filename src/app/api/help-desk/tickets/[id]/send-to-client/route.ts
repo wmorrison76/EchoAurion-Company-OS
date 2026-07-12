@@ -139,6 +139,11 @@ export async function POST(
       panelId: body.panelId ?? null,
     })
 
+    // Feature-flagged support TTS — never blocks delivery if unset.
+    void import('@/lib/support-voice').then(({ maybeSynthesizeSupportReply }) =>
+      maybeSynthesizeSupportReply(message)
+    )
+
     return Response.json({
       success: true,
       data: toDetail(updated),

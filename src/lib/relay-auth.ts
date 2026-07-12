@@ -47,7 +47,7 @@ export function relayAuthorized(req: Request, opts?: { allowQueryToken?: boolean
     }
   }
 
-  return { ok: false, status: 401, error: 'Unauthorized', code: 'UNAUTHORIZED' }
+  return { ok: false, status: 401, error: 'Unauthorized — Bearer does not match SUPPORT_INGEST_SECRET (secret mismatch or wrong token). If whoami returns 401 with a wrong bearer, the secret is live on Company OS; luccca-web COMPANY_OS_INGEST_SECRET must match exactly.', code: 'UNAUTHORIZED' }
 }
 
 /** Per-IP rate limits after auth (limits abuse if secret leaks). */

@@ -1,4 +1,6 @@
 export type HelpTicketChannel = 'TEXT' | 'VOICE' | 'FEATURE' | 'SYSTEM'
+export type IntakeGate = 'TECH' | 'BILLING' | 'BUILD' | 'OTHER'
+export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR'
 export type HelpTicketStatus =
   | 'OPEN'
   | 'WAITING'
@@ -44,6 +46,8 @@ export interface HelpTicketListItem {
   status: HelpTicketStatus
   priority: string
   subject: string
+  intakeGate: IntakeGate | null
+  intakeChannel: IntakeChannel | string | null
   clientKey: string | null
   requesterName: string | null
   workRequestId: string | null
