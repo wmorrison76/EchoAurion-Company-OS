@@ -2,6 +2,7 @@ import { audit } from '@/lib/audit'
 import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
 import { pollGithubCiFailures, pollRenderDeployFailures } from '@/lib/ops-failure-ingest'
 import { processIngestJobs } from '@/lib/ingest-queue'
+import { purgeExpiredNonces } from '@/lib/request-handshake'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +41,7 @@ export async function POST(req: Request): Promise<Response> {
       pollGithubCiFailures(),
     ])
     const queue = await processIngestJobs(10)
+    const noncesPurged = await purgeExpiredNonces()
 
     const ingested = render.ingested + github.ingested
     const label =
@@ -51,12 +53,15 @@ export async function POST(req: Request): Promise<Response> {
       render,
       github,
       queue,
+      noncesPurged,
     })
 
     return Response.json({
       success: true,
-      data: { render, github, queue, label } satisfies PollResult,
-    } satisfies APIResponse<PollResult>)
+      data: { render, github, queue, noncesPurged, label } satisfies PollResult & {
+        noncesPurged: number
+      },
+    } satisfies APIResponse<PollResult & { noncesPurged: number }>)
   } catch (error) {
     return Response.json(
       {

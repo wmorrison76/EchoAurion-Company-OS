@@ -44,12 +44,17 @@ async function resolveCohortClientKeys(ticket: {
   cohortOs: string | null
   cohortAppVersion: string | null
 }): Promise<string[]> {
+  // Start from affected keys only — never expand to unrelated properties sharing an app version.
   const keys = new Set<string>(ticket.affectedClientKeys)
   if (ticket.clientKey) keys.add(ticket.clientKey)
 
-  if (ticket.cohortBrowser || ticket.cohortOs || ticket.cohortAppVersion) {
+  if (
+    keys.size > 0 &&
+    (ticket.cohortBrowser || ticket.cohortOs || ticket.cohortAppVersion)
+  ) {
     const snaps = await db.diagnosticSnapshot.findMany({
       where: {
+        client: { clientKey: { in: Array.from(keys) } },
         OR: [
           ...(ticket.cohortAppVersion
             ? [{ appVersion: ticket.cohortAppVersion }]
@@ -67,6 +72,7 @@ async function resolveCohortClientKeys(ticket: {
       orderBy: { createdAt: 'desc' },
       take: 200,
     })
+    const matched = new Set<string>()
     for (const m of snaps) {
       if (
         ticket.cohortAppVersion &&
@@ -82,8 +88,9 @@ async function resolveCohortClientKeys(ticket: {
       ) {
         continue
       }
-      keys.add(m.client.clientKey)
+      matched.add(m.client.clientKey)
     }
+    if (matched.size > 0) return Array.from(matched)
   }
 
   return Array.from(keys)
@@ -118,13 +125,27 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
         where: { id: ticket.id },
         data: { rolloutStage: 'canary' },
       })
-    } else {
+    } else if (stage === 'fleet') {
       clientKeys = await resolveTargetClientKeys('ALL', null)
-      stage = 'fleet'
       await db.helpTicket.update({
         where: { id: ticket.id },
         data: { rolloutStage: 'fleet' },
       })
+    } else {
+      // Tenant isolation: never auto-fan-out to entire fleet on resolve.
+      // Notify owning + affected keys only until William promotes canary → fleet.
+      const keys = new Set<string>(ticket.affectedClientKeys)
+      if (ticket.clientKey) keys.add(ticket.clientKey)
+      clientKeys = Array.from(keys)
+      stage = 'affected_only'
+      await db.helpTicket.update({
+        where: { id: ticket.id },
+        data: { rolloutStage: 'affected_only' },
+      })
+      await audit('computer_agent', 'help_desk.error_event.notify_scope_limited', ticket.id, {
+        reason: 'global_without_fleet_stage',
+        clientKeys,
+      }).catch(() => {})
     }
   } else if (scope === 'COHORT') {
     clientKeys = await resolveCohortClientKeys(ticket)
@@ -256,9 +277,14 @@ export async function notifyErrorFixedBatched(
     if (canary.length > 0 && stage !== 'fleet') {
       clientKeys = canary
       stage = 'canary'
-    } else {
+    } else if (stage === 'fleet') {
       clientKeys = await resolveTargetClientKeys('ALL', null)
       stage = 'fleet'
+    } else {
+      const keys = new Set<string>(ticket.affectedClientKeys)
+      if (ticket.clientKey) keys.add(ticket.clientKey)
+      clientKeys = Array.from(keys)
+      stage = 'affected_only'
     }
   } else if (scope === 'COHORT') {
     clientKeys = await resolveCohortClientKeys(ticket)

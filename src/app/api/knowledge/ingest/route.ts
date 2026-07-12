@@ -7,13 +7,30 @@ import {
   knowledgeIngestSchema,
 } from '@/lib/knowledge-ingest'
 import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
+import { verifyRequestHandshake } from '@/lib/request-handshake'
+import { assertRegisteredOrSystemClient } from '@/lib/tenant-isolation'
+import { redactSensitive } from '@/lib/error-redact'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
+function redactPayloadLeaves(value: unknown): unknown {
+  if (typeof value === 'string') return redactSensitive(value, 2000)
+  if (Array.isArray(value)) return value.map(redactPayloadLeaves)
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = redactPayloadLeaves(v)
+    }
+    return out
+  }
+  return value
+}
+
 /**
  * POST /api/knowledge/ingest — Echo AI³ → Aurion Knowledge Plane.
  * Bearer KNOWLEDGE_INGEST_SECRET (or SUPPORT_INGEST_SECRET). Rejects PII keys.
+ * Handshake Layer 3 when X-Echo-* present.
  */
 export async function POST(req: Request): Promise<Response> {
   const a = knowledgeIngestAuthorized(req)
@@ -25,7 +42,17 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const raw: unknown = await req.json()
+    const rawBody = await req.text()
+    let raw: unknown
+    try {
+      raw = JSON.parse(rawBody)
+    } catch {
+      return Response.json(
+        { success: false, error: 'Invalid JSON', code: 'SCHEMA' },
+        { status: 400 }
+      )
+    }
+
     const pii = findForbiddenPiiKey(raw)
     if (pii) {
       return Response.json(
@@ -48,6 +75,21 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const d = parsed.data
+    const hs = await verifyRequestHandshake({
+      req,
+      route: 'knowledge.ingest',
+      clientKey: d.clientKey,
+      rawBody,
+    })
+    if (!hs.ok) {
+      return Response.json(
+        { success: false, error: hs.error, code: hs.code, label: '✕ Handshake failed' },
+        { status: hs.status }
+      )
+    }
+
+    await assertRegisteredOrSystemClient(d.clientKey)
+
     const throttle = allowIngestThrottle({
       scope: 'knowledge',
       clientKey: d.clientKey,
@@ -67,6 +109,8 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
+    const scrubbedPayload = redactPayloadLeaves(d.payload) as Prisma.InputJsonValue
+
     const created = await db.knowledgeSignal.create({
       data: {
         clientKey: d.clientKey,
@@ -76,7 +120,7 @@ export async function POST(req: Request): Promise<Response> {
         aggregationLevel: d.aggregationLevel,
         windowStart: d.windowStart ? new Date(d.windowStart) : null,
         windowEnd: d.windowEnd ? new Date(d.windowEnd) : null,
-        payload: d.payload as Prisma.InputJsonValue,
+        payload: scrubbedPayload,
         sampleSize: d.sampleSize ?? null,
         confidence: d.confidence ?? null,
       },
@@ -85,6 +129,7 @@ export async function POST(req: Request): Promise<Response> {
     await audit('computer_agent', 'knowledge.signal.ingest', created.id, {
       signalType: d.signalType,
       aggregationLevel: d.aggregationLevel,
+      clientKey: d.clientKey,
     })
 
     return Response.json(

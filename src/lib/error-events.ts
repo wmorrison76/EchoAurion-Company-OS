@@ -143,10 +143,14 @@ export async function ingestErrorEvent(
 
   const openStatuses = ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] as const
 
+  // Tenant isolation: dedupe ONLY within the same clientKey.
+  // Never merge Company A's ticket body into Company B's (docs/DATA_ISOLATION_AND_COMPLIANCE.md).
+  // Fleet-wide patterns still aggregate via ErrorPattern.distinctClients — not ticket merge.
   const existing = await db.helpTicket.findFirst({
     where: {
       fingerprint,
       channel: 'SYSTEM',
+      clientKey: input.clientKey,
       status: { in: [...openStatuses] },
       OR: [{ lastOccurredAt: { gte: since } }, { updatedAt: { gte: since } }],
     },
@@ -166,13 +170,28 @@ export async function ingestErrorEvent(
     input.browser || input.os || input.appVersion || input.platform
   )
 
+  // Pattern evidence for GLOBAL: count distinct clients on ErrorPattern (not ticket merge).
+  let patternDistinct = 1
+  try {
+    const pat = await db.errorPattern.findUnique({
+      where: {
+        fingerprint_productLine: { fingerprint, productLine },
+      },
+      select: { distinctClients: true },
+    })
+    if (pat) patternDistinct = pat.distinctClients + (isNewClient || !existing ? 1 : 0)
+  } catch {
+    // ignore
+  }
+
   let scope = classifyErrorScope({
     message,
     stack,
     moduleHint: input.moduleHint,
     errorClass: input.errorClass,
     scopeHint: input.scopeHint,
-    knownClientKeys: [...knownKeys],
+    // Only pass multi-key evidence from THIS ticket's own keys — never invent cross-tenant.
+    knownClientKeys: patternDistinct >= 2 ? [input.clientKey, '__pattern_multi__'] : [...knownKeys],
     hasCohortMeta,
   })
 
@@ -182,8 +201,13 @@ export async function ingestErrorEvent(
   }
   scope = mergeScope(existing?.errorScope as ErrorBlastScope | undefined, scope)
 
+  // Strip client-supplied canary targets — operator-set only (tenant isolation).
+  const canaryFromClient = undefined
+  void canaryFromClient
+  void input.canaryClientKeys
+
   if (existing) {
-    const mergedKeys = Array.from(knownKeys)
+    const mergedKeys = Array.from(new Set([...(existing.affectedClientKeys ?? []), input.clientKey]))
     const updated = await db.helpTicket.update({
       where: { id: existing.id },
       data: {
@@ -201,9 +225,7 @@ export async function ingestErrorEvent(
         cohortBrowser: input.browser ?? existing.cohortBrowser,
         cohortOs: input.os ?? input.platform ?? existing.cohortOs,
         cohortAppVersion: input.appVersion ?? existing.cohortAppVersion,
-        ...(input.canaryClientKeys?.length
-          ? { canaryClientKeys: input.canaryClientKeys }
-          : {}),
+        // Never overwrite canaryClientKeys from relay ingest
         messages: {
           create: {
             role: 'SYSTEM',
@@ -248,19 +270,18 @@ export async function ingestErrorEvent(
         data: {
           ticketId: existing.id,
           role: 'SYSTEM',
-          body: `Scope promoted to ${scope} — fingerprint seen across ${mergedKeys.length} clientKey(s). GLOBAL fixes = draft PR only (constitution).`,
+          body: `Scope promoted to ${scope} — fingerprint pattern (tenant-scoped ticket). GLOBAL fixes = draft PR only (constitution). Fleet notify requires canary/fleet stage (not auto ALL).`,
         },
       })
       await raiseAlert({
         kind: 'system',
         severity: 'CRITICAL',
         title: `Error promoted to ${scope}: ${truncate(message, 80)}`,
-        body: `Fingerprint ${fingerprint} · ${mergedKeys.length} clients · ${errorCategory}/${productLine}`,
+        body: `Fingerprint ${fingerprint} · tenant ${input.clientKey} · ${errorCategory}/${productLine}`,
         entityRef: existing.id,
         url: `/help-desk?ticket=${existing.id}`,
       })
       if (scope === 'GLOBAL') {
-        // Queue — never N sync LLM calls under a stampede (docs/SCALE_AND_THROTTLE.md).
         const { enqueueIngestJob } = await import('@/lib/ingest-queue')
         void enqueueIngestJob({
           kind: 'agent_loop',
@@ -275,6 +296,7 @@ export async function ingestErrorEvent(
       scope,
       errorCategory,
       productLine,
+      clientKey: input.clientKey,
       occurrenceCount: existing.occurrenceCount + 1,
     } as unknown as Prisma.InputJsonValue)
 
@@ -307,7 +329,7 @@ export async function ingestErrorEvent(
       cohortBrowser: input.browser ?? null,
       cohortOs: input.os ?? input.platform ?? null,
       cohortAppVersion: input.appVersion ?? null,
-      canaryClientKeys: input.canaryClientKeys?.filter(Boolean) ?? [],
+      canaryClientKeys: [], // operator-set only
       rolloutStage: null,
       agentWorking: false,
       messages: {
@@ -337,6 +359,7 @@ export async function ingestErrorEvent(
                 'Do NOT silent-merge to production. GLOBAL = draft PR only.',
                 'Core paths (auth/middleware/relay secrets/destructive migrate) → NEEDS_HUMAN_CORE_REVIEW.',
                 'Safe tools (restart/clear_cache) OK under autonomy dial.',
+                'Tenant isolation: ticket scoped to this clientKey only.',
               ].join('\n'),
               6000
             ),

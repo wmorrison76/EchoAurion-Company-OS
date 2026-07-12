@@ -7,8 +7,11 @@
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { redactSensitive } from '@/lib/error-redact'
-import { findForbiddenPiiKey } from '@/lib/knowledge-ingest'
 import { enqueueIngestJob } from '@/lib/ingest-queue'
+import {
+  assertGlobalKnowledgeWriteAllowed,
+  TenantIsolationError,
+} from '@/lib/tenant-isolation'
 
 export type EchoKnowledgeSection =
   | 'ops'
@@ -32,22 +35,28 @@ export async function upsertKnowledgeChunk(input: {
   clientKey?: string | null
   shareScope?: EchoShareScope
 }): Promise<{ id: string; created: boolean } | { rejected: true; reason: string }> {
-  const contentRedacted = redactSensitive(input.content, 8000)
-  if (!contentRedacted.trim()) {
-    return { rejected: true, reason: 'empty_after_redact' }
-  }
-  const pii = findForbiddenPiiKey({
-    ...input.metadata,
-    body: contentRedacted,
-  })
-  if (pii) {
-    return { rejected: true, reason: `pii_key:${pii}` }
+  const shareScope = input.shareScope ?? (input.clientKey ? 'ACCOUNT' : 'GLOBAL')
+
+  let contentRedacted: string
+  let boundClientKey: string | null
+  try {
+    const gated = await assertGlobalKnowledgeWriteAllowed({
+      content: input.content,
+      metadata: input.metadata,
+      shareScope,
+      clientKey: input.clientKey,
+    })
+    contentRedacted = gated.contentRedacted
+    boundClientKey = gated.clientKey
+  } catch (err) {
+    if (err instanceof TenantIsolationError) {
+      return { rejected: true, reason: err.code.toLowerCase() }
+    }
+    throw err
   }
 
-  const shareScope = input.shareScope ?? (input.clientKey ? 'ACCOUNT' : 'GLOBAL')
-  // ACCOUNT-scoped guest/property free-text must never land as GLOBAL teachable.
-  if (shareScope === 'ACCOUNT' && !input.clientKey) {
-    return { rejected: true, reason: 'account_requires_client_key' }
+  if (!contentRedacted.trim()) {
+    return { rejected: true, reason: 'empty_after_redact' }
   }
 
   if (input.sourceRef) {
@@ -56,9 +65,25 @@ export async function upsertKnowledgeChunk(input: {
         sourceType: input.sourceType,
         sourceRef: input.sourceRef,
         section: input.section,
+        shareScope,
+        ...(shareScope === 'ACCOUNT'
+          ? { clientKey: boundClientKey }
+          : { clientKey: null }),
       },
     })
     if (existing) {
+      // Never let ACCOUNT overwrite GLOBAL or vice versa via partial match.
+      if (existing.shareScope !== shareScope) {
+        return { rejected: true, reason: 'scope_collision' }
+      }
+      if (
+        shareScope === 'ACCOUNT' &&
+        existing.clientKey &&
+        boundClientKey &&
+        existing.clientKey !== boundClientKey
+      ) {
+        return { rejected: true, reason: 'cross_tenant_denied' }
+      }
       await db.echoKnowledgeChunk.update({
         where: { id: existing.id },
         data: {
@@ -66,9 +91,16 @@ export async function upsertKnowledgeChunk(input: {
           domain: input.domain ?? existing.domain,
           metadata: (input.metadata ?? existing.metadata) as object | undefined,
           productLine: input.productLine ?? existing.productLine,
-          clientKey: input.clientKey ?? existing.clientKey,
+          clientKey: boundClientKey,
           shareScope,
         },
+      })
+      await audit('computer_agent', 'echo.knowledge.chunk.upsert', existing.id, {
+        section: input.section,
+        sourceType: input.sourceType,
+        shareScope,
+        clientKey: boundClientKey,
+        created: false,
       })
       return { id: existing.id, created: false }
     }
@@ -83,7 +115,7 @@ export async function upsertKnowledgeChunk(input: {
       contentRedacted,
       metadata: (input.metadata ?? undefined) as object | undefined,
       productLine: input.productLine ?? null,
-      clientKey: shareScope === 'GLOBAL' || shareScope === 'COHORT' ? null : input.clientKey,
+      clientKey: boundClientKey,
       shareScope,
       embedding: undefined,
     },
@@ -93,9 +125,10 @@ export async function upsertKnowledgeChunk(input: {
     section: input.section,
     sourceType: input.sourceType,
     shareScope,
+    clientKey: boundClientKey,
+    created: true,
   })
 
-  // Embed later via queue (no-op until pgvector).
   await enqueueIngestJob({
     kind: 'knowledge_embed',
     payload: { chunkId: row.id },
@@ -154,6 +187,15 @@ export async function ingestErrorPatternChunk(
     `sample=${p.sampleMessage}`,
   ].join('\n')
 
+  // ACCOUNT/USER patterns stay ACCOUNT — never auto-promote to COHORT/GLOBAL
+  // without William/operator gate (docs/ECHO_LEARNING_PLANE.md).
+  const shareScope: EchoShareScope =
+    p.errorScope === 'GLOBAL'
+      ? 'GLOBAL'
+      : p.errorScope === 'COHORT'
+        ? 'COHORT'
+        : 'ACCOUNT'
+
   const r = await upsertKnowledgeChunk({
     section: 'error_pattern',
     domain: p.errorCategory,
@@ -161,7 +203,10 @@ export async function ingestErrorPatternChunk(
     sourceRef: p.id,
     content,
     productLine: p.productLine,
-    shareScope: p.errorScope === 'GLOBAL' || p.errorScope === 'COHORT' ? 'GLOBAL' : 'COHORT',
+    shareScope,
+    // ACCOUNT chunks need a synthetic key when pattern has no single tenant —
+    // use fingerprint prefix so retrieve never returns them fleet-wide.
+    clientKey: shareScope === 'ACCOUNT' ? `pattern:${p.fingerprint.slice(0, 24)}` : null,
     metadata: {
       hitCount: p.hitCount,
       distinctClients: p.distinctClients,
@@ -222,7 +267,11 @@ export async function retrieveKnowledgeChunks(input: {
   const q = redactSensitive(input.query, 200).trim()
   if (q.length < 2) return []
 
-  const scopes = input.shareScopes ?? (['GLOBAL', 'COHORT'] as EchoShareScope[])
+  const scopes = (input.shareScopes ?? (['GLOBAL', 'COHORT'] as EchoShareScope[])).filter(
+    (s) => s === 'GLOBAL' || s === 'COHORT'
+  )
+  // Never return ACCOUNT chunks on fleet retrieve — tenant isolation.
+  if (scopes.length === 0) return []
   const limit = Math.min(input.limit ?? 8, 20)
   const tokens = q
     .toLowerCase()

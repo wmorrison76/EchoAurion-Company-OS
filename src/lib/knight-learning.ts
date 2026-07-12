@@ -207,7 +207,10 @@ export async function promoteRunbook(
       denyIfCore: true,
     },
   })
-  await audit(confirmedBy, 'help_desk.runbook.promote', runbookId)
+  await audit(confirmedBy, 'help_desk.runbook.promote', runbookId, {
+    fingerprint: row.fingerprint,
+    productLine: row.productLine,
+  })
   const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
   void queueLearnFromRunbook(runbookId).catch(() => {})
   return { ok: true }

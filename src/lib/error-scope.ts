@@ -54,10 +54,16 @@ export function classifyErrorScope(hints: ScopeHints): ErrorBlastScope {
   if (GLOBAL_PATTERNS.some((re) => re.test(blob))) return 'GLOBAL'
 
   // Multiple installs seeing the same fingerprint → platform-wide.
+  // Only when callers already share evidence (operator / pattern), not spoofed keys.
   const keys = new Set((hints.knownClientKeys ?? []).filter(Boolean))
   if (keys.size >= 2) return 'GLOBAL'
 
-  if (hints.scopeHint === 'GLOBAL') return 'GLOBAL'
+  // Client scopeHint is advisory only — never trust client-claimed GLOBAL alone
+  // (tenant isolation: spoofed GLOBAL would fan-out notify + agent stampede).
+  if (hints.scopeHint === 'GLOBAL') {
+    // Cap at ACCOUNT unless pattern evidence already matched above.
+    return 'ACCOUNT'
+  }
   if (hints.scopeHint === 'ACCOUNT') return 'ACCOUNT'
   if (ACCOUNT_PATTERNS.some((re) => re.test(blob))) return 'ACCOUNT'
 

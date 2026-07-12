@@ -36,7 +36,9 @@ function clientKeyForRender(serviceId: string): string {
   return `render/${serviceId}`
 }
 
-/** Link open WorkRequest / HelpTicket when commit or PR number is known. */
+/** Link open WorkRequest / HelpTicket when commit or PR number is known.
+ * Scoped by productLine / repo clientKey — never annotate another tenant’s ticket.
+ */
 async function findRelatedIds(input: {
   commitSha?: string | null
   prNumber?: number | null
@@ -45,23 +47,41 @@ async function findRelatedIds(input: {
   const sha = input.commitSha?.slice(0, 7)
   if (!sha && !input.prNumber) return {}
 
+  const productLine = input.repo ? productLineForRepo(input.repo) : null
+  const repoClientKey = input.repo ? clientKeyForRepo(input.repo) : null
+
   if (input.prNumber) {
     const prNeedle = `#${input.prNumber}`
     const bySubject = await db.helpTicket.findFirst({
       where: {
         channel: 'SYSTEM',
         status: { in: ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] },
-        OR: [
-          { subject: { contains: prNeedle } },
-          { moduleHint: { in: ['pr', 'ci', 'autofix', 'bugbot'] } },
+        ...(productLine ? { productLine } : {}),
+        AND: [
+          {
+            OR: [
+              { subject: { contains: prNeedle } },
+              { moduleHint: { in: ['pr', 'ci', 'autofix', 'bugbot'] } },
+            ],
+          },
+          ...(repoClientKey
+            ? [
+                {
+                  OR: [
+                    { clientKey: repoClientKey },
+                    { affectedClientKeys: { has: repoClientKey } },
+                    ...(input.repo ? [{ subject: { contains: input.repo } }] : []),
+                  ],
+                },
+              ]
+            : []),
         ],
       },
       orderBy: { updatedAt: 'desc' },
-      select: { id: true, workRequestId: true, subject: true },
+      select: { id: true, workRequestId: true, subject: true, clientKey: true, productLine: true },
     })
-    if (bySubject && (bySubject.subject.includes(prNeedle) || input.repo)) {
-      // Prefer subject match; otherwise fall through to work search.
-      if (bySubject.subject.includes(prNeedle)) {
+    if (bySubject && bySubject.subject.includes(prNeedle)) {
+      if (!(productLine && bySubject.productLine && bySubject.productLine !== productLine)) {
         return {
           helpTicketId: bySubject.id,
           workRequestId: bySubject.workRequestId ?? undefined,
@@ -76,15 +96,30 @@ async function findRelatedIds(input: {
         ticket: {
           channel: 'SYSTEM',
           status: { in: ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] },
+          ...(productLine ? { productLine } : {}),
+          ...(repoClientKey
+            ? {
+                OR: [
+                  { clientKey: repoClientKey },
+                  { affectedClientKeys: { has: repoClientKey } },
+                ],
+              }
+            : {}),
         },
       },
       orderBy: { createdAt: 'desc' },
-      select: { ticketId: true, ticket: { select: { workRequestId: true } } },
+      select: { ticketId: true, ticket: { select: { workRequestId: true, productLine: true } } },
     })
     if (msgHit) {
-      return {
-        helpTicketId: msgHit.ticketId,
-        workRequestId: msgHit.ticket.workRequestId ?? undefined,
+      if (
+        !productLine ||
+        !msgHit.ticket.productLine ||
+        msgHit.ticket.productLine === productLine
+      ) {
+        return {
+          helpTicketId: msgHit.ticketId,
+          workRequestId: msgHit.ticket.workRequestId ?? undefined,
+        }
       }
     }
   }
@@ -92,24 +127,32 @@ async function findRelatedIds(input: {
   const works = await db.workRequest.findMany({
     where: {
       status: { notIn: ['EXECUTED', 'ROLLED_BACK', 'DECLINED'] },
+      ...(repoClientKey ? { clientKey: repoClientKey } : {}),
     },
     orderBy: { updatedAt: 'desc' },
     take: 40,
-    select: { id: true, context: true, title: true, detail: true },
+    select: { id: true, context: true, title: true, detail: true, clientKey: true },
   })
 
   for (const w of works) {
+    if (repoClientKey && w.clientKey && w.clientKey !== repoClientKey) continue
     const blob = JSON.stringify(w.context ?? {}) + (w.detail ?? '') + (w.title ?? '')
     if (sha && blob.includes(sha)) {
       const ticket = await db.helpTicket.findFirst({
-        where: { workRequestId: w.id },
+        where: {
+          workRequestId: w.id,
+          ...(productLine ? { productLine } : {}),
+        },
         select: { id: true },
       })
       return { workRequestId: w.id, helpTicketId: ticket?.id }
     }
     if (input.prNumber && blob.includes(`#${input.prNumber}`)) {
       const ticket = await db.helpTicket.findFirst({
-        where: { workRequestId: w.id },
+        where: {
+          workRequestId: w.id,
+          ...(productLine ? { productLine } : {}),
+        },
         select: { id: true },
       })
       return { workRequestId: w.id, helpTicketId: ticket?.id }

@@ -723,6 +723,7 @@ model HelpTicket {
   @@index([customerQuestionId])
   @@index([workRequestId])
   @@index([fingerprint, status])
+  @@index([fingerprint, clientKey, status])
   @@index([errorScope, status])
   @@index([errorCategory, productLine])
   @@map("help_tickets")
@@ -1031,6 +1032,25 @@ model IngestJob {
   @@index([kind, status])
   @@index([dedupeKey, status])
   @@map("ingest_jobs")
+}
+
+// ── Request nonce / replay cache (handshake Layer 3) ────────────────────────
+// See docs/DATA_ISOLATION_AND_COMPLIANCE.md · src/lib/request-handshake.ts
+
+model RequestNonce {
+  id         String   @id @default(cuid())
+  route      String
+  nonce      String
+  clientKey  String?
+  deliveryId String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([route, nonce])
+  @@index([expiresAt])
+  @@index([deliveryId])
+  @@index([clientKey, createdAt])
+  @@map("request_nonces")
 }
 
 // ── Echo Learning Plane (PII-safe chunks; embeddings optional) ───────────────

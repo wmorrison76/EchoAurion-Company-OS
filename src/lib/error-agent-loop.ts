@@ -150,6 +150,7 @@ export async function queueAgentAndKnights(ticketId: string): Promise<{
     workRequestId,
     prPlanQueued,
     knightsRan,
+    clientKey: ticket.clientKey,
   })
 
   return { queued: true, workRequestId, knightsRan, prPlanQueued }

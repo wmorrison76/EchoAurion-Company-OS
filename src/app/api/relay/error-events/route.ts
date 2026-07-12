@@ -2,8 +2,9 @@ import { z } from 'zod'
 import { relayGuard, requireClientKey } from '@/lib/relay-auth'
 import { ingestErrorEvent } from '@/lib/error-events'
 import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
+import { verifyRequestHandshake } from '@/lib/request-handshake'
+import { assertRegisteredOrSystemClient } from '@/lib/tenant-isolation'
 import type { APIResponse } from '@/types'
-import type { HelpTicketDetail } from '@/types/help-desk'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,15 +27,15 @@ const schema = z.object({
   browser: z.string().max(80).optional().nullable(),
   os: z.string().max(80).optional().nullable(),
   source: z.string().max(80).optional().nullable(),
-  canaryClientKeys: z.array(z.string().max(200)).max(50).optional().nullable(),
+  // canaryClientKeys intentionally omitted — operator-set only
 })
 
 /**
  * POST /api/relay/error-events
  * Pilot → Company OS auto Help Desk ticket (SYSTEM channel).
- * Auth: SUPPORT_INGEST_SECRET bearer (same as heartbeat/diagnostics).
+ * Triple handshake: Bearer secret + clientKey + timestamp/nonce (see SECURITY_RELAY.md).
  * No guest PII — message/stack only, redacted server-side.
- * Rate-limited per clientKey + global budget (docs/SCALE_AND_THROTTLE.md).
+ * Response never includes full ticket messages (tenant isolation).
  */
 export async function POST(req: Request): Promise<Response> {
   const a = relayGuard(req, 'diagnostics')
@@ -46,7 +47,18 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const parsed = schema.safeParse(await req.json())
+    const rawBody = await req.text()
+    let json: unknown
+    try {
+      json = JSON.parse(rawBody)
+    } catch {
+      return Response.json(
+        { success: false, error: 'Invalid JSON', code: 'SCHEMA' },
+        { status: 400 }
+      )
+    }
+
+    const parsed = schema.safeParse(json)
     if (!parsed.success) {
       return Response.json(
         { success: false, error: 'Invalid error_event payload', code: 'SCHEMA' },
@@ -61,6 +73,21 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
+    const hs = await verifyRequestHandshake({
+      req,
+      route: 'relay.error-events',
+      clientKey: key.clientKey,
+      rawBody,
+    })
+    if (!hs.ok) {
+      return Response.json(
+        { success: false, error: hs.error, code: hs.code, label: '✕ Handshake failed' },
+        { status: hs.status }
+      )
+    }
+
+    await assertRegisteredOrSystemClient(key.clientKey)
+
     const throttle = allowIngestThrottle({
       scope: 'error',
       clientKey: key.clientKey,
@@ -70,9 +97,9 @@ export async function POST(req: Request): Promise<Response> {
     const result = await ingestErrorEvent({
       ...parsed.data,
       clientKey: key.clientKey,
+      canaryClientKeys: null,
     })
 
-    // 202 when deduped under load — pilot should treat as accepted (count bumped).
     const status = result.created ? 201 : 202
 
     return Response.json(
@@ -84,7 +111,6 @@ export async function POST(req: Request): Promise<Response> {
           promoted: result.promoted,
           scope: result.ticket.errorScope,
           occurrenceCount: result.ticket.occurrenceCount,
-          ticket: result.ticket,
           label: result.created
             ? '✓ Ticket opened'
             : `○ Deduped · ×${result.ticket.occurrenceCount}`,
@@ -93,9 +119,8 @@ export async function POST(req: Request): Promise<Response> {
         ticketId: string
         created: boolean
         promoted: boolean
-        scope: HelpTicketDetail['errorScope']
+        scope: typeof result.ticket.errorScope
         occurrenceCount: number
-        ticket: HelpTicketDetail
         label: string
       }>,
       { status }

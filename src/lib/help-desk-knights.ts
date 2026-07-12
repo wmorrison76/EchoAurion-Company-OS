@@ -9,6 +9,7 @@ import { ensureTicketFromInbox, toDetail } from '@/lib/help-desk'
 import { raiseAlert } from '@/lib/alerts'
 import { guardCorePaths } from '@/lib/core-path-guard'
 import { loadRunbookContext } from '@/lib/knight-learning'
+import { sanitizeAgentThreadForTenant } from '@/lib/tenant-isolation'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -88,11 +89,11 @@ export async function dispatchKnightsOnTicket(
     },
   })
 
-  const thread = ticket.messages
-    .filter((m) => m.role !== 'SYSTEM')
-    .map((m) => `[${m.role}${m.seat ? `:${m.seat}` : ''}] ${m.body}`)
-    .join('\n\n')
-    .slice(0, 6000)
+  const thread = sanitizeAgentThreadForTenant({
+    messages: ticket.messages.map((m) => ({ role: m.role, body: m.body })),
+    ticketClientKey: ticket.clientKey,
+    channel: ticket.channel,
+  })
 
   const runbookCtx = await loadRunbookContext({
     fingerprint: ticket.fingerprint,
@@ -103,9 +104,12 @@ export async function dispatchKnightsOnTicket(
   const prompt = [
     `Help Desk ticket: ${ticket.subject}`,
     `Channel: ${ticket.channel}`,
+    ticket.clientKey ? `Tenant clientKey: ${ticket.clientKey}` : null,
     ticket.fingerprint ? `Fingerprint: ${ticket.fingerprint}` : null,
     ticket.errorScope ? `Scope: ${ticket.errorScope}` : null,
     ticket.errorCategory ? `Category: ${ticket.errorCategory}` : null,
+    '',
+    'Tenant isolation: do not reference other properties’ guest/staff data. Patterns only.',
     '',
     runbookCtx
       ? `## Learned runbooks (prior fixes — do NOT suggest removing auth/middleware)\n${runbookCtx}\n`

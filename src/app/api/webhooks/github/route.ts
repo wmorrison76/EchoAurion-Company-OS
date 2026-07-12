@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { audit } from '@/lib/audit'
 import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
+import { verifyRequestHandshake } from '@/lib/request-handshake'
 import {
   ingestBugbotAutofixComment,
   ingestCheckSuiteFailure,
@@ -64,6 +65,31 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       { success: false, error: 'Invalid signature', code: '401', label: '✕ Invalid signature' },
       { status: 401 }
+    )
+  }
+
+  const deliveryId = req.headers.get('x-github-delivery')
+  const hs = await verifyRequestHandshake({
+    req,
+    route: 'webhooks.github',
+    deliveryId,
+    required: Boolean(deliveryId),
+    rawBody,
+  })
+  if (!hs.ok) {
+    // Replay of same delivery — ack 202 without re-ingest
+    if (hs.code === 'REPLAY_REJECTED') {
+      return Response.json(
+        {
+          success: true,
+          data: { event: 'replay', ingested: false, label: '○ Replay ignored' },
+        },
+        { status: 202 }
+      )
+    }
+    return Response.json(
+      { success: false, error: hs.error, code: hs.code, label: '✕ Handshake failed' },
+      { status: hs.status }
     )
   }
 
