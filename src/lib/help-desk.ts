@@ -114,6 +114,7 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     agentWorking: t.agentWorking ?? false,
     rolloutStage: t.rolloutStage ?? null,
     canaryClientKeys: t.canaryClientKeys ?? [],
+    moduleHint: t.moduleHint ?? null,
   }
 }
 

@@ -50,7 +50,7 @@ const CATEGORY_PATTERNS: Array<{ category: ErrorCategory; re: RegExp }> = [
   },
   {
     category: 'INFRA',
-    re: /(ECONNRESET|ETIMEDOUT|ENOTFOUND|502|503|504|cloudflare|ecs|rds|deploy)/i,
+    re: /(ECONNRESET|ETIMEDOUT|ENOTFOUND|502|503|504|cloudflare|ecs|rds|deploy|workflow_run|check_suite|CI failed|Deploy failed|build_failed|PR blocked)/i,
   },
   {
     category: 'API',

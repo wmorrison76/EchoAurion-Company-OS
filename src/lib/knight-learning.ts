@@ -153,6 +153,8 @@ export async function learnFromResolution(input: {
       status: updated.status,
       fingerprint: input.fingerprint,
     })
+    const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
+    void queueLearnFromRunbook(updated.id).catch(() => {})
     return { runbookId: updated.id, status: updated.status, blocked: false }
   }
 
@@ -177,6 +179,8 @@ export async function learnFromResolution(input: {
     status: created.status,
     fingerprint: input.fingerprint,
   })
+  const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
+  void queueLearnFromRunbook(created.id).catch(() => {})
   return { runbookId: created.id, status: created.status, blocked: false }
 }
 
@@ -204,6 +208,8 @@ export async function promoteRunbook(
     },
   })
   await audit(confirmedBy, 'help_desk.runbook.promote', runbookId)
+  const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
+  void queueLearnFromRunbook(runbookId).catch(() => {})
   return { ok: true }
 }
 

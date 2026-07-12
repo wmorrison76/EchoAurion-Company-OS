@@ -88,6 +88,19 @@ export function KnowledgePlaneConsole() {
     jsonFetcher<VendorRow[]>,
     { refreshInterval: 60_000 }
   )
+  const { data: learning } = useSWR(
+    '/api/knowledge/learning-stats',
+    jsonFetcher<{
+      chunks: number
+      bySection: { section: string; count: number }[]
+      piiScrubActive: boolean
+      embeddingsEnabled: boolean
+      queue: { pending: number; running: number; failed: number }
+      label: string
+      embeddingsLabel: string
+    }>,
+    { refreshInterval: 60_000 }
+  )
 
   const [vendorName, setVendorName] = useState('')
   const [useCase, setUseCase] = useState('')
@@ -160,6 +173,61 @@ export function KnowledgePlaneConsole() {
           />
         </KPICard>
       </div>
+
+      <section
+        className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4"
+        aria-label="Echo learning plane stats"
+      >
+        <h2 className="text-xs uppercase tracking-widest text-[#D4AF37]">
+          Echo learning plane
+        </h2>
+        <p className="mt-1 text-xs text-[#a0a0b8]">
+          PII-safe chunks for runbooks / help / error patterns. See{' '}
+          <code className="text-[#D4AF37]">docs/ECHO_LEARNING_PLANE.md</code>.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <StatusBadge
+            level={learning?.piiScrubActive ? 'ok' : 'error'}
+            label={learning?.label ?? '? PII scrub status unknown'}
+          />
+          <StatusBadge
+            level="unknown"
+            label={learning?.embeddingsLabel ?? '○ Embeddings deferred'}
+          />
+          <StatusBadge
+            level={(learning?.queue.pending ?? 0) > 50 ? 'warn' : 'ok'}
+            label={
+              learning
+                ? `Queue ${learning.queue.pending} pending`
+                : 'Queue —'
+            }
+          />
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <KPICard title="Learning chunks">
+            <KPIValue
+              value={String(learning?.chunks ?? '—')}
+              sub="redacted · GLOBAL/COHORT shareable"
+            />
+          </KPICard>
+          <KPICard title="By section">
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {(learning?.bySection ?? []).length === 0 ? (
+                <span className="text-xs text-[#5a5a78]">No chunks yet</span>
+              ) : (
+                learning?.bySection.map((s) => (
+                  <span
+                    key={s.section}
+                    className="rounded border border-[#2a2a3f] px-2 py-0.5 font-mono text-[11px] text-[#a0a0b8]"
+                  >
+                    {s.section}: {s.count}
+                  </span>
+                ))
+              )}
+            </div>
+          </KPICard>
+        </div>
+      </section>
 
       <section className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4">
         <h2 className="text-xs uppercase tracking-widest text-[#D4AF37]">Recent signals (meta only)</h2>

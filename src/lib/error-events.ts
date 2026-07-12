@@ -260,10 +260,13 @@ export async function ingestErrorEvent(
         url: `/help-desk?ticket=${existing.id}`,
       })
       if (scope === 'GLOBAL') {
-        const { queueAgentAndKnights } = await import('@/lib/error-agent-loop')
-        void queueAgentAndKnights(existing.id).catch((err) =>
-          console.error('[error-events] agent loop on promote failed', err)
-        )
+        // Queue — never N sync LLM calls under a stampede (docs/SCALE_AND_THROTTLE.md).
+        const { enqueueIngestJob } = await import('@/lib/ingest-queue')
+        void enqueueIngestJob({
+          kind: 'agent_loop',
+          payload: { ticketId: existing.id },
+          dedupeKey: `agent:${existing.id}`,
+        }).catch((err) => console.error('[error-events] agent queue on promote failed', err))
       }
     }
 
@@ -386,12 +389,14 @@ export async function ingestErrorEvent(
     url: `/help-desk?ticket=${ticket.id}`,
   })
 
-  // Fire-and-forget agent + Knights for GLOBAL / high severity.
+  // Queue agent + Knights for GLOBAL / high severity (async worker / cron drain).
   if (scope === 'GLOBAL' || priority === 'URGENT' || priority === 'HIGH') {
-    const { queueAgentAndKnights } = await import('@/lib/error-agent-loop')
-    void queueAgentAndKnights(ticket.id).catch((err) =>
-      console.error('[error-events] agent loop failed', err)
-    )
+    const { enqueueIngestJob } = await import('@/lib/ingest-queue')
+    void enqueueIngestJob({
+      kind: 'agent_loop',
+      payload: { ticketId: ticket.id },
+      dedupeKey: `agent:${ticket.id}`,
+    }).catch((err) => console.error('[error-events] agent queue failed', err))
   }
 
   return { ticket: toDetail(ticket), created: true, promoted: false }

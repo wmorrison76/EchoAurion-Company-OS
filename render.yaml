@@ -104,3 +104,24 @@ services:
       # Same value as web CRON_SECRET — see docs/CRON_SECRET_SETUP.md
       - key: CRON_SECRET
         sync: false
+
+  # Every 5 minutes: Render/GitHub failure → SYSTEM tickets + drain ingest queue.
+  # See docs/SCALE_AND_THROTTLE.md, docs/ERROR_CAPTURE_AND_SCOPE.md
+  - type: cron
+    name: echoaurion-company-os-ops-poll
+    runtime: node
+    schedule: "*/5 * * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-ops-poll.mjs
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false

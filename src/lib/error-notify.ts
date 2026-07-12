@@ -146,6 +146,30 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
     else if (ticket.affectedClientKeys[0]) clientKeys = [ticket.affectedClientKeys[0]]
   }
 
+  // Fleet / large COHORT: queue chunked fan-out (never sync-hit 5k clients).
+  const FANOUT_SYNC_MAX = 25
+  if ((scope === 'GLOBAL' || scope === 'COHORT') && clientKeys.length > FANOUT_SYNC_MAX) {
+    const { enqueueIngestJob } = await import('@/lib/ingest-queue')
+    await enqueueIngestJob({
+      kind: 'notify_fanout',
+      payload: { ticketId: ticket.id, offset: 0, chunkSize: 40 },
+      dedupeKey: `notify:${ticket.id}:0`,
+    })
+    await db.helpMessage.create({
+      data: {
+        ticketId: ticket.id,
+        role: 'SYSTEM',
+        body: `Notify fan-out queued for ${clientKeys.length} pilot(s) · scope=${scope}${stage ? ` · stage=${stage}` : ''} (chunked — see docs/SCALE_AND_THROTTLE.md)`,
+      },
+    })
+    await audit('computer_agent', 'help_desk.error_event.notify_queued', ticket.id, {
+      scope,
+      targetCount: clientKeys.length,
+      stage,
+    })
+    return { notified: 0, clientKeys, skipped: false, stage }
+  }
+
   const title = friendlyTitle(scope, stage)
   const body = friendlyBody(scope, ticket.subject, stage)
 
@@ -208,6 +232,102 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
   })
 
   return { notified, clientKeys, skipped: false, stage }
+}
+
+/**
+ * Chunked fleet notify — called by ingest-queue worker.
+ * Processes `chunkSize` clients from `offset`, then enqueues the next chunk.
+ */
+export async function notifyErrorFixedBatched(
+  ticketId: string,
+  opts: { offset?: number; chunkSize?: number } = {}
+): Promise<{ notified: number; done: boolean; nextOffset?: number }> {
+  const ticket = await db.helpTicket.findUnique({ where: { id: ticketId } })
+  if (!ticket || ticket.channel !== 'SYSTEM' || !ticket.notifyWhenFixed) {
+    return { notified: 0, done: true }
+  }
+
+  const scope = (ticket.errorScope ?? 'USER') as ErrorBlastScope
+  let stage = ticket.rolloutStage
+  let clientKeys: string[] = []
+
+  if (scope === 'GLOBAL') {
+    const canary = ticket.canaryClientKeys.filter(Boolean)
+    if (canary.length > 0 && stage !== 'fleet') {
+      clientKeys = canary
+      stage = 'canary'
+    } else {
+      clientKeys = await resolveTargetClientKeys('ALL', null)
+      stage = 'fleet'
+    }
+  } else if (scope === 'COHORT') {
+    clientKeys = await resolveCohortClientKeys(ticket)
+  } else {
+    return { notified: 0, done: true }
+  }
+
+  const offset = opts.offset ?? 0
+  const chunkSize = Math.min(Math.max(opts.chunkSize ?? 40, 5), 100)
+  const slice = clientKeys.slice(offset, offset + chunkSize)
+  const title = friendlyTitle(scope, stage)
+  const body = friendlyBody(scope, ticket.subject, stage)
+
+  let notified = 0
+  for (const clientKey of slice) {
+    await publishShowMessage({
+      clientKey,
+      title,
+      body,
+      severity: 'success',
+      ticketId: ticket.id,
+    })
+    await publishRelayEvent(clientKey, 'feature_available', {
+      type: 'feature_available',
+      title,
+      body,
+      ticketId: ticket.id,
+      fingerprint: ticket.fingerprint,
+      scope,
+      rolloutStage: stage,
+      updateDirective: 'refresh_recommended',
+    })
+    notified += 1
+  }
+
+  const nextOffset = offset + slice.length
+  const done = nextOffset >= clientKeys.length
+
+  if (!done) {
+    const { enqueueIngestJob } = await import('@/lib/ingest-queue')
+    await enqueueIngestJob({
+      kind: 'notify_fanout',
+      payload: { ticketId, offset: nextOffset, chunkSize },
+      dedupeKey: `notify:${ticketId}:${nextOffset}`,
+    })
+  } else {
+    await db.helpTicket.update({
+      where: { id: ticket.id },
+      data: { rolloutStage: stage },
+    })
+    await db.helpMessage.create({
+      data: {
+        ticketId: ticket.id,
+        role: 'SYSTEM',
+        body: `Notify fan-out complete · ${clientKeys.length} pilot(s) · scope=${scope} · stage=${stage}`,
+      },
+    })
+  }
+
+  await audit('computer_agent', 'help_desk.error_event.notify_chunk', ticket.id, {
+    scope,
+    notified,
+    offset,
+    nextOffset,
+    done,
+    stage,
+  })
+
+  return { notified, done, nextOffset: done ? undefined : nextOffset }
 }
 
 /** Promote GLOBAL canary → fleet notify for remaining clients. */

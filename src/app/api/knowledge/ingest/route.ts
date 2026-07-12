@@ -6,6 +6,7 @@ import {
   knowledgeIngestAuthorized,
   knowledgeIngestSchema,
 } from '@/lib/knowledge-ingest'
+import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,7 @@ export async function POST(req: Request): Promise<Response> {
           success: false,
           error: `PII-like field rejected: ${pii}`,
           code: 'PII_REJECTED',
+          label: '✕ PII rejected',
         },
         { status: 400 }
       )
@@ -46,6 +48,12 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const d = parsed.data
+    const throttle = allowIngestThrottle({
+      scope: 'knowledge',
+      clientKey: d.clientKey,
+    })
+    if (!throttle.ok) return throttleResponse(throttle)
+
     const payloadPii = findForbiddenPiiKey(d.payload)
     if (payloadPii) {
       return Response.json(
@@ -53,6 +61,7 @@ export async function POST(req: Request): Promise<Response> {
           success: false,
           error: `PII-like field rejected in payload: ${payloadPii}`,
           code: 'PII_REJECTED',
+          label: '✕ PII rejected',
         },
         { status: 400 }
       )
@@ -81,15 +90,16 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       {
         success: true,
-        data: { id: created.id, accepted: true },
-      } satisfies APIResponse<{ id: string; accepted: boolean }>,
-      { status: 201 }
+        data: { id: created.id, accepted: true, label: '✓ Knowledge signal accepted' },
+      } satisfies APIResponse<{ id: string; accepted: boolean; label: string }>,
+      { status: 202 }
     )
   } catch (error) {
     return Response.json(
       {
         success: false,
         error: error instanceof Error ? error.message : 'Knowledge ingest failed',
+        label: '✕ Knowledge ingest failed',
       },
       { status: 500 }
     )

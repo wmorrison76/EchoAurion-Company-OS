@@ -1,6 +1,7 @@
 /**
- * Strip emails, tokens, JWTs, and long query strings from error payloads
- * before DB / Knights context. Never store raw secrets in Help Desk.
+ * Strip emails, tokens, JWTs, PATs, env dumps, and long query strings from
+ * error / CI / deploy payloads before DB / Knights context.
+ * Never store raw secrets in Help Desk or Echo learning chunks.
  */
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi
@@ -8,17 +9,26 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
 const BEARER_RE = /(?:Bearer|token|api[_-]?key|authorization)\s*[=:]\s*['"]?[^\s'"&,;]{8,}/gi
 const SECRET_ASSIGN_RE =
   /(?:password|passwd|secret|apiKey|api_key|access[_-]?token|refresh[_-]?token|private[_-]?key)\s*[=:]\s*['"]?[^\s'"&,;]{4,}/gi
+const GITHUB_PAT_RE = /\b(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}\b/g
+const STRIPE_KEY_RE = /\b(sk|rk|pk)_(live|test)_[A-Za-z0-9]{16,}\b/g
+const ENV_DUMP_RE =
+  /(?:^|[\s;])(?:export\s+)?([A-Z][A-Z0-9_]{2,})\s*=\s*['"]?[^\s'"]{8,}/gm
 const HEX_TOKEN_RE = /\b[a-f0-9]{32,}\b/gi
 const LONG_QUERY_RE = /(\?[^\s]{80,})/g
 const PATH_QUERY_RE = /(https?:\/\/[^\s]+)\?[^\s]*/gi
+const PHONE_RE = /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g
 
 export function redactSensitive(input: string | null | undefined, max = 4000): string {
   if (!input) return ''
   let s = input
   s = s.replace(EMAIL_RE, '[redacted-email]')
+  s = s.replace(PHONE_RE, '[redacted-phone]')
   s = s.replace(JWT_RE, '[redacted-jwt]')
+  s = s.replace(GITHUB_PAT_RE, '[redacted-github-pat]')
+  s = s.replace(STRIPE_KEY_RE, '[redacted-stripe-key]')
   s = s.replace(BEARER_RE, '[redacted-token]')
   s = s.replace(SECRET_ASSIGN_RE, '[redacted-secret]')
+  s = s.replace(ENV_DUMP_RE, ' [redacted-env]')
   s = s.replace(HEX_TOKEN_RE, '[redacted-hex]')
   s = s.replace(PATH_QUERY_RE, '$1?[redacted-qs]')
   s = s.replace(LONG_QUERY_RE, '?[redacted-long-qs]')

@@ -81,12 +81,63 @@ Friendly recovery only: **“We’re on it”** — no stack traces, no Language
 
 ---
 
+## CI / PR / Deploy failures (ops → same flywheel)
+
+System failures on **fix deployment** enter the same path as app crashes:
+
+```
+GitHub webhook (workflow_run / check_suite / pull_request)
+  or cron POST /api/ops/poll-failures (Render + GitHub poll)
+        │
+        ▼
+  ops-failure-ingest → redact → fingerprint (ops-sha…)
+        │
+        ▼
+  ingestErrorEvent (SYSTEM · INFRA · moduleHint=ci|pr|deploy)
+        │
+        ▼
+  enqueue agent_loop → WorkRequest FIX + draft PR plan + Knights
+```
+
+| Ingress | Auth | Notes |
+|---|---|---|
+| `POST /api/webhooks/github` | `X-Hub-Signature-256` + `GITHUB_WEBHOOK_SECRET` | CI/PR + **Bugbot/cursor autofix** comments |
+| `POST /api/ops/poll-failures` | `Bearer $CRON_SECRET` | Render failed deploys + recent CI + queue drain |
+
+**Bugbot / cursor[bot] (rewire class, e.g. luccca-web PR #202):**
+- Webhook events: `issue_comment`, `pull_request_review_comment`
+- Actor match: login contains `cursor`/`bugbot` OR body matches Bugbot Autofix copy
+- **Applied / prepared** → SYSTEM ticket `moduleHint=autofix`, scope USER (telemetry; no agent stampede) + timeline **Autofix applied / prepared**
+- **Failed** → ACCOUNT + repair queue like CI
+- Help Desk badge: **⟳ Bugbot autofix**
+
+Help Desk badges: **✕ CI failed** / **✕ Deploy failed** / **⟳ Bugbot autofix** (shape+label). Related WorkRequest/HelpTicket annotated when commit SHA / PR # matches.
+
+Env: `GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `RENDER_API_KEY`. Scale: `docs/SCALE_AND_THROTTLE.md`. Learning: `docs/ECHO_LEARNING_PLANE.md`.
+
+### ID graph (talk-to-one-another)
+
+```
+ErrorEventInput / ops ingest
+  → HelpTicket.id (+ fingerprint, workRequestId)
+  → ErrorPattern (fingerprint, productLine)
+  → IngestJob (agent_loop → WorkRequest + Architect plan + Knights)
+  → KnightEval / KnightRunbook (on resolve)
+  → EchoKnowledgeChunk (queued learn)
+  → notify_fanout → RelayOutbox (clientKey)
+```
+
+Shared IDs: `ticketId`, `workRequestId`, `fingerprint`, `clientKey`, `productLine`.
+
+---
+
 ## How to test
 
-1. Company OS: `npx prisma migrate deploy` (migration `20260712180000_error_capture_scope`).
+1. Company OS: `npx prisma migrate deploy` (migrations through `20260712210000_scale_and_echo_learning`).
 2. Set matching `SUPPORT_INGEST_SECRET` / `COMPANY_OS_INGEST_SECRET`.
 3. Pilot: trigger a render error or `window.dispatchEvent` path; confirm SYSTEM ticket with scope/category badges.
 4. Repeat same fingerprint within 1h → `occurrenceCount` increments (no new ticket spam).
 5. Resolve ticket → outbox `show_message` (and `feature_available` if GLOBAL).
 6. Knights draft mentioning `src/lib/auth` → `NEEDS_HUMAN_CORE_REVIEW`, standby blocked.
 7. Analytics: `GET /api/help-desk/error-patterns`.
+8. Ops: configure GitHub webhook or run `POST /api/ops/poll-failures` with `CRON_SECRET`; fail a deploy → **✕ Deploy failed** ticket.

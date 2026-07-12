@@ -96,9 +96,17 @@ If Scout (or any seat) is UNAVAILABLE (billing, timeout, missing key), Help Desk
 Help Desk SYSTEM tickets show:
 
 - Scope / category / **Agent + Knights working**
+- **✕ CI failed** / **✕ Deploy failed** when `moduleHint` is ci/pr/deploy
+- **⟳ Bugbot autofix** when `moduleHint` is autofix (cursor[bot] repair stream)
 - Cohort metadata, canary list, rollout stage
 - **Canary then fleet** + **Promote canary → fleet**
 - Promote to COHORT / GLOBAL
+
+---
+
+## Scale (5k tenants)
+
+Agent loop and fleet notify are **queued** (`ingest_jobs`), not sync LLM-per-request. See `docs/SCALE_AND_THROTTLE.md`.
 
 ---
 
@@ -109,5 +117,6 @@ Help Desk SYSTEM tickets show:
 3. Knights drafts stay on the ticket for counsel — do not treat as merge authority.
 4. Dual-control + core review if `NEEDS_HUMAN_CORE_REVIEW`.
 5. Resolve ticket → pilots notified; runbook/eval feed the next incident.
+6. If CI/deploy fails on that fix → new SYSTEM ticket + timeline “Deploy failed — repair queued”.
 
-See also: `docs/ERROR_CAPTURE_AND_SCOPE.md`, `docs/PR_FROM_BUILD.md`, `docs/CONSTITUTION.md`.
+See also: `docs/ERROR_CAPTURE_AND_SCOPE.md`, `docs/PR_FROM_BUILD.md`, `docs/CONSTITUTION.md`, `docs/ECHO_LEARNING_PLANE.md`.

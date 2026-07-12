@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { z } from 'zod'
 import { ingestErrorEvent } from '@/lib/error-events'
+import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -26,6 +27,9 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
   }
 
+  const throttle = allowIngestThrottle({ scope: 'self_report' })
+  if (!throttle.ok) return throttleResponse(throttle)
+
   try {
     const parsed = schema.safeParse(await req.json())
     if (!parsed.success) {
@@ -50,19 +54,22 @@ export async function POST(req: Request): Promise<Response> {
           ticketId: result.ticket.id,
           created: result.created,
           scope: result.ticket.errorScope,
+          label: result.created ? '✓ Self-report ticket' : '○ Deduped self-report',
         },
       } satisfies APIResponse<{
         ticketId: string
         created: boolean
         scope: HelpTicketDetail['errorScope']
+        label: string
       }>,
-      { status: result.created ? 201 : 200 }
+      { status: result.created ? 201 : 202 }
     )
   } catch (error) {
     return Response.json(
       {
         success: false,
         error: error instanceof Error ? error.message : 'self-report failed',
+        label: '✕ Self-report failed',
       },
       { status: 500 }
     )

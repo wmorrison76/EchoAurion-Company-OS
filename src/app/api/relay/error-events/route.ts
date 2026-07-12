@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { relayGuard, requireClientKey } from '@/lib/relay-auth'
 import { ingestErrorEvent } from '@/lib/error-events'
+import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -33,6 +34,7 @@ const schema = z.object({
  * Pilot → Company OS auto Help Desk ticket (SYSTEM channel).
  * Auth: SUPPORT_INGEST_SECRET bearer (same as heartbeat/diagnostics).
  * No guest PII — message/stack only, redacted server-side.
+ * Rate-limited per clientKey + global budget (docs/SCALE_AND_THROTTLE.md).
  */
 export async function POST(req: Request): Promise<Response> {
   const a = relayGuard(req, 'diagnostics')
@@ -59,10 +61,19 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
+    const throttle = allowIngestThrottle({
+      scope: 'error',
+      clientKey: key.clientKey,
+    })
+    if (!throttle.ok) return throttleResponse(throttle)
+
     const result = await ingestErrorEvent({
       ...parsed.data,
       clientKey: key.clientKey,
     })
+
+    // 202 when deduped under load — pilot should treat as accepted (count bumped).
+    const status = result.created ? 201 : 202
 
     return Response.json(
       {
@@ -74,6 +85,9 @@ export async function POST(req: Request): Promise<Response> {
           scope: result.ticket.errorScope,
           occurrenceCount: result.ticket.occurrenceCount,
           ticket: result.ticket,
+          label: result.created
+            ? '✓ Ticket opened'
+            : `○ Deduped · ×${result.ticket.occurrenceCount}`,
         },
       } satisfies APIResponse<{
         ticketId: string
@@ -82,8 +96,9 @@ export async function POST(req: Request): Promise<Response> {
         scope: HelpTicketDetail['errorScope']
         occurrenceCount: number
         ticket: HelpTicketDetail
+        label: string
       }>,
-      { status: result.created ? 201 : 200 }
+      { status }
     )
   } catch (error) {
     return Response.json(
@@ -91,6 +106,7 @@ export async function POST(req: Request): Promise<Response> {
         success: false,
         error: error instanceof Error ? error.message : 'error_event ingest failed',
         code: 'INGEST_FAILED',
+        label: '✕ Ingest failed',
       },
       { status: 500 }
     )

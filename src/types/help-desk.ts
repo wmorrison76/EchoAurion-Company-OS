@@ -62,6 +62,7 @@ export interface HelpTicketListItem {
   agentWorking: boolean
   rolloutStage: RolloutStage | string | null
   canaryClientKeys: string[]
+  moduleHint: string | null
 }
 
 export interface HelpTicketDetail extends HelpTicketListItem {

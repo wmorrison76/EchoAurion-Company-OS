@@ -1009,3 +1009,55 @@ model KnightEval {
   @@index([matched, score])
   @@map("knight_evals")
 }
+
+// ── Scale: async ingest job queue (5k-tenant backpressure) ───────────────────
+// See docs/SCALE_AND_THROTTLE.md. Expensive work (Knights, notify fan-out,
+// learning embed) is drained by POST /api/ops/drain-queue (cron).
+
+model IngestJob {
+  id        String    @id @default(cuid())
+  kind      String // agent_loop | notify_fanout | knowledge_embed | echo_learn_*
+  payload   Json
+  dedupeKey String?
+  status    String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  attempts  Int       @default(0)
+  runAfter  DateTime  @default(now())
+  lockedAt  DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status, runAfter])
+  @@index([kind, status])
+  @@index([dedupeKey, status])
+  @@map("ingest_jobs")
+}
+
+// ── Echo Learning Plane (PII-safe chunks; embeddings optional) ───────────────
+// See docs/ECHO_LEARNING_PLANE.md. No guest/staff PII. GLOBAL/COHORT teachable
+// across Echo instances; ACCOUNT never shared fleet-wide.
+
+model EchoKnowledgeChunk {
+  id              String   @id @default(cuid())
+  section         String // ops | hospitality | runbook | help | error_pattern | procedure | domain
+  domain          String?
+  sourceType      String // knight_runbook | error_pattern | help_article | pdf | manual
+  sourceRef       String?
+  contentRedacted String
+  metadata        Json?
+  /// Reserved for Neon pgvector — null until embeddings enabled (TODO).
+  embedding       Json?
+  productLine     String?
+  /// null when shareScope is GLOBAL or COHORT (fleet-shareable).
+  clientKey       String?
+  shareScope      String   @default("GLOBAL") // GLOBAL | COHORT | ACCOUNT
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([section, createdAt])
+  @@index([sourceType, sourceRef])
+  @@index([productLine, shareScope])
+  @@index([clientKey, createdAt])
+  @@index([shareScope, updatedAt])
+  @@map("echo_knowledge_chunks")
+}

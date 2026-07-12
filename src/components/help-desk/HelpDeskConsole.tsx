@@ -582,6 +582,15 @@ export function HelpDeskConsole() {
                     {t.errorCategory && (
                       <StatusBadge level="unknown" label={t.errorCategory} />
                     )}
+                    {(t.moduleHint === 'ci' || t.moduleHint === 'pr') && (
+                      <StatusBadge level="error" label="✕ CI failed" />
+                    )}
+                    {t.moduleHint === 'deploy' && (
+                      <StatusBadge level="error" label="✕ Deploy failed" />
+                    )}
+                    {t.moduleHint === 'autofix' && (
+                      <StatusBadge level="warn" label="⟳ Bugbot autofix" />
+                    )}
                     {t.agentWorking && (
                       <StatusBadge level="warn" label="⟳ Agent + Knights" />
                     )}
@@ -647,6 +656,15 @@ export function HelpDeskConsole() {
                   )}
                   {detail.errorCategory && (
                     <StatusBadge level="unknown" label={`Cat ${detail.errorCategory}`} />
+                  )}
+                  {(detail.moduleHint === 'ci' || detail.moduleHint === 'pr') && (
+                    <StatusBadge level="error" label="✕ CI failed" />
+                  )}
+                  {detail.moduleHint === 'deploy' && (
+                    <StatusBadge level="error" label="✕ Deploy failed" />
+                  )}
+                  {detail.moduleHint === 'autofix' && (
+                    <StatusBadge level="warn" label="⟳ Bugbot autofix" />
                   )}
                   {detail.agentWorking && (
                     <StatusBadge level="warn" label="⟳ Agent + Knights working" />
