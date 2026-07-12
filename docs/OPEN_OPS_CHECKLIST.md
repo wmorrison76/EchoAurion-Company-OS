@@ -26,12 +26,21 @@ These exist under `prisma/migrations/` and must be applied on Neon after each Co
 | Env var | Purpose |
 |---|---|
 | `SUPPORT_EMAIL_WEBHOOK_SECRET` | Bearer for `POST /api/webhooks/support-email` (or reuse ingest secret) |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Live IVR signature verify + number |
+| `SUPPORT_SMS_WEBHOOK_SECRET` | Bearer for `POST /api/webhooks/support-sms` (or reuse ingest secret) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Live IVR + SMS status send |
 | `SUPPORT_IVR_PUBLIC_URL` | Exact public webhook URL Twilio signs |
 | `SUPPORT_IVR_WEBHOOK_SECRET` | Optional IVR Bearer override |
-| Stripe keys (existing) | Auto-create Invoice on WorkAgreement authorize |
+| Stripe keys (existing) | Auto-create + send Invoice on WorkAgreement authorize |
+| `CRON_SECRET` | Also guards `/api/ops/cost-anomaly` + `/api/ops/help-eval-friday` |
 
-See `docs/SUPPORT_90_DAY_PLAN.md` for verify checklist after meeting.
+### Suggested Render crons (optional)
+
+| Schedule | URL |
+|---|---|
+| Thu 22:00 UTC | `POST /api/ops/help-eval-friday` |
+| Daily (e.g. after financial sync) | `POST /api/ops/cost-anomaly` |
+
+See `docs/SUPPORT_90_DAY_PLAN.md` · `docs/SUPPORT_SMS.md` · `docs/HELP_EVAL.md` · `docs/PILOT_PR_202_REBASE_NOTES.md`.
 
 ---
 

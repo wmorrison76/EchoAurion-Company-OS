@@ -48,6 +48,12 @@ export interface FleetNodeMeta {
   lastSeenAt?: string | null
   /** Support client health as text label (GREEN / AMBER / RED / UNKNOWN). */
   clientHealthLabel?: string | null
+  /** Property reliability composite 0–100 (shape+label in UI). */
+  reliabilityScore?: number | null
+  reliabilityShape?: string | null
+  reliabilityLabel?: string | null
+  reliabilityMttrHours?: number | null
+  reliabilityCsat?: number | null
   source?: 'render' | 'support' | 'demo' | 'derived'
   deployHistory?: FleetDeployHistoryItem[]
   [key: string]: string | number | boolean | null | undefined | FleetDeployHistoryItem[]

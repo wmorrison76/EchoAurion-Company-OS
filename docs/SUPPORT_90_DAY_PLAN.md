@@ -36,11 +36,11 @@
 
 ## Also cover (P1 — after P0 vertical slices)
 
-- Omnichannel lite SMS status updates (notify-when-fixed off-app)
-- Expand HelpEval + gate regression simulations (Fin “test before live”)
+- [x] Omnichannel lite SMS status updates (notify-when-fixed off-app) — webhook + Twilio stub
+- [x] Expand HelpEval + gate regression simulations (Fin “test before live”) — Friday cron scaffold
 - SOC2 Type II process kickoff (controls already mapped)
 - Cohort messaging UI (“Safari 17 broke print BEO”)
-- Cost anomaly alerts (10× Knight burn per `clientKey`)
+- [x] Cost anomaly alerts (10× Knight burn per `clientKey`)
 - Billing-contact portal (quote history without full Dr. OS)
 - Guest-impact / meal-period auto-escalate priority
 
@@ -52,12 +52,12 @@
 
 From competitive analysis §6 — schedule into P0 polish or early P1:
 
-1. **Property reliability score** (open SYSTEM + MTTR + canary + CSAT) on Fleet Nexus  
+1. [x] **Property reliability score** (open SYSTEM + MTTR + canary + CSAT) on Fleet Nexus  
 2. **Guest-impact mode** for meal-critical modules (priority escalate; no stack traces to floor)  
-3. **Standby simulation nights** (weekly HelpEval before Friday rush)  
+3. [x] **Standby simulation nights** (weekly HelpEval before Friday rush)  
 4. **Quote → Help File draft** for T3+ paid builds (tenant-scrubbed)  
 5. **Public trust page** (handshake, PR-only, canary, retention) — SOC2-prep marketing  
-6. **Cost anomaly alerts** once CustomerCostSnapshot cron is live  
+6. [x] **Cost anomaly alerts** once CustomerCostSnapshot cron is live  
 
 ---
 
@@ -78,38 +78,50 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 | 9 | IVR Twilio-ready polish | Menu TwiML GET; signature verify when `TWILIO_AUTH_TOKEN` set; else feature-flag bypass |
 | 10 | Cost panel polish | Channel/gate context; snapshot button; docs for William verify |
 
-### Days 2–3
+### Days 2–3 — Session 2 shipped
 
-- SMS status lite (Twilio Messaging feature-flagged)  
-- Reliability score composite on Fleet Nexus  
-- CSAT collection via relay directive to property UI  
-- Stripe Invoice create-on-authorize (when keys present)  
-- Dead-letter drain cron health on Dr. OS  
+- [x] SMS status lite (Twilio Messaging feature-flagged) — `docs/SUPPORT_SMS.md`
+- [x] Reliability score composite on Fleet Nexus
+- [x] CSAT collection via relay directive to property UI — `POST /api/relay/csat`
+- [x] Stripe Invoice create-on-authorize (when keys present) — finalize + sendInvoice polish
+- [x] Help Files UI toggles for `public` / `isMacro`
+- Dead-letter drain cron health on Dr. OS — still open (P0 dead-letter UI already live)
 
-### Days 4–5
+### Days 4–5 — Session 2 partial
 
-- HelpEval gate regressions + Friday simulation checklist  
-- Cost anomaly alert → Alert row  
-- Property Help Center search + panel deep-links  
-- Pilot PR #202 conflict session (separate; do not force-merge)  
-- Trust page draft  
+- [x] HelpEval gate regressions + Friday simulation checklist — `/api/ops/help-eval-friday`
+- [x] Cost anomaly alert → Alert row — `/api/ops/cost-anomaly`
+- Property Help Center search + panel deep-links — still open
+- [x] Pilot PR #202 conflict notes (separate; do not force-merge) — `docs/PILOT_PR_202_REBASE_NOTES.md`
+- Trust page draft — still open
 
 ---
 
 ## Acceptance criteria (P0 “done enough” for buyer conversation)
 
-- [ ] Operator can see **⏱ On track / ▲ At risk / ✕ Breached** per ticket (shape + label)  
-- [ ] Resolve flow prompts **CSAT 1–5**; Dr. OS shows average (90d)  
-- [ ] Failed notify jobs + stuck outbox are **visible and retriable** without SQL  
-- [ ] Email webhook (secret-gated) creates HelpTicket with gate + `EMAIL` channel  
-- [ ] Macros insert from Help Files + builtins  
-- [ ] Analytics show gate **and** channel mix (PII-free)  
-- [ ] `/help-center` serves public articles without login  
-- [ ] WorkAgreement can store `stripeInvoiceId` / hosted invoice URL  
-- [ ] IVR creates tickets; Twilio verify when credentials set; otherwise documented flag  
-- [ ] Customer cost table refreshable; heuristic + work spend visible  
-- [ ] No secrets committed; Twilio/ElevenLabs no-op without keys  
-- [ ] Colorblind-safe UI; tenant isolation preserved; draft-PR-only core unchanged  
+- [x] Operator can see **⏱ On track / ▲ At risk / ✕ Breached** per ticket (shape + label)  
+- [x] Resolve flow prompts **CSAT 1–5**; Dr. OS shows average (90d)  
+- [x] Failed notify jobs + stuck outbox are **visible and retriable** without SQL  
+- [x] Email webhook (secret-gated) creates HelpTicket with gate + `EMAIL` channel  
+- [x] Macros insert from Help Files + builtins  
+- [x] Analytics show gate **and** channel mix (PII-free)  
+- [x] `/help-center` serves public articles without login  
+- [x] WorkAgreement can store `stripeInvoiceId` / hosted invoice URL  
+- [x] IVR creates tickets; Twilio verify when credentials set; otherwise documented flag  
+- [x] Customer cost table refreshable; heuristic + work spend visible  
+- [x] No secrets committed; Twilio/ElevenLabs no-op without keys  
+- [x] Colorblind-safe UI; tenant isolation preserved; draft-PR-only core unchanged  
+
+### Session 2 add-ons
+
+- [x] SMS inbound + status stub/webhook  
+- [x] CSAT relay request on resolve + property submit endpoint  
+- [x] Fleet Nexus property reliability score (shape + label + number)  
+- [x] Cost anomaly 10× scan → Alert  
+- [x] HelpEval Friday cron scaffold + doc  
+- [x] Help Files `public` / `isMacro` toggles in UI  
+- [x] Stripe invoice send after finalize  
+- [x] PR #202 rebase notes (no force-merge)  
 
 ---
 
@@ -117,14 +129,18 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 
 | Item | Where |
 |---|---|
-| `npx prisma migrate deploy` (new SLA/CSAT/email migration) | Render deploy / Neon |
+| `npx prisma migrate deploy` (SLA/CSAT/email migration if not applied) | Render deploy / Neon |
 | `SUPPORT_INGEST_SECRET` paired with pilot | Company OS + luccca-web |
 | `SUPPORT_EMAIL_WEBHOOK_SECRET` (or reuse ingest) | Company OS — for email intake |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Optional — enables live IVR signature verify |
+| `SUPPORT_SMS_WEBHOOK_SECRET` (or reuse ingest) | Company OS — for SMS intake / status |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Optional — live IVR + SMS |
 | `SUPPORT_IVR_WEBHOOK_SECRET` | Optional override for IVR |
 | ElevenLabs TTS keys | Optional — voice replies |
-| Stripe live keys already used for MRR | Needed for real Invoice create |
-| Pilot PR #202 rebase | Dedicated conflict session — **do not force-merge** |
+| Stripe live keys already used for MRR | Needed for real Invoice create + send |
+| `CRON_SECRET` + Render cron → `/api/ops/help-eval-friday` | Thu 22:00 UTC suggested |
+| `CRON_SECRET` + Render cron → `/api/ops/cost-anomaly` | Daily after snapshots exist |
+| Pilot property UI: handle `open_panel` `support.csat` / deep link | luccca-web — rate surface |
+| Pilot PR #202 rebase | Dedicated conflict session — **do not force-merge** · see `docs/PILOT_PR_202_REBASE_NOTES.md` |
 
 ---
 

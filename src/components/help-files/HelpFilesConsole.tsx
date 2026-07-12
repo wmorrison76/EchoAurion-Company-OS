@@ -35,6 +35,8 @@ export function HelpFilesConsole() {
   const [body, setBody] = useState('')
   const [tags, setTags] = useState('')
   const [panelId, setPanelId] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
+  const [isMacro, setIsMacro] = useState(false)
 
   const listUrl = q.trim()
     ? `/api/help-files/search?q=${encodeURIComponent(q.trim())}`
@@ -58,6 +60,8 @@ export function HelpFilesConsole() {
       setBody('')
       setTags('')
       setPanelId('')
+      setIsPublic(false)
+      setIsMacro(false)
       return
     }
     setTitle(a.title)
@@ -65,6 +69,8 @@ export function HelpFilesConsole() {
     setBody(a.body)
     setTags(a.tags.join(', '))
     setPanelId(a.panelId ?? '')
+    setIsPublic(a.public === true)
+    setIsMacro(a.isMacro === true)
   }
 
   function startNew() {
@@ -93,6 +99,8 @@ export function HelpFilesConsole() {
           .map((t) => t.trim())
           .filter(Boolean),
         panelId: panelId || null,
+        public: isPublic,
+        isMacro,
       }
       const res = await fetch('/api/help-files', {
         method: selectedId ? 'PATCH' : 'POST',
@@ -186,6 +194,8 @@ export function HelpFilesConsole() {
                     {a.panelId ? ` · panel ${a.panelId}` : ''} · {ago(a.updatedAt)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1">
+                    {a.public ? <StatusBadge level="ok" label="○ Public" /> : null}
+                    {a.isMacro ? <StatusBadge level="unknown" label="▣ Macro" /> : null}
                     {a.tags.slice(0, 4).map((t) => (
                       <StatusBadge key={t} level="unknown" label={t} />
                     ))}
@@ -226,6 +236,8 @@ export function HelpFilesConsole() {
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-1">
+                    {selected.public ? <StatusBadge level="ok" label="○ Public · Help Center" /> : null}
+                    {selected.isMacro ? <StatusBadge level="unknown" label="▣ Macro library" /> : null}
                     {selected.tags.map((t) => (
                       <StatusBadge key={t} level="unknown" label={t} />
                     ))}
@@ -295,6 +307,28 @@ export function HelpFilesConsole() {
                       </option>
                     ))}
                   </select>
+                  <div className="flex flex-wrap gap-4" role="group" aria-label="Article visibility flags">
+                    <label className="flex items-center gap-2 text-sm text-[#a0a0b8]">
+                      <input
+                        type="checkbox"
+                        checked={isPublic}
+                        onChange={(e) => setIsPublic(e.target.checked)}
+                        aria-label="Public on Help Center"
+                        className="rounded border-[#2a2a3f]"
+                      />
+                      <span>○ Public (Help Center)</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-[#a0a0b8]">
+                      <input
+                        type="checkbox"
+                        checked={isMacro}
+                        onChange={(e) => setIsMacro(e.target.checked)}
+                        aria-label="Include in macro library"
+                        className="rounded border-[#2a2a3f]"
+                      />
+                      <span>▣ Macro library</span>
+                    </label>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"

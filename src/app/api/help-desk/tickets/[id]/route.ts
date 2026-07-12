@@ -4,6 +4,7 @@ import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
 import { onErrorTicketResolved } from '@/lib/error-resolve'
 import { isSlaBreached } from '@/lib/support-sla'
+import { publishCsatRequest } from '@/lib/support-csat'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail, HelpTicketStatus } from '@/types/help-desk'
 
@@ -143,6 +144,17 @@ export async function PATCH(
       }).catch((err) => {
         console.error('[help-desk] onErrorTicketResolved failed', err)
       })
+
+      // Property UI CSAT surface via relay (skip if operator already scored).
+      if (body.csatScore == null) {
+        void publishCsatRequest({
+          ticketId: id,
+          clientKey: ticket.clientKey ?? existing.clientKey,
+          subject: ticket.subject,
+        }).catch((err) => {
+          console.error('[help-desk] publishCsatRequest failed', err)
+        })
+      }
     }
 
     if (breached && !existing.slaBreachedAt) {

@@ -327,6 +327,18 @@ function DetailPanel({
         {node.meta.clientHealthLabel ? (
           <Stat label="Client health" value={String(node.meta.clientHealthLabel)} />
         ) : null}
+        {typeof node.meta.reliabilityScore === 'number' ? (
+          <Stat
+            label="Reliability"
+            value={`${node.meta.reliabilityShape ?? '○'} ${node.meta.reliabilityLabel ?? 'Score'} · ${node.meta.reliabilityScore}/100`}
+          />
+        ) : null}
+        {typeof node.meta.reliabilityMttrHours === 'number' ? (
+          <Stat label="MTTR (90d)" value={`${node.meta.reliabilityMttrHours}h`} />
+        ) : null}
+        {typeof node.meta.reliabilityCsat === 'number' ? (
+          <Stat label="CSAT avg" value={`★ ${node.meta.reliabilityCsat}/5`} />
+        ) : null}
         {node.meta.lastSeenAt ? <Stat label="Last seen" value={String(node.meta.lastSeenAt)} /> : null}
         {node.meta.source ? <Stat label="Source" value={String(node.meta.source)} /> : null}
         {node.meta.url ? (

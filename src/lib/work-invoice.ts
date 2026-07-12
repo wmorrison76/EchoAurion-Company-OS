@@ -128,25 +128,40 @@ export async function linkOrCreateWorkInvoice(opts: {
 
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id)
 
+    // Best-effort email via Stripe (send_invoice collection). Never blocks authorize.
+    let sentStatus = finalized.status ?? 'open'
+    let hostedUrl = finalized.hosted_invoice_url ?? finalized.invoice_pdf ?? null
+    try {
+      if (finalized.status === 'open' || finalized.status === 'draft') {
+        const sent = await stripe.invoices.sendInvoice(finalized.id)
+        sentStatus = sent.status ?? sentStatus
+        hostedUrl = sent.hosted_invoice_url ?? sent.invoice_pdf ?? hostedUrl
+      }
+    } catch {
+      // Hosted URL still usable even if email send fails (no billing contact email).
+    }
+
     await db.workAgreement.update({
       where: { id: opts.workAgreementId },
       data: {
         stripeInvoiceId: finalized.id,
-        stripeInvoiceUrl: finalized.hosted_invoice_url ?? finalized.invoice_pdf ?? null,
-        invoiceStatus: finalized.status ?? 'open',
+        stripeInvoiceUrl: hostedUrl,
+        invoiceStatus: sentStatus,
       },
     })
 
     await audit(actor, 'work.invoice.create', opts.workAgreementId, {
       stripeInvoiceId: finalized.id,
       workRequestId: opts.workRequestId,
+      invoiceStatus: sentStatus,
+      hostedUrl: Boolean(hostedUrl),
     })
 
     return {
       ok: true,
       stripeInvoiceId: finalized.id,
-      stripeInvoiceUrl: finalized.hosted_invoice_url ?? null,
-      invoiceStatus: finalized.status ?? 'open',
+      stripeInvoiceUrl: hostedUrl,
+      invoiceStatus: sentStatus,
       mode: 'created',
     }
   } catch (err) {

@@ -16,6 +16,7 @@ import type {
   FleetNexusPayload,
   FleetScope,
 } from '@/types/fleet-nexus'
+import { computePropertyReliabilityMap } from '@/lib/property-reliability'
 
 function clientHealthToFleet(h: ClientHealth): FleetHealth {
   if (h === 'GREEN') return 'ok'
@@ -144,7 +145,17 @@ function finalizeGraph(nodes: FleetNode[], edges: FleetEdge[], scope: FleetScope
 function buildFleetGraph(
   services: RenderServiceWithDeploy[],
   clients: SupportRow[],
-  deployHistoryByService: Map<string, FleetDeployHistoryItem[]>
+  deployHistoryByService: Map<string, FleetDeployHistoryItem[]>,
+  reliabilityByKey?: Map<
+    string,
+    {
+      score: number
+      shape: string
+      label: string
+      mttrHours: number | null
+      csatAverage: number | null
+    }
+  >
 ): FleetGraph {
   const nodes: FleetNode[] = []
   const edges: FleetEdge[] = []
@@ -195,6 +206,7 @@ function buildFleetGraph(
   for (const c of clients) {
     const id = `support/${c.id}`
     const parent = matchClientToService(c, services)
+    const rel = reliabilityByKey?.get(c.clientKey)
     nodes.push({
       id,
       label: c.label,
@@ -218,6 +230,11 @@ function buildFleetGraph(
         source: 'support',
         clientKey: c.clientKey,
         clientHealthLabel: c.health,
+        reliabilityScore: rel?.score ?? null,
+        reliabilityShape: rel?.shape ?? null,
+        reliabilityLabel: rel?.label ?? null,
+        reliabilityMttrHours: rel?.mttrHours ?? null,
+        reliabilityCsat: rel?.csatAverage ?? null,
       },
       deps: [],
       dependents: [],
@@ -239,7 +256,19 @@ function buildFleetGraph(
   return finalizeGraph(nodes, edges, 'fleet', title, fleetVersion)
 }
 
-function buildChainGraph(clients: SupportRow[]): FleetGraph {
+function buildChainGraph(
+  clients: SupportRow[],
+  reliabilityByKey?: Map<
+    string,
+    {
+      score: number
+      shape: string
+      label: string
+      mttrHours: number | null
+      csatAverage: number | null
+    }
+  >
+): FleetGraph {
   const nodes: FleetNode[] = []
   const edges: FleetEdge[] = []
 
@@ -293,6 +322,7 @@ function buildChainGraph(clients: SupportRow[]): FleetGraph {
 
     for (const c of members) {
       const id = `entity/${c.id}`
+      const rel = reliabilityByKey?.get(c.clientKey)
       nodes.push({
         id,
         label: c.label,
@@ -314,6 +344,12 @@ function buildChainGraph(clients: SupportRow[]): FleetGraph {
           lastSeenAt: ago(c.lastSeenAt),
           source: 'support',
           clientHealthLabel: c.health,
+          clientKey: c.clientKey,
+          reliabilityScore: rel?.score ?? null,
+          reliabilityShape: rel?.shape ?? null,
+          reliabilityLabel: rel?.label ?? null,
+          reliabilityMttrHours: rel?.mttrHours ?? null,
+          reliabilityCsat: rel?.csatAverage ?? null,
         },
         deps: [],
         dependents: [],
@@ -694,9 +730,13 @@ export async function buildFleetNexusPayload(): Promise<FleetNexusPayload> {
     }
   }
 
+  const reliabilityByKey = supportOk
+    ? await computePropertyReliabilityMap(clients.map((c) => c.clientKey))
+    : new Map()
+
   const graphs: Record<FleetScope, FleetGraph> = {
-    fleet: buildFleetGraph(services, clients, deployHistoryByService),
-    chain: buildChainGraph(clients),
+    fleet: buildFleetGraph(services, clients, deployHistoryByService, reliabilityByKey),
+    chain: buildChainGraph(clients, reliabilityByKey),
     deployment: buildDeploymentGraph(services, clients),
   }
 
