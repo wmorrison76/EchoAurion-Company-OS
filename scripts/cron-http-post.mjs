@@ -47,8 +47,10 @@ export async function cronHttpPost(apiPath) {
 
   let res
   try {
+    // redirect: 'manual' — middleware login redirects must not look like success.
     res = await fetch(url, {
       method: 'POST',
+      redirect: 'manual',
       headers: {
         Authorization: `Bearer ${secret}`,
         Accept: 'application/json',
