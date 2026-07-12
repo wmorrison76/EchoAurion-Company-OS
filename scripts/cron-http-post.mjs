@@ -26,19 +26,34 @@ function resolveBaseUrl() {
   return `https://${trimmed}`
 }
 
+/** Boolean presence only — never log secret values. */
+function envPresence() {
+  return {
+    WEB_SERVICE_URL: Boolean(process.env.WEB_SERVICE_URL?.trim()),
+    RENDER_EXTERNAL_URL: Boolean(process.env.RENDER_EXTERNAL_URL?.trim()),
+    NEXTAUTH_URL: Boolean(process.env.NEXTAUTH_URL?.trim()),
+    CRON_SECRET: Boolean(process.env.CRON_SECRET?.trim()),
+  }
+}
+
 export async function cronHttpPost(apiPath) {
   const path = apiPath.startsWith('/') ? apiPath : `/${apiPath}`
   const base = resolveBaseUrl()
   const secret = process.env.CRON_SECRET
+  const present = envPresence()
 
   if (!base) {
     console.error(
       '[cron] Missing base URL. Set WEB_SERVICE_URL (preferred), or RENDER_EXTERNAL_URL / NEXTAUTH_URL.'
     )
+    console.error(`[cron] Env present: ${JSON.stringify(present)}`)
     process.exit(1)
   }
   if (!secret) {
-    console.error('[cron] Missing CRON_SECRET. Set the same value on web and cron services.')
+    console.error(
+      '[cron] Missing CRON_SECRET. Set the same value on web and cron services. See docs/CRON_SECRET_SETUP.md'
+    )
+    console.error(`[cron] Env present: ${JSON.stringify(present)}`)
     process.exit(1)
   }
 

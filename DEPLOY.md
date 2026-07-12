@@ -212,7 +212,7 @@ Blueprint includes optional cron services that run small Node scripts under
 | Key | How to set |
 |---|---|
 | `WEB_SERVICE_URL` | Blueprint: `fromService` → web `RENDER_EXTERNAL_URL`. Or Manual Sync to `https://echoaurion-company-os.onrender.com` (no trailing slash). |
-| `CRON_SECRET` | Same value as the **web** service (`sync: false`). Set on web + every cron, then Manual Sync blueprint. |
+| `CRON_SECRET` | Same value as the **web** service (`sync: false`). Set on web + every cron, then Manual Sync blueprint. Full clicks: [docs/CRON_SECRET_SETUP.md](./docs/CRON_SECRET_SETUP.md). |
 
 Scripts also fall back to `RENDER_EXTERNAL_URL` / `NEXTAUTH_URL` if `WEB_SERVICE_URL` is missing.
 Exit 0 on HTTP 2xx (including empty dispatch `{ sent: [] }`). Exit 1 on missing env, auth fail, redirect/middleware, or 5xx.
