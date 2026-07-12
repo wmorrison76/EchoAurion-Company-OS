@@ -64,7 +64,8 @@ export async function cronHttpPost(apiPath) {
   const bodyText = await res.text().catch(() => '')
   const snippet = bodyText.slice(0, 400)
 
-  if (!res.ok) {
+  const redirected = res.status >= 300 && res.status < 400
+  if (!res.ok || redirected) {
     console.error(`[cron] HTTP ${res.status} ${res.statusText}`)
     if (snippet) console.error(`[cron] Body: ${snippet}`)
     if (res.status === 401 || res.status === 403) {
@@ -73,11 +74,17 @@ export async function cronHttpPost(apiPath) {
     if (res.status === 404) {
       console.error('[cron] Not found — check WEB_SERVICE_URL points at the Company OS web service.')
     }
-    if (res.status === 307 || res.status === 302) {
+    if (redirected) {
       console.error(
         '[cron] Redirect (likely middleware) — ensure the path is public for CRON_SECRET auth.'
       )
     }
+    process.exit(1)
+  }
+
+  // Defense in depth: login HTML must never count as a successful dispatch.
+  if (/^\s*<!DOCTYPE html/i.test(bodyText) || /<html[\s>]/i.test(bodyText)) {
+    console.error('[cron] Got HTML instead of JSON — likely redirected to /login (middleware).')
     process.exit(1)
   }
 

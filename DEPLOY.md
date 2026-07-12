@@ -196,18 +196,25 @@ SMTP alternative: leave `RESEND_API_KEY` empty and set `SMTP_HOST`, `SMTP_USER`,
 
 ## 4b. Cron jobs (in `render.yaml`)
 
-Blueprint includes optional cron services with **single-quoted** Node `fetch`
-startCommands (valid YAML — unquoted `Authorization: Bearer …` breaks parsers;
-Node images may lack `curl`):
+Blueprint includes optional cron services that run small Node scripts under
+`scripts/cron-*.mjs` (clear stdout errors; no nested `node -e` quotes).
+`buildCommand` is `true` (repo checkout only — no npm install needed).
 
-| Name | Schedule (UTC) | Purpose |
+| Name | Schedule (UTC) | Start command |
 |---|---|---|
-| `echoaurion-company-os-sync` | `0 8 * * *` | `POST /api/financial/sync` |
-| `echoaurion-company-os-briefing` | `0 11 * * *` | `POST /api/board-room/briefing` |
-| `echoaurion-company-os-maintenance` | `0 * * * *` | `POST /api/maintenance/dispatch` (due scheduled notices) |
+| `echoaurion-company-os-sync` | `0 8 * * *` | `node scripts/cron-financial-sync.mjs` |
+| `echoaurion-company-os-briefing` | `0 11 * * *` | `node scripts/cron-briefing.mjs` |
+| `echoaurion-company-os-maintenance` | `0 * * * *` | `node scripts/cron-maintenance-dispatch.mjs` |
 
-**Env on each cron:** `WEB_SERVICE_URL` = web service public URL (no trailing slash),
-`CRON_SECRET` = same value as the web service.
+**Env on each cron (required):**
+
+| Key | How to set |
+|---|---|
+| `WEB_SERVICE_URL` | Blueprint: `fromService` → web `RENDER_EXTERNAL_URL`. Or Manual Sync to `https://echoaurion-company-os.onrender.com` (no trailing slash). |
+| `CRON_SECRET` | Same value as the **web** service (`sync: false`). Set on web + every cron, then Manual Sync blueprint. |
+
+Scripts also fall back to `RENDER_EXTERNAL_URL` / `NEXTAUTH_URL` if `WEB_SERVICE_URL` is missing.
+Exit 0 on HTTP 2xx (including empty dispatch `{ sent: [] }`). Exit 1 on missing env, auth fail, redirect/middleware, or 5xx.
 
 **Maintenance notices:** compose at `/maintenance`. Send now or schedule; hourly cron
 fires due `SCHEDULED` rows. Manual:
@@ -217,14 +224,9 @@ curl -X POST "$WEB_SERVICE_URL/api/maintenance/dispatch" \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-If Blueprint cron create fails in your Render account, add the same jobs manually
-in the dashboard with this one-line startCommand:
-
-```bash
-node -e 'fetch(process.env.WEB_SERVICE_URL+"/api/financial/sync",{method:"POST",headers:{Authorization:"Bearer "+process.env.CRON_SECRET}}).then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))'
-```
-
-Swap the path for `/api/board-room/briefing` or `/api/maintenance/dispatch` on the other jobs. `buildCommand` can be `true`.
+If Blueprint cron create fails, add the same jobs manually with startCommand
+`node scripts/cron-maintenance-dispatch.mjs` (or the sync/briefing script).
+`buildCommand` can be `true`.
 
 ## 4c. Knowledge Plane
 
