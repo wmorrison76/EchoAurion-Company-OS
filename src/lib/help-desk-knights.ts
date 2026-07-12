@@ -284,7 +284,7 @@ export async function processInboundQuestion(
     })
     await raiseAlert({
       kind: 'question',
-      severity: 'ERROR',
+      severity: 'CRITICAL',
       title: 'Auto-Knights failed',
       body: err instanceof Error ? err.message.slice(0, 140) : 'unknown',
       entityRef: ticketId,

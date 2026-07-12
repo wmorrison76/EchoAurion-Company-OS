@@ -74,7 +74,7 @@ export async function POST(req: Request): Promise<Response> {
         console.error('[relay/questions] processInboundQuestion failed', err)
         void raiseAlert({
           kind: 'question',
-          severity: 'ERROR',
+          severity: 'CRITICAL',
           title: 'Inbound question processing failed',
           body: question.slice(0, 140),
           entityRef: created.id,
