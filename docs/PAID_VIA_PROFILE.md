@@ -56,15 +56,15 @@ Linked 1:1 to `WorkRequest`. Cascade delete with the work row.
 
 ---
 
-## Product placement (not wired yet)
+## Product placement
 
-Top-right chrome (product):
+Top-right chrome (product — `feat/company-os-relay-wiring` / laughing-noether):
 
-1. **Help Desk icon** — immediately **left** of mini EchoAI avatar  
-2. Avatar click → profile (name / role / email)  
-3. Help icon → slide-over: **Tech support** \| **Build request**
+1. **Help Desk icon** — immediately **left of the language flag** (tech support)
+2. Avatar click → profile menu → **Request a build / Pay for development** (Phase 2)
+3. Role gate + WorkAgreement modal → `POST /api/company-os-relay/work` → `/api/relay/work`
 
-Do **not** mount this in LUCCCA production UI until the pilot relay branch enables it. Use Company OS `/lab/echo-chrome` to prove the contract.
+Lab harness remains at Company OS `/lab/echo-chrome` for contract proof without product session.
 
 ---
 
