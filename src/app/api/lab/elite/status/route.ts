@@ -20,6 +20,17 @@ export interface EliteReadinessPayload {
   spendCapUsd: number
   lastEvalScore: number | null
   lastEvalAt: string | null
+  /** Post-resolve Knight draft-vs-fix flywheel scores. */
+  knightEval: {
+    recentCount: number
+    matchedCount: number
+    avgScore: number | null
+    lastAt: string | null
+  }
+  runbooks: {
+    promoted: number
+    draft: number
+  }
   rules: ReturnType<typeof constitutionSummary>['rules']
 }
 
@@ -43,6 +54,21 @@ export async function GET(): Promise<Response> {
     const autonomy = await getAutonomyConfig()
     const constitution = constitutionSummary()
 
+    const recentEvals = await db.knightEval.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { score: true, matched: true, createdAt: true },
+    })
+    const matchedCount = recentEvals.filter((e) => e.matched).length
+    const avgScore =
+      recentEvals.length > 0
+        ? recentEvals.reduce((s, e) => s + e.score, 0) / recentEvals.length
+        : null
+    const [promoted, draft] = await Promise.all([
+      db.knightRunbook.count({ where: { status: 'PROMOTED' } }),
+      db.knightRunbook.count({ where: { status: 'DRAFT' } }),
+    ])
+
     const data: EliteReadinessPayload = {
       adminEmail: resolveAdminEmailForDocs(),
       roles: superAdminDisplayRole(),
@@ -53,6 +79,13 @@ export async function GET(): Promise<Response> {
       spendCapUsd: buildSpendCapUsd(),
       lastEvalScore: evalRun?.score ?? null,
       lastEvalAt: evalRun?.createdAt ?? null,
+      knightEval: {
+        recentCount: recentEvals.length,
+        matchedCount,
+        avgScore,
+        lastAt: recentEvals[0]?.createdAt.toISOString() ?? null,
+      },
+      runbooks: { promoted, draft },
       rules: constitution.rules,
     }
     return Response.json({ success: true, data } satisfies APIResponse<EliteReadinessPayload>)

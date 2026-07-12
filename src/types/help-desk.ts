@@ -10,7 +10,7 @@ export type HelpMessageRole = 'CUSTOMER' | 'ADMIN' | 'KNIGHT' | 'SYSTEM'
 export type HelpVoiceNoteSource = 'UPLOAD' | 'DICTATION' | 'PASTE'
 export type HelpTicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
 /** Blast radius for auto-captured SYSTEM errors. */
-export type ErrorBlastScope = 'USER' | 'ACCOUNT' | 'GLOBAL'
+export type ErrorBlastScope = 'USER' | 'ACCOUNT' | 'COHORT' | 'GLOBAL'
 export type ErrorCategory =
   | 'UI'
   | 'API'
@@ -19,6 +19,8 @@ export type ErrorCategory =
   | 'INTEGRATION'
   | 'INFRA'
   | 'UNKNOWN'
+/** GLOBAL resolve stages: canary subset → full fleet. */
+export type RolloutStage = 'canary' | 'fleet'
 
 export interface HelpMessageView {
   id: string
@@ -57,6 +59,9 @@ export interface HelpTicketListItem {
   occurrenceCount: number
   affectedClientKeys: string[]
   needsHumanCoreReview: boolean
+  agentWorking: boolean
+  rolloutStage: RolloutStage | string | null
+  canaryClientKeys: string[]
 }
 
 export interface HelpTicketDetail extends HelpTicketListItem {
@@ -67,6 +72,9 @@ export interface HelpTicketDetail extends HelpTicketListItem {
   sessionHint: string | null
   errorClass: string | null
   moduleHint: string | null
+  cohortBrowser: string | null
+  cohortOs: string | null
+  cohortAppVersion: string | null
   messages: HelpMessageView[]
   voiceNotes: HelpVoiceNoteView[]
   policy: {

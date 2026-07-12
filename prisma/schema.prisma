@@ -701,6 +701,18 @@ model HelpTicket {
   /// When Architect/Knights propose core-path changes → NEEDS_HUMAN_CORE_REVIEW
   needsHumanCoreReview Boolean        @default(false)
 
+  // ── Continuous improvement flywheel ───────────────────────────────────────
+  /// COHORT metadata (browser / OS / appVersion) — never PII.
+  cohortBrowser    String?
+  cohortOs         String?
+  cohortAppVersion String?
+  /// GLOBAL resolve stages: null | canary | fleet
+  rolloutStage     String?
+  /// Optional canary clientKeys before fleet notify (GLOBAL).
+  canaryClientKeys String[]         @default([])
+  /// computer_agent + Knights actively drafting / PR-planning
+  agentWorking     Boolean          @default(false)
+
   messages   HelpMessage[]
   voiceNotes HelpVoiceNote[]
   timeline   HelpTimelineEvent[]
@@ -716,10 +728,11 @@ model HelpTicket {
   @@map("help_tickets")
 }
 
-/// Blast radius for auto-captured runtime errors (USER / ACCOUNT / GLOBAL).
+/// Blast radius for auto-captured runtime errors.
 enum ErrorBlastScope {
   USER
   ACCOUNT
+  COHORT
   GLOBAL
 }
 
@@ -938,8 +951,10 @@ model MaintenanceNotice {
   sentAt       DateTime?
   windowStart  DateTime? // optional maintenance window start (client display)
   windowEnd    DateTime? // optional maintenance window end
-  targetScope  String    @default("ALL") // ALL | CLIENT_KEY | PROPERTY
+  targetScope  String    @default("ALL") // ALL | CLIENT_KEY | PROPERTY | CANARY
   targetValue  String? // clientKey or property name when scoped
+  /// Optional staged rollout: notify these keys first (canary), then ALL.
+  canaryClientKeys String[] @default([])
   createdBy    String    @default("william_morrison")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -947,4 +962,50 @@ model MaintenanceNotice {
   @@index([status, scheduledFor])
   @@index([createdAt])
   @@map("maintenance_notices")
+}
+
+// ── Knights flywheel — learned runbooks + post-resolve eval ─────────────────
+// See docs/KNIGHTS_FLYWHEEL.md. Promotion requires confirmedBy william_morrison
+// OR evalScore >= threshold. Core-path content is always denied.
+
+model KnightRunbook {
+  id               String         @id @default(cuid())
+  fingerprint      String
+  productLine      String
+  errorCategory    ErrorCategory?
+  title            String
+  resolutionSteps  String
+  /// Always true for new upserts — learning must never auto-write core harm.
+  denyIfCore       Boolean        @default(true)
+  status           String         @default("DRAFT") // DRAFT | PROMOTED | REJECTED
+  confirmedBy      String? // william_morrison required for PROMOTED (unless eval pass)
+  evalScore        Float?
+  sourceTicketId   String?
+  hitCount         Int            @default(1)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([fingerprint, productLine])
+  @@index([status, hitCount])
+  @@index([errorCategory, productLine])
+  @@map("knight_runbooks")
+}
+
+/// Post-resolve score: did Knight draft match the final fix?
+model KnightEval {
+  id           String   @id @default(cuid())
+  ticketId     String
+  fingerprint  String?
+  productLine  String?
+  draftText    String // truncated
+  finalFixText String // truncated
+  score        Float // 0..1 token overlap
+  matched      Boolean  @default(false)
+  actor        String   @default("computer_agent")
+  createdAt    DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@index([matched, score])
+  @@map("knight_evals")
 }

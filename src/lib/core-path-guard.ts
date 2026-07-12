@@ -21,6 +21,9 @@ export const CORE_PATH_DENY_LIST: RegExp[] = [
   /db\s+push\s+--force-reset/i,
   /force.?push|git\s+push\s+--force/i,
   /deleteProtection:\s*false/i,
+  /remove\s+(?:the\s+)?auth(?:entication)?\s+middleware/i,
+  /disable\s+(?:auth|middleware|nextauth)/i,
+  /bypass\s+(?:auth|middleware|session)/i,
 ]
 
 /** Soft signals that still need dual control even if not hard deny. */

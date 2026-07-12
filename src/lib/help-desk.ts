@@ -34,6 +34,12 @@ type TicketRow = {
   errorClass?: string | null
   moduleHint?: string | null
   needsHumanCoreReview?: boolean
+  agentWorking?: boolean
+  rolloutStage?: string | null
+  canaryClientKeys?: string[]
+  cohortBrowser?: string | null
+  cohortOs?: string | null
+  cohortAppVersion?: string | null
   _count?: { messages: number }
   messages?: Array<{
     id: string
@@ -105,6 +111,9 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     occurrenceCount: t.occurrenceCount ?? 1,
     affectedClientKeys: t.affectedClientKeys ?? [],
     needsHumanCoreReview: t.needsHumanCoreReview ?? false,
+    agentWorking: t.agentWorking ?? false,
+    rolloutStage: t.rolloutStage ?? null,
+    canaryClientKeys: t.canaryClientKeys ?? [],
   }
 }
 
@@ -126,6 +135,9 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
     sessionHint: t.sessionHint ?? null,
     errorClass: t.errorClass ?? null,
     moduleHint: t.moduleHint ?? null,
+    cohortBrowser: t.cohortBrowser ?? null,
+    cohortOs: t.cohortOs ?? null,
+    cohortAppVersion: t.cohortAppVersion ?? null,
     messages: (t.messages ?? []).map(toMessageView),
     voiceNotes: (t.voiceNotes ?? []).map(toVoiceView),
     policy: {

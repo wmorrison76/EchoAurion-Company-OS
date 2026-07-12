@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
-import { notifyErrorFixed } from '@/lib/error-notify'
+import { onErrorTicketResolved } from '@/lib/error-resolve'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail, HelpTicketStatus } from '@/types/help-desk'
 
@@ -63,6 +63,9 @@ export async function PATCH(
       priority?: string
       subject?: string
       requesterName?: string
+      canaryClientKeys?: string[]
+      rolloutStage?: 'canary' | 'fleet' | null
+      fixSummary?: string
     }
 
     const existing = await db.helpTicket.findUnique({ where: { id } })
@@ -92,19 +95,28 @@ export async function PATCH(
           ? { requesterName: body.requesterName?.trim() || null }
           : {}),
         ...(resolvedAt !== undefined ? { resolvedAt } : {}),
+        ...(body.canaryClientKeys
+          ? { canaryClientKeys: body.canaryClientKeys.filter(Boolean) }
+          : {}),
+        ...(body.rolloutStage !== undefined ? { rolloutStage: body.rolloutStage } : {}),
       },
       include: DETAIL_INCLUDE,
     })
 
     if (becomingResolved) {
-      await notifyErrorFixed(id).catch((err) => {
-        console.error('[help-desk] notifyErrorFixed failed', err)
+      await onErrorTicketResolved({
+        ticketId: id,
+        finalFixSummary: body.fixSummary ?? null,
+        actor: 'william_morrison',
+      }).catch((err) => {
+        console.error('[help-desk] onErrorTicketResolved failed', err)
       })
     }
 
     await audit('william_morrison', 'help_desk.ticket.update', id, {
       status: body.status,
       priority: body.priority,
+      rolloutStage: body.rolloutStage,
     })
 
     const refreshed = becomingResolved

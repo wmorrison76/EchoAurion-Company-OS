@@ -40,9 +40,12 @@ Pilot ErrorBoundary / window.onerror / unhandledrejection
 |---|---|---|
 | `USER` | One session/device | That `clientKey` (+ optional `sessionHint` in payload) |
 | `ACCOUNT` | One org / property / install cluster | Property siblings + affected keys |
-| `GLOBAL` | Platform-wide (LanguageProvider, shared chunk, 2+ clientKeys) | **All** SupportClients + `feature_available` / refresh directive |
+| `COHORT` | Shared browser/OS/appVersion/module slice | Matching diagnostic snapshots when possible |
+| `GLOBAL` | Platform-wide (LanguageProvider, shared chunk, 2+ clientKeys) | Canary `canaryClientKeys` optional, then **All** SupportClients |
 
-Operators can **Promote to GLOBAL** from Help Desk. Scope never demotes from GLOBAL.
+Operators can **Promote to GLOBAL / COHORT** from Help Desk. Scope never demotes from GLOBAL.
+
+**Continuous improvement:** see `docs/KNIGHTS_FLYWHEEL.md` (runbooks, KnightEval, agent loop, dogfood).
 
 ### Taxonomy (`ErrorCategory`)
 

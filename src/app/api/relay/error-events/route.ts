@@ -13,7 +13,7 @@ const schema = z.object({
   stack: z.string().max(8000).optional().nullable(),
   errorClass: z.string().max(120).optional().nullable(),
   moduleHint: z.string().max(120).optional().nullable(),
-  scopeHint: z.enum(['USER', 'ACCOUNT', 'GLOBAL']).optional().nullable(),
+  scopeHint: z.enum(['USER', 'ACCOUNT', 'COHORT', 'GLOBAL']).optional().nullable(),
   categoryHint: z
     .enum(['UI', 'API', 'AUTH', 'DATA', 'INTEGRATION', 'INFRA', 'UNKNOWN'])
     .optional()
@@ -22,7 +22,10 @@ const schema = z.object({
   sessionHint: z.string().max(64).optional().nullable(),
   appVersion: z.string().max(50).optional().nullable(),
   platform: z.string().max(50).optional().nullable(),
+  browser: z.string().max(80).optional().nullable(),
+  os: z.string().max(80).optional().nullable(),
   source: z.string().max(80).optional().nullable(),
+  canaryClientKeys: z.array(z.string().max(200)).max(50).optional().nullable(),
 })
 
 /**

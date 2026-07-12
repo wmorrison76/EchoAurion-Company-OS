@@ -2,12 +2,13 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { draftAnswer, draftPlan, pickDraftSeat } from '@/lib/support-relay'
 import { dispatch } from '@/lib/board-room/connectors'
-import { ROSTER, knightConfigured } from '@/lib/board-room/knights'
+import { ROSTER, knightConfigured, configHint } from '@/lib/board-room/knights'
 import { answerDraftSystemPrompt } from '@/lib/support-voice'
 import { maybeStandbyAutoApprove } from '@/lib/standby'
 import { ensureTicketFromInbox, toDetail } from '@/lib/help-desk'
 import { raiseAlert } from '@/lib/alerts'
 import { guardCorePaths } from '@/lib/core-path-guard'
+import { loadRunbookContext } from '@/lib/knight-learning'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -42,11 +43,16 @@ export interface KnightsDispatchResult {
   ticket: HelpTicketDetail
   knightCount: number
   autoApproved: boolean
+  /** Seats that responded. */
+  responded: string[]
+  /** Seats skipped (billing/outage/not configured) — convene continues. */
+  skipped: Array<{ seat: string; reason: string }>
   reason?: string
 }
 
 /**
  * Ask the Knights for counsel on a Help Desk ticket.
+ * Partial synthesis: if Scout (or any seat) is UNAVAILABLE, remaining seats continue.
  * Appends KNIGHT messages, sets AWAITING_APPROVAL, then maybe standby auto-approve.
  */
 export async function dispatchKnightsOnTicket(
@@ -66,7 +72,10 @@ export async function dispatchKnightsOnTicket(
 
   await db.helpTicket.update({
     where: { id: ticketId },
-    data: { status: 'WITH_KNIGHTS' },
+    data: {
+      status: 'WITH_KNIGHTS',
+      ...(ticket.channel === 'SYSTEM' ? { agentWorking: true } : {}),
+    },
   })
   await db.helpMessage.create({
     data: {
@@ -74,8 +83,8 @@ export async function dispatchKnightsOnTicket(
       role: 'SYSTEM',
       body:
         actor === 'computer_agent'
-          ? 'Inbound question — Knights drafting automatically. Review before send unless standby auto-approves low-risk TEXT.'
-          : 'Asking the Knights of the Round Table… drafts are for your review only — nothing is sent until you Approve.',
+          ? 'Agent + Knights working — drafting automatically. Review before send unless standby auto-approves low-risk TEXT. Unavailable seats are skipped; remaining seats continue.'
+          : 'Asking the Knights of the Round Table… drafts are for your review only — nothing is sent until you Approve. Unavailable seats are skipped.',
     },
   })
 
@@ -85,20 +94,43 @@ export async function dispatchKnightsOnTicket(
     .join('\n\n')
     .slice(0, 6000)
 
-  const prompt = `Help Desk ticket: ${ticket.subject}\nChannel: ${ticket.channel}\n\nThread:\n${thread || ticket.subject}`
+  const runbookCtx = await loadRunbookContext({
+    fingerprint: ticket.fingerprint,
+    productLine: ticket.productLine,
+    errorCategory: ticket.errorCategory,
+  })
+
+  const prompt = [
+    `Help Desk ticket: ${ticket.subject}`,
+    `Channel: ${ticket.channel}`,
+    ticket.fingerprint ? `Fingerprint: ${ticket.fingerprint}` : null,
+    ticket.errorScope ? `Scope: ${ticket.errorScope}` : null,
+    ticket.errorCategory ? `Category: ${ticket.errorCategory}` : null,
+    '',
+    runbookCtx
+      ? `## Learned runbooks (prior fixes — do NOT suggest removing auth/middleware)\n${runbookCtx}\n`
+      : null,
+    `Thread:\n${thread || ticket.subject}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
 
   const knightBodies: Array<{ seat: string | null; body: string }> = []
+  const skipped: Array<{ seat: string; reason: string }> = []
+  const responded: string[] = []
 
   if (ticket.channel === 'FEATURE') {
     const plan = await draftPlan(ticket.subject, thread || ticket.subject, 'ADDON')
     if (plan.answer) {
       knightBodies.push({ seat: plan.seat, body: plan.answer })
+      if (plan.seat) responded.push(plan.seat)
     } else if (plan.error) {
+      skipped.push({ seat: plan.seat ?? 'primary', reason: plan.error })
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body: `Knights draft unavailable: ${plan.error}`,
+          body: `Primary plan seat UNAVAILABLE (${plan.seat ?? 'n/a'}): ${plan.error} — continuing with any remaining seats.`,
         },
       })
     }
@@ -106,38 +138,75 @@ export async function dispatchKnightsOnTicket(
     const primary = await draftAnswer(prompt)
     if (primary.answer) {
       knightBodies.push({ seat: primary.seat, body: primary.answer })
+      if (primary.seat) responded.push(primary.seat)
     } else if (primary.error) {
+      skipped.push({ seat: primary.seat ?? 'primary', reason: primary.error })
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body: `Primary knight unavailable: ${primary.error}`,
+          body: `Primary knight UNAVAILABLE (${primary.seat ?? 'n/a'}): ${primary.error} — continuing with remaining seats (partial synthesis).`,
         },
       })
     }
 
-    const extras = EXTRA_SEATS.filter(
-      (s) => s !== primary.seat && knightConfigured(ROSTER[s])
-    ).slice(0, 2)
+    const extras = EXTRA_SEATS.filter((s) => s !== primary.seat)
+    const configuredExtras = extras.filter((s) => knightConfigured(ROSTER[s])).slice(0, 2)
+    for (const s of extras) {
+      if (!knightConfigured(ROSTER[s])) {
+        skipped.push({
+          seat: s,
+          reason: configHint(ROSTER[s]) ?? 'not configured / billing',
+        })
+      }
+    }
 
     const extraResults = await Promise.allSettled(
-      extras.map(async (seat) => {
+      configuredExtras.map(async (seat) => {
         const result = await dispatch(ROSTER[seat], {
           system: answerDraftSystemPrompt(),
           user: prompt,
         })
         if (result.status === 'RESPONDED' && result.content) {
-          return { seat, body: result.content }
+          return { seat, body: result.content, status: result.status as string }
         }
-        return null
+        return {
+          seat,
+          body: null as string | null,
+          status: result.status,
+          error: result.error,
+        }
       })
     )
 
     for (const r of extraResults) {
-      if (r.status === 'fulfilled' && r.value) {
+      if (r.status === 'fulfilled' && r.value.body) {
         knightBodies.push({ seat: r.value.seat, body: r.value.body })
+        responded.push(r.value.seat)
+      } else if (r.status === 'fulfilled') {
+        skipped.push({
+          seat: r.value.seat,
+          reason: `${r.value.status}${r.value.error ? `: ${r.value.error}` : ''}`,
+        })
+      } else {
+        skipped.push({
+          seat: 'extra',
+          reason: r.reason instanceof Error ? r.reason.message : 'rejected',
+        })
       }
     }
+  }
+
+  if (skipped.length > 0) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: `Provider health — skipped ${skipped.length} seat(s), continued with ${knightBodies.length}: ${skipped
+          .map((s) => `${s.seat} (${s.reason})`)
+          .join('; ')}`,
+      },
+    })
   }
 
   for (const k of knightBodies) {
@@ -156,7 +225,7 @@ export async function dispatchKnightsOnTicket(
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: 'No knight responses returned. Check API keys or reply manually.',
+        body: 'No knight responses returned (all seats unavailable or errored). Check API keys / billing — convene did not fail the ticket; reply manually or retry.',
       },
     })
   }
@@ -194,6 +263,9 @@ export async function dispatchKnightsOnTicket(
     data: {
       status: knightBodies.length > 0 ? 'AWAITING_APPROVAL' : 'OPEN',
       ...(coreGuard.needsHumanCoreReview ? { needsHumanCoreReview: true } : {}),
+      ...(ticket.channel === 'SYSTEM' && knightBodies.length > 0
+        ? { agentWorking: true }
+        : {}),
     },
     include: {
       messages: { orderBy: { createdAt: 'asc' } },
@@ -205,6 +277,7 @@ export async function dispatchKnightsOnTicket(
   await audit(actor, 'help_desk.knights.dispatch', ticketId, {
     seats: knightBodies.map((k) => k.seat),
     count: knightBodies.length,
+    skipped,
     coreGuard: coreGuard.flag,
   })
 
@@ -228,6 +301,8 @@ export async function dispatchKnightsOnTicket(
           ticket: toDetail(refreshed),
           knightCount: knightBodies.length,
           autoApproved: true,
+          responded,
+          skipped,
           reason,
         }
       }
@@ -240,6 +315,8 @@ export async function dispatchKnightsOnTicket(
     ticket: toDetail(updated),
     knightCount: knightBodies.length,
     autoApproved,
+    responded,
+    skipped,
     reason,
   }
 }

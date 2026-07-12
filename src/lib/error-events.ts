@@ -2,6 +2,7 @@
  * Ingest + dedupe for pilot error_event → HelpTicket SYSTEM.
  * Same fingerprint within 1h updates occurrenceCount (no spam).
  * Upserts ErrorPattern for fleet learning (aggregated, no PII).
+ * GLOBAL / high severity → queue computer_agent + Knights loop.
  */
 
 import type { Prisma } from '@prisma/client'
@@ -9,14 +10,16 @@ import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
 import { applyHeartbeat } from '@/lib/relay-heartbeat'
-import { classifyErrorScope, type ErrorBlastScope } from '@/lib/error-scope'
+import { classifyErrorScope, scopeRank, type ErrorBlastScope } from '@/lib/error-scope'
 import {
   classifyErrorCategory,
   normalizeProductLine,
   type ErrorCategory,
   type ProductLine,
 } from '@/lib/error-taxonomy'
+import { redactMessage, redactStack } from '@/lib/error-redact'
 import { toDetail } from '@/lib/help-desk'
+import { recordTimelineEvent } from '@/lib/help-timeline'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
 const DEDUPE_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -34,24 +37,16 @@ export interface ErrorEventInput {
   sessionHint?: string | null
   appVersion?: string | null
   platform?: string | null
+  browser?: string | null
+  os?: string | null
   source?: string | null // ErrorBoundary | window.onerror | unhandledrejection | server
+  canaryClientKeys?: string[] | null
 }
 
 function truncate(s: string, max: number): string {
   const t = s.trim()
   if (t.length <= max) return t
   return `${t.slice(0, max - 1)}…`
-}
-
-function sanitizeStack(stack: string | null | undefined): string | null {
-  if (!stack) return null
-  return truncate(
-    stack
-      .split('\n')
-      .map((line) => line.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted]'))
-      .join('\n'),
-    4000
-  )
 }
 
 async function upsertErrorPattern(input: {
@@ -111,12 +106,20 @@ async function upsertErrorPattern(input: {
   })
 }
 
+function mergeScope(
+  existing: ErrorBlastScope | null | undefined,
+  next: ErrorBlastScope
+): ErrorBlastScope {
+  if (!existing) return next
+  return scopeRank(next) > scopeRank(existing) ? next : existing
+}
+
 export async function ingestErrorEvent(
   input: ErrorEventInput
 ): Promise<{ ticket: HelpTicketDetail; created: boolean; promoted: boolean }> {
   const fingerprint = truncate(input.fingerprint, 128)
-  const message = truncate(input.message || 'Unknown error', 500)
-  const stack = sanitizeStack(input.stack)
+  const message = redactMessage(input.message)
+  const stack = redactStack(input.stack)
   const productLine = normalizeProductLine(input.productLine)
   const errorCategory =
     input.categoryHint ??
@@ -132,7 +135,7 @@ export async function ingestErrorEvent(
   const hb = await applyHeartbeat({
     clientKey: input.clientKey,
     online: true,
-    platform: input.platform ?? undefined,
+    platform: input.platform ?? input.os ?? undefined,
     appVersion: input.appVersion ?? undefined,
     errorCount: 1,
     persistSnapshot: false,
@@ -155,8 +158,13 @@ export async function ingestErrorEvent(
     ...(existing?.clientKey ? [existing.clientKey] : []),
     input.clientKey,
   ])
-  const isNewClient = !existing?.affectedClientKeys.includes(input.clientKey) &&
+  const isNewClient =
+    !existing?.affectedClientKeys.includes(input.clientKey) &&
     existing?.clientKey !== input.clientKey
+
+  const hasCohortMeta = Boolean(
+    input.browser || input.os || input.appVersion || input.platform
+  )
 
   let scope = classifyErrorScope({
     message,
@@ -165,14 +173,14 @@ export async function ingestErrorEvent(
     errorClass: input.errorClass,
     scopeHint: input.scopeHint,
     knownClientKeys: [...knownKeys],
+    hasCohortMeta,
   })
 
   let promoted = false
-  if (existing?.errorScope && existing.errorScope !== 'GLOBAL' && scope === 'GLOBAL') {
+  if (existing?.errorScope && scopeRank(scope) > scopeRank(existing.errorScope)) {
     promoted = true
   }
-  if (existing?.errorScope === 'GLOBAL') scope = 'GLOBAL'
-  if (existing?.errorScope === 'ACCOUNT' && scope === 'USER') scope = 'ACCOUNT'
+  scope = mergeScope(existing?.errorScope as ErrorBlastScope | undefined, scope)
 
   if (existing) {
     const mergedKeys = Array.from(knownKeys)
@@ -190,6 +198,12 @@ export async function ingestErrorEvent(
         errorClass: input.errorClass ?? existing.errorClass,
         moduleHint: input.moduleHint ?? existing.moduleHint,
         sessionHint: input.sessionHint ?? existing.sessionHint,
+        cohortBrowser: input.browser ?? existing.cohortBrowser,
+        cohortOs: input.os ?? input.platform ?? existing.cohortOs,
+        cohortAppVersion: input.appVersion ?? existing.cohortAppVersion,
+        ...(input.canaryClientKeys?.length
+          ? { canaryClientKeys: input.canaryClientKeys }
+          : {}),
         messages: {
           create: {
             role: 'SYSTEM',
@@ -234,17 +248,23 @@ export async function ingestErrorEvent(
         data: {
           ticketId: existing.id,
           role: 'SYSTEM',
-          body: `Scope promoted to GLOBAL — fingerprint seen across ${mergedKeys.length} clientKey(s). GLOBAL fixes = draft PR only (constitution).`,
+          body: `Scope promoted to ${scope} — fingerprint seen across ${mergedKeys.length} clientKey(s). GLOBAL fixes = draft PR only (constitution).`,
         },
       })
       await raiseAlert({
         kind: 'system',
         severity: 'CRITICAL',
-        title: `Error promoted to GLOBAL: ${truncate(message, 80)}`,
+        title: `Error promoted to ${scope}: ${truncate(message, 80)}`,
         body: `Fingerprint ${fingerprint} · ${mergedKeys.length} clients · ${errorCategory}/${productLine}`,
         entityRef: existing.id,
         url: `/help-desk?ticket=${existing.id}`,
       })
+      if (scope === 'GLOBAL') {
+        const { queueAgentAndKnights } = await import('@/lib/error-agent-loop')
+        void queueAgentAndKnights(existing.id).catch((err) =>
+          console.error('[error-events] agent loop on promote failed', err)
+        )
+      }
     }
 
     await audit('computer_agent', 'help_desk.error_event.dedupe', existing.id, {
@@ -259,11 +279,14 @@ export async function ingestErrorEvent(
   }
 
   const subject = truncate(`[SYSTEM] ${message}`, 120)
+  const priority =
+    scope === 'GLOBAL' ? 'URGENT' : scope === 'ACCOUNT' || scope === 'COHORT' ? 'HIGH' : 'NORMAL'
+
   const ticket = await db.helpTicket.create({
     data: {
       channel: 'SYSTEM',
       status: 'OPEN',
-      priority: scope === 'GLOBAL' ? 'URGENT' : scope === 'ACCOUNT' ? 'HIGH' : 'NORMAL',
+      priority,
       subject,
       clientKey: input.clientKey,
       clientId: hb.clientId,
@@ -278,13 +301,19 @@ export async function ingestErrorEvent(
       sessionHint: input.sessionHint ?? null,
       errorClass: input.errorClass ?? null,
       moduleHint: input.moduleHint ?? null,
+      cohortBrowser: input.browser ?? null,
+      cohortOs: input.os ?? input.platform ?? null,
+      cohortAppVersion: input.appVersion ?? null,
+      canaryClientKeys: input.canaryClientKeys?.filter(Boolean) ?? [],
+      rolloutStage: null,
+      agentWorking: false,
       messages: {
         create: [
           {
             role: 'SYSTEM',
             body: truncate(
               [
-                'Auto-captured runtime error (no guest PII).',
+                'Auto-captured runtime error (no guest PII; payloads redacted).',
                 `scope=${scope}`,
                 `category=${errorCategory}`,
                 `productLine=${productLine}`,
@@ -294,6 +323,8 @@ export async function ingestErrorEvent(
                 `source=${input.source ?? 'unknown'}`,
                 `appVersion=${input.appVersion ?? 'n/a'}`,
                 `platform=${input.platform ?? 'n/a'}`,
+                `browser=${input.browser ?? 'n/a'}`,
+                `os=${input.os ?? 'n/a'}`,
                 `sessionHint=${input.sessionHint ?? 'n/a'}`,
                 '',
                 `message: ${message}`,
@@ -330,6 +361,14 @@ export async function ingestErrorEvent(
     isNewClient: true,
   })
 
+  await recordTimelineEvent({
+    ticketId: ticket.id,
+    kind: 'detected',
+    label: 'Issue detected',
+    detail: `We’re on it — scope ${scope}. Friendly recovery only; no stack traces shown to guests.`,
+    actor: 'computer_agent',
+  }).catch(() => {})
+
   await audit('computer_agent', 'help_desk.error_event.create', ticket.id, {
     fingerprint,
     scope,
@@ -340,12 +379,20 @@ export async function ingestErrorEvent(
 
   await raiseAlert({
     kind: 'system',
-    severity: scope === 'GLOBAL' ? 'CRITICAL' : scope === 'ACCOUNT' ? 'WARN' : 'INFO',
+    severity: scope === 'GLOBAL' ? 'CRITICAL' : scope === 'ACCOUNT' || scope === 'COHORT' ? 'WARN' : 'INFO',
     title: `Auto ticket: ${truncate(message, 80)}`,
     body: `scope=${scope} · ${errorCategory} · ${productLine} · ${input.clientKey}`,
     entityRef: ticket.id,
     url: `/help-desk?ticket=${ticket.id}`,
   })
+
+  // Fire-and-forget agent + Knights for GLOBAL / high severity.
+  if (scope === 'GLOBAL' || priority === 'URGENT' || priority === 'HIGH') {
+    const { queueAgentAndKnights } = await import('@/lib/error-agent-loop')
+    void queueAgentAndKnights(ticket.id).catch((err) =>
+      console.error('[error-events] agent loop failed', err)
+    )
+  }
 
   return { ticket: toDetail(ticket), created: true, promoted: false }
 }

@@ -2,7 +2,8 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
-import { classifyErrorScope } from '@/lib/error-scope'
+import { classifyErrorScope, scopeRank } from '@/lib/error-scope'
+import { queueAgentAndKnights } from '@/lib/error-agent-loop'
 import type { APIResponse } from '@/types'
 import type { ErrorBlastScope, HelpTicketDetail } from '@/types/help-desk'
 
@@ -25,7 +26,7 @@ export async function POST(
     const { id } = await params
     const body = (await req.json()) as { scope?: ErrorBlastScope }
     const target = body.scope ?? 'GLOBAL'
-    if (!['USER', 'ACCOUNT', 'GLOBAL'].includes(target)) {
+    if (!['USER', 'ACCOUNT', 'COHORT', 'GLOBAL'].includes(target)) {
       return Response.json({ success: false, error: 'Invalid scope' }, { status: 400 })
     }
 
@@ -35,8 +36,9 @@ export async function POST(
     }
 
     let next: ErrorBlastScope = target
-    if (existing.errorScope === 'GLOBAL') next = 'GLOBAL'
-    else if (target === 'USER' && existing.errorScope === 'ACCOUNT') next = 'ACCOUNT'
+    const current = existing.errorScope as ErrorBlastScope | null
+    if (current === 'GLOBAL') next = 'GLOBAL'
+    else if (scopeRank(target) < scopeRank(current)) next = current!
     else {
       next = classifyErrorScope({
         message: existing.subject,
@@ -44,8 +46,12 @@ export async function POST(
         moduleHint: existing.moduleHint,
         scopeHint: target,
         knownClientKeys: existing.affectedClientKeys,
+        hasCohortMeta: Boolean(
+          existing.cohortBrowser || existing.cohortOs || existing.cohortAppVersion
+        ),
       })
       if (target === 'GLOBAL') next = 'GLOBAL'
+      if (target === 'COHORT' && scopeRank(next) < scopeRank('COHORT')) next = 'COHORT'
       if (target === 'ACCOUNT' && next === 'USER') next = 'ACCOUNT'
     }
 
@@ -53,7 +59,12 @@ export async function POST(
       where: { id },
       data: {
         errorScope: next,
-        priority: next === 'GLOBAL' ? 'URGENT' : next === 'ACCOUNT' ? 'HIGH' : existing.priority,
+        priority:
+          next === 'GLOBAL'
+            ? 'URGENT'
+            : next === 'ACCOUNT' || next === 'COHORT'
+              ? 'HIGH'
+              : existing.priority,
         messages: {
           create: {
             role: 'SYSTEM',
@@ -72,6 +83,12 @@ export async function POST(
       from: existing.errorScope,
       to: next,
     })
+
+    if (next === 'GLOBAL' && existing.errorScope !== 'GLOBAL') {
+      void queueAgentAndKnights(id).catch((err) =>
+        console.error('[promote-scope] agent loop failed', err)
+      )
+    }
 
     return Response.json({
       success: true,

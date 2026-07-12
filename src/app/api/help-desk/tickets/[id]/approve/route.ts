@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
-import { notifyErrorFixed } from '@/lib/error-notify'
+import { onErrorTicketResolved } from '@/lib/error-resolve'
 import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -116,8 +116,12 @@ export async function POST(
         },
       })
 
-      await notifyErrorFixed(id).catch((err) => {
-        console.error('[help-desk] notifyErrorFixed failed', err)
+      await onErrorTicketResolved({
+        ticketId: id,
+        finalFixSummary: answer,
+        actor: 'william_morrison',
+      }).catch((err) => {
+        console.error('[help-desk] onErrorTicketResolved failed', err)
       })
 
       await audit('william_morrison', 'help_desk.ticket.approve', id, { mode: 'reply' })

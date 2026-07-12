@@ -229,7 +229,7 @@ export function HelpDeskConsole() {
     }
   }
 
-  async function promoteScope(scope: 'USER' | 'ACCOUNT' | 'GLOBAL') {
+  async function promoteScope(scope: 'USER' | 'ACCOUNT' | 'COHORT' | 'GLOBAL') {
     if (!selectedId) return
     setBusy('promote')
     setError(null)
@@ -244,6 +244,55 @@ export function HelpDeskConsole() {
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Promote failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function setCanaryThenFleet() {
+    if (!selectedId || !detail) return
+    const raw = window.prompt(
+      'Canary clientKeys (comma-separated). Leave empty to clear.',
+      detail.canaryClientKeys.join(', ')
+    )
+    if (raw === null) return
+    setBusy('canary')
+    setError(null)
+    try {
+      const keys = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const res = await fetch(`/api/help-desk/tickets/${selectedId}/canary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set', canaryClientKeys: keys }),
+      })
+      const body = (await res.json()) as APIResponse<HelpTicketDetail>
+      if (!body.success) throw new Error(body.error)
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Canary update failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function promoteCanaryFleet() {
+    if (!selectedId) return
+    setBusy('canary-fleet')
+    setError(null)
+    try {
+      const res = await fetch(`/api/help-desk/tickets/${selectedId}/canary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'promote_fleet' }),
+      })
+      const body = (await res.json()) as APIResponse<HelpTicketDetail>
+      if (!body.success) throw new Error(body.error)
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fleet promote failed')
     } finally {
       setBusy(null)
     }
@@ -515,15 +564,26 @@ export function HelpDeskConsole() {
                         level={
                           t.errorScope === 'GLOBAL'
                             ? 'error'
-                            : t.errorScope === 'ACCOUNT'
+                            : t.errorScope === 'ACCOUNT' || t.errorScope === 'COHORT'
                               ? 'warn'
                               : 'unknown'
                         }
-                        label={`${t.errorScope === 'GLOBAL' ? '⬤' : t.errorScope === 'ACCOUNT' ? '◆' : '○'} ${t.errorScope}`}
+                        label={`${
+                          t.errorScope === 'GLOBAL'
+                            ? '⬤'
+                            : t.errorScope === 'ACCOUNT'
+                              ? '◆'
+                              : t.errorScope === 'COHORT'
+                                ? '▣'
+                                : '○'
+                        } ${t.errorScope}`}
                       />
                     )}
                     {t.errorCategory && (
                       <StatusBadge level="unknown" label={t.errorCategory} />
+                    )}
+                    {t.agentWorking && (
+                      <StatusBadge level="warn" label="⟳ Agent + Knights" />
                     )}
                     {t.needsHumanCoreReview && (
                       <StatusBadge level="error" label="NEEDS HUMAN CORE" />
@@ -578,7 +638,7 @@ export function HelpDeskConsole() {
                       level={
                         detail.errorScope === 'GLOBAL'
                           ? 'error'
-                          : detail.errorScope === 'ACCOUNT'
+                          : detail.errorScope === 'ACCOUNT' || detail.errorScope === 'COHORT'
                             ? 'warn'
                             : 'unknown'
                       }
@@ -587,6 +647,15 @@ export function HelpDeskConsole() {
                   )}
                   {detail.errorCategory && (
                     <StatusBadge level="unknown" label={`Cat ${detail.errorCategory}`} />
+                  )}
+                  {detail.agentWorking && (
+                    <StatusBadge level="warn" label="⟳ Agent + Knights working" />
+                  )}
+                  {detail.rolloutStage && (
+                    <StatusBadge
+                      level={detail.rolloutStage === 'fleet' ? 'ok' : 'warn'}
+                      label={`Rollout ${detail.rolloutStage}`}
+                    />
                   )}
                   {detail.needsHumanCoreReview && (
                     <StatusBadge level="error" label="NEEDS_HUMAN_CORE_REVIEW" />
@@ -607,6 +676,14 @@ export function HelpDeskConsole() {
                         {detail.moduleHint ? ` / ${detail.moduleHint}` : ''}
                       </p>
                     )}
+                    {(detail.cohortBrowser || detail.cohortOs || detail.cohortAppVersion) && (
+                      <p className="mt-0.5">
+                        <span className="text-[#D4AF37]">Cohort</span> ·{' '}
+                        {[detail.cohortBrowser, detail.cohortOs, detail.cohortAppVersion]
+                          .filter(Boolean)
+                          .join(' / ')}
+                      </p>
+                    )}
                     {detail.fingerprint && (
                       <p className="mt-0.5 font-mono text-[10px] text-[#5a5a78]">
                         fp {detail.fingerprint.slice(0, 16)}… · ×{detail.occurrenceCount}
@@ -619,17 +696,60 @@ export function HelpDeskConsole() {
                         {detail.affectedClientKeys.join(', ')}
                       </p>
                     )}
-                    {detail.channel === 'SYSTEM' && detail.errorScope !== 'GLOBAL' && (
-                      <button
-                        type="button"
-                        disabled={!!busy}
-                        className="mt-2 rounded border border-[#ef4444]/50 px-2 py-1 text-[10px] text-[#ef4444] transition-colors hover:bg-[#1a1a26] disabled:opacity-40"
-                        aria-label="Promote error scope to GLOBAL"
-                        onClick={() => void promoteScope('GLOBAL')}
-                      >
-                        Promote to GLOBAL
-                      </button>
+                    {detail.canaryClientKeys.length > 0 && (
+                      <p className="mt-1">
+                        <span className="text-[#D4AF37]">Canary</span> ·{' '}
+                        {detail.canaryClientKeys.join(', ')}
+                      </p>
                     )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {detail.channel === 'SYSTEM' && detail.errorScope !== 'GLOBAL' && (
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          className="rounded border border-[#ef4444]/50 px-2 py-1 text-[10px] text-[#ef4444] transition-colors hover:bg-[#1a1a26] disabled:opacity-40"
+                          aria-label="Promote error scope to GLOBAL"
+                          onClick={() => void promoteScope('GLOBAL')}
+                        >
+                          Promote to GLOBAL
+                        </button>
+                      )}
+                      {detail.channel === 'SYSTEM' && detail.errorScope !== 'COHORT' && detail.errorScope !== 'GLOBAL' && (
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          className="rounded border border-[#f59e0b]/50 px-2 py-1 text-[10px] text-[#f59e0b] transition-colors hover:bg-[#1a1a26] disabled:opacity-40"
+                          aria-label="Promote error scope to COHORT"
+                          onClick={() => void promoteScope('COHORT')}
+                        >
+                          Promote to COHORT
+                        </button>
+                      )}
+                      {detail.channel === 'SYSTEM' && detail.errorScope === 'GLOBAL' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={!!busy}
+                            className="rounded border border-[#D4AF37]/50 px-2 py-1 text-[10px] text-[#D4AF37] transition-colors hover:bg-[#1a1a26] disabled:opacity-40"
+                            aria-label="Configure canary then fleet rollout"
+                            onClick={() => void setCanaryThenFleet()}
+                          >
+                            Canary then fleet
+                          </button>
+                          {detail.rolloutStage === 'canary' && (
+                            <button
+                              type="button"
+                              disabled={!!busy}
+                              className="rounded border border-[#22c55e]/50 px-2 py-1 text-[10px] text-[#22c55e] transition-colors hover:bg-[#1a1a26] disabled:opacity-40"
+                              aria-label="Promote canary to full fleet notify"
+                              onClick={() => void promoteCanaryFleet()}
+                            >
+                              Promote canary → fleet
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
                 {policyVerdict && (
