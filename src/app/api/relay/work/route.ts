@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
+import { relayGuard, requireClientKey } from '@/lib/relay-auth'
 import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import { COMPLEXITY_TIERS, computeQuote } from '@/lib/pricing'
 import {
@@ -43,7 +43,7 @@ const schema = z.object({
 // A customer submits a billable change request from inside support. Logged as
 // RECEIVED (or QUOTED when agreement+tier present). Never auto-executed.
 export async function POST(req: Request): Promise<Response> {
-  const a = relayAuthorized(req)
+  const a = relayGuard(req, 'work')
   if (!a.ok) {
     return Response.json(
       { success: false, error: a.error, code: a.code },

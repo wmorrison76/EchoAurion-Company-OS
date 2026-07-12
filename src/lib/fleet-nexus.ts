@@ -676,7 +676,7 @@ export async function buildFleetNexusPayload(): Promise<FleetNexusPayload> {
     return {
       mode: 'empty',
       banner:
-        'EMPTY — no live fleet data. Set RENDER_API_KEY and/or wait for Support diagnostics. Never shows fake live data in production.',
+        'EMPTY — no live fleet data. Set RENDER_API_KEY and/or wait for Support heartbeats (POST /api/relay/heartbeat with SUPPORT_INGEST_SECRET). See docs/CONNECT_PILOT_TO_COMPANY_OS.md. Never shows fake live data in production.',
       sources: { render: false, support: false, demo: false },
       counts: {
         renderServices: 0,

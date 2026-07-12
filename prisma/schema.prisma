@@ -397,6 +397,21 @@ model DiagnosticSnapshot {
   @@map("diagnostic_snapshots")
 }
 
+// Operator-captured anonymized health (conflict detection / Knights sandbox).
+// Payload must never include guest PII — see docs/SECURITY_RELAY.md.
+model SystemSnapshot {
+  id            String   @id @default(cuid())
+  source        String   @default("operator") // operator | fleet | cron
+  health        String   @default("UNKNOWN") // GREEN | AMBER | RED | UNKNOWN
+  payload       Json
+  sentToKnights Boolean  @default(false)
+  actor         String // william_morrison | computer_agent
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("system_snapshots")
+}
+
 model SupportSession {
   id        String               @id @default(cuid())
   clientId  String?

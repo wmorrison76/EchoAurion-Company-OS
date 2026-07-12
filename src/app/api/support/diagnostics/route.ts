@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
+import { relayGuard, requireClientKey } from '@/lib/relay-auth'
 import { applyHeartbeat } from '@/lib/relay-heartbeat'
 import type { APIResponse } from '@/types'
 
@@ -28,7 +28,7 @@ const ingestSchema = z.object({
  * POST /api/relay/heartbeat for lightweight keep-alive without a snapshot.
  */
 export async function POST(req: Request): Promise<Response> {
-  const a = relayAuthorized(req)
+  const a = relayGuard(req, 'diagnostics')
   if (!a.ok) {
     return Response.json(
       { success: false, error: a.error, code: a.code },

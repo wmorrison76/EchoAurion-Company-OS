@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto'
+import { allowRateLimit, clientIp } from '@/lib/rate-limit'
 
 export type RelayAuth =
   | { ok: true; clientKeyFromToken?: string }
@@ -11,11 +12,19 @@ export type RelayAuth =
  *
  * Also accepts a short-lived signed query token for SSE EventSource (which
  * cannot set Authorization headers): `?token=<base64url.payload>.<hmac>`.
+ *
+ * Never log Authorization header values.
  */
 export function relayAuthorized(req: Request, opts?: { allowQueryToken?: boolean }): RelayAuth {
   const secret = process.env.SUPPORT_INGEST_SECRET?.trim()
   if (!secret) {
-    return { ok: false, status: 503, error: 'Relay disabled', code: 'RELAY_DISABLED' }
+    return {
+      ok: false,
+      status: 503,
+      error:
+        'Relay disabled — set SUPPORT_INGEST_SECRET on Company OS (match luccca-web COMPANY_OS_INGEST_SECRET). See docs/CONNECT_PILOT_TO_COMPANY_OS.md',
+      code: 'RELAY_DISABLED',
+    }
   }
 
   const header = req.headers.get('authorization') ?? ''
@@ -39,6 +48,45 @@ export function relayAuthorized(req: Request, opts?: { allowQueryToken?: boolean
   }
 
   return { ok: false, status: 401, error: 'Unauthorized', code: 'UNAUTHORIZED' }
+}
+
+/** Per-IP rate limits after auth (limits abuse if secret leaks). */
+export function relayRateLimited(
+  req: Request,
+  kind: 'heartbeat' | 'questions' | 'work' | 'diagnostics' | 'default'
+): RelayAuth {
+  const limits: Record<typeof kind, { max: number; windowMs: number }> = {
+    heartbeat: { max: 120, windowMs: 60_000 },
+    questions: { max: 30, windowMs: 60_000 },
+    work: { max: 20, windowMs: 60_000 },
+    diagnostics: { max: 60, windowMs: 60_000 },
+    default: { max: 90, windowMs: 60_000 },
+  }
+  const { max, windowMs } = limits[kind]
+  const ip = clientIp(req)
+  const result = allowRateLimit(`relay:${kind}:${ip}`, max, windowMs)
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: 429,
+      error: `Rate limited — retry in ${result.retryAfterSec}s`,
+      code: 'RATE_LIMITED',
+    }
+  }
+  return { ok: true }
+}
+
+/** Auth then rate-limit. */
+export function relayGuard(
+  req: Request,
+  kind: 'heartbeat' | 'questions' | 'work' | 'diagnostics' | 'default',
+  opts?: { allowQueryToken?: boolean }
+): RelayAuth {
+  const a = relayAuthorized(req, opts)
+  if (!a.ok) return a
+  const r = relayRateLimited(req, kind)
+  if (!r.ok) return r
+  return a
 }
 
 /** Require clientKey query/body presence with a clear pilot-debug code. */

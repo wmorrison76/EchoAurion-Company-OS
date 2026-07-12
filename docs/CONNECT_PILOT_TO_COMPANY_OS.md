@@ -102,7 +102,22 @@ When pilot posts via `POST /api/company-os-relay/questions` → Company OS `POST
 4. Standby may auto-approve **low-risk TEXT only**; otherwise status stays **DRAFTED / AWAITING_APPROVAL** for William
 5. Auto-approve publishes relay outbox so the pilot can pull the answer
 
+## Connection health (Dr. OS)
+
+Dr. OS **Connection health** card shows (booleans / ages only — never secret values):
+
+- `SUPPORT_INGEST_SECRET` configured?
+- Last pilot heartbeat age, last question age, outbox pending
+- `emailConfigured`, `ECHO_AI_URL` / Chef's Brain configured?
+- **Capture system snapshot** → `POST /api/support/snapshot` (anonymized; optional Knights sandbox)
+
+See `docs/SECURITY_RELAY.md` for allowed vs forbidden snapshot fields.
+
+## Free support test
+
+On `/lab/elite`: **Test free support** creates a TEXT ticket + Knights draft (no charge).
+
 ## Related
 
-- Company OS: `docs/PILOT_CONNECTION.md`, `DEPLOY.md`
+- Company OS: `docs/PILOT_CONNECTION.md`, `docs/SECURITY_RELAY.md`, `DEPLOY.md`
 - Pilot: `docs/COMPANY_OS_RELAY_WIRING.md`

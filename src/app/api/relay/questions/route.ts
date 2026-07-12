@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized, requireClientKey } from '@/lib/relay-auth'
+import { relayGuard, requireClientKey } from '@/lib/relay-auth'
 import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import {
   processInboundQuestion,
@@ -25,7 +25,7 @@ const schema = z.object({
  * draft in the background. Standby may auto-approve low-risk TEXT only.
  */
 export async function POST(req: Request): Promise<Response> {
-  const a = relayAuthorized(req)
+  const a = relayGuard(req, 'questions')
   if (!a.ok) {
     return Response.json(
       { success: false, error: a.error, code: a.code },

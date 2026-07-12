@@ -3,6 +3,8 @@ import { db } from '@/lib/db'
 import { getAllRepoHealth } from '@/lib/github'
 import { getRenderDeployHealth } from '@/lib/render'
 import { getStripeMRRHealth } from '@/lib/stripe'
+import { isEmailConfigured } from '@/lib/email'
+import { knightConfigured, ROSTER } from '@/lib/board-room/knights'
 import type {
   ActiveUsersHealth,
   DrOsStatus,
@@ -134,7 +136,14 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
     const now = Date.now()
     const ONLINE_MS = 5 * 60 * 1000
     const STREAM_MS = 2 * 60 * 1000
-    const [clients, standby, reviewCount] = await Promise.all([
+    const STALE_MS = 15 * 60 * 1000
+    const [
+      clients,
+      standby,
+      reviewCount,
+      pendingOutbox,
+      lastQuestion,
+    ] = await Promise.all([
       db.supportClient.findMany({
         select: { lastHeartbeatAt: true, lastStreamAt: true },
       }),
@@ -145,21 +154,70 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
           answeredAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) },
         },
       }),
+      db.relayOutbox.count({ where: { deliveredAt: null } }),
+      db.customerQuestion.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
     ])
-    const onlineCount = clients.filter(
-      (c) => c.lastHeartbeatAt && now - c.lastHeartbeatAt.getTime() < ONLINE_MS
-    ).length
+
+    const heartbeats = clients
+      .map((c) => c.lastHeartbeatAt?.getTime())
+      .filter((t): t is number => typeof t === 'number')
+    const newestHb = heartbeats.length ? Math.max(...heartbeats) : null
+    const lastHeartbeatAgeMs = newestHb != null ? now - newestHb : null
+    const onlineCount = heartbeats.filter((t) => now - t < ONLINE_MS).length
     const streamCount = clients.filter(
       (c) => c.lastStreamAt && now - c.lastStreamAt.getTime() < STREAM_MS
     ).length
+
+    const supportIngestSecretConfigured = Boolean(
+      process.env.SUPPORT_INGEST_SECRET?.trim()
+    )
+    const emailConfigured = isEmailConfigured()
+    const echoAiConfigured = Boolean(process.env.ECHO_AI_URL?.trim())
+    const chefsBrainConfigured = knightConfigured(ROSTER.chefs_brain)
+
+    let level: PilotConnectionHealth['level'] = 'unknown'
+    let label = 'Unknown'
+    if (!supportIngestSecretConfigured) {
+      level = 'error'
+      label = 'Secret missing'
+    } else if (onlineCount > 0) {
+      level = 'ok'
+      label = 'Healthy'
+    } else if (clients.length > 0) {
+      level =
+        lastHeartbeatAgeMs != null && lastHeartbeatAgeMs > STALE_MS
+          ? 'warn'
+          : 'warn'
+      label = 'Offline'
+    } else {
+      level = 'warn'
+      label = 'No pilots'
+    }
+    if (supportIngestSecretConfigured && !echoAiConfigured && level === 'ok') {
+      level = 'warn'
+      label = 'Echo AI unset'
+    }
+
     return {
-      level: onlineCount > 0 ? 'ok' : clients.length > 0 ? 'warn' : 'unknown',
-      label: onlineCount > 0 ? 'Online' : clients.length > 0 ? 'Offline' : 'None',
+      level,
+      label,
       onlineCount,
       totalClients: clients.length,
       streamCount,
       standbyMode: standby.mode,
       standbyReviewCount: reviewCount,
+      supportIngestSecretConfigured,
+      emailConfigured,
+      echoAiConfigured,
+      chefsBrainConfigured,
+      lastHeartbeatAgeMs,
+      lastQuestionAgeMs: lastQuestion
+        ? now - lastQuestion.createdAt.getTime()
+        : null,
+      pendingOutbox,
     }
   } catch (error) {
     return {
@@ -170,6 +228,15 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       streamCount: 0,
       standbyMode: 'off',
       standbyReviewCount: 0,
+      supportIngestSecretConfigured: Boolean(
+        process.env.SUPPORT_INGEST_SECRET?.trim()
+      ),
+      emailConfigured: isEmailConfigured(),
+      echoAiConfigured: Boolean(process.env.ECHO_AI_URL?.trim()),
+      chefsBrainConfigured: knightConfigured(ROSTER.chefs_brain),
+      lastHeartbeatAgeMs: null,
+      lastQuestionAgeMs: null,
+      pendingOutbox: 0,
       error: error instanceof Error ? error.message : 'Pilot connection query failed',
     }
   }

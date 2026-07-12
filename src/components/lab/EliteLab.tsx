@@ -25,6 +25,7 @@ type StepId =
   | 'email'
   | 'autonomy'
   | 'tech'
+  | 'freeSupport'
   | 'build'
   | 'agreement'
   | 'tool'
@@ -142,6 +143,38 @@ export function EliteLab() {
         const body = (await res.json()) as APIResponse<{ ticket: { id: string } }>
         if (!body.success) throw new Error(body.error)
         return { ok: true, detail: `ticket ${body.data.ticket.id}` }
+      },
+    },
+    {
+      id: 'freeSupport',
+      title: 'Test free support',
+      description: 'TEXT ticket + Knights draft (no charge)',
+      run: async () => {
+        const res = await fetch('/api/lab/echo-chrome/tech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question:
+              'Free support test: How do I open Help Desk from the chrome icon? (no charge)',
+            profileName: 'William Morrison',
+            profileRole: 'EXEC',
+            profileEmail: data?.adminEmail ?? 'william@echoaurion.com',
+            askKnights: true,
+            send: false,
+          }),
+        })
+        const body = (await res.json()) as APIResponse<{
+          ticket: { id: string }
+          draft?: string | null
+          draftError?: string | null
+        }>
+        if (!body.success) throw new Error(body.error)
+        return {
+          ok: true,
+          detail: body.data.draft
+            ? `ticket ${body.data.ticket.id} · Knights drafted`
+            : `ticket ${body.data.ticket.id} · ${body.data.draftError ?? 'no draft'}`,
+        }
       },
     },
     {
@@ -278,6 +311,47 @@ export function EliteLab() {
           </button>
         </p>
       ) : null}
+
+      <button
+        type="button"
+        disabled={!!busy || isLoading}
+        aria-label="Test free support — create TEXT ticket and run Knights draft with no charge"
+        onClick={() =>
+          void runStep('freeSupport', async () => {
+            const res = await fetch('/api/lab/echo-chrome/tech', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                question:
+                  'Free support test: How do I open Help Desk from the chrome icon? (no charge)',
+                profileName: 'William Morrison',
+                profileRole: 'EXEC',
+                profileEmail: data?.adminEmail ?? 'william@echoaurion.com',
+                askKnights: true,
+                send: false,
+              }),
+            })
+            const body = (await res.json()) as APIResponse<{
+              ticket: { id: string }
+              draft?: string | null
+              draftError?: string | null
+            }>
+            if (!body.success) throw new Error(body.error)
+            return {
+              ok: true,
+              detail: body.data.draft
+                ? `ticket ${body.data.ticket.id} · Knights drafted`
+                : `ticket ${body.data.ticket.id} · ${body.data.draftError ?? 'no draft'}`,
+            }
+          })
+        }
+        className="w-full rounded-xl border-2 border-[#D4AF37] bg-[#1a1a26] px-4 py-4 text-sm font-semibold text-[#D4AF37] disabled:opacity-40"
+      >
+        {busy === 'freeSupport' ? 'Running free support test…' : 'Test free support'}
+        <span className="mt-1 block text-xs font-normal text-[#a0a0b8]">
+          Creates a TEXT ticket + Knights draft · no charge
+        </span>
+      </button>
 
       <div className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4">
         <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Autonomy dial</p>

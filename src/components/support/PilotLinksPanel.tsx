@@ -74,8 +74,41 @@ export function PilotLinksPanel() {
         >
           Maintenance
         </a>
-        .
+        . Waiting for pilots? Product must POST heartbeat with matching{' '}
+        <code className="text-white">SUPPORT_INGEST_SECRET</code> — see{' '}
+        <span className="text-[#D4AF37]">docs/CONNECT_PILOT_TO_COMPANY_OS.md</span>.
       </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          aria-label="Capture system snapshot"
+          onClick={() => {
+            setBusy(true)
+            void fetch('/api/support/snapshot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sendToKnights: false }),
+            })
+              .then(async (r) => {
+                const b = (await r.json()) as APIResponse<{ id: string }>
+                if (!b.success) throw new Error(b.error)
+                await mutate()
+              })
+              .finally(() => setBusy(false))
+          }}
+          className="rounded-lg border border-[#D4AF37] px-3 py-2 text-xs text-[#D4AF37] disabled:opacity-40"
+        >
+          Capture system snapshot
+        </button>
+        <a
+          href="/lab/elite"
+          className="rounded-lg border border-[#2a2a3f] px-3 py-2 text-xs text-[#a0a0b8]"
+          aria-label="Open Elite lab for free support test"
+        >
+          Test free support →
+        </a>
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KPICard
           title="Pilots online"
@@ -253,6 +286,9 @@ export function PilotLinksPanel() {
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-[#5a5a78]">
                   No pilots connected yet — waiting for heartbeat / diagnostics.
+                  Set COMPANY_OS_INGEST_SECRET on luccca-web to match
+                  SUPPORT_INGEST_SECRET, then open the product so heartbeat fires
+                  every 60s.
                 </td>
               </tr>
             ) : null}
@@ -261,6 +297,12 @@ export function PilotLinksPanel() {
 
         {/* Mobile cards */}
         <div className="flex flex-col gap-3 p-3 md:hidden">
+          {!isLoading && (data?.clients.length ?? 0) === 0 ? (
+            <p className="rounded-lg border border-[#2a2a3f] bg-[#12121a] p-4 text-center text-sm text-[#5a5a78]">
+              No pilots yet — waiting for heartbeat. Match ingest secrets, then
+              open luccca-web so the Help Desk relay posts every 60s.
+            </p>
+          ) : null}
           {(data?.clients ?? []).map((c) => (
             <div key={c.id} className="rounded-lg border border-[#2a2a3f] bg-[#12121a] p-3">
               <p className="text-sm text-white">{c.label}</p>

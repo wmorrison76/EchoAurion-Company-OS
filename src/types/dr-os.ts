@@ -57,7 +57,7 @@ export interface PilotHealth {
   error?: string
 }
 
-/** Live SupportClient heartbeats (Pilot Connection Hub). */
+/** Live SupportClient heartbeats + connection config (Pilot Connection Hub). */
 export interface PilotConnectionHealth {
   level: StatusLevel
   label: string
@@ -66,6 +66,14 @@ export interface PilotConnectionHealth {
   streamCount: number
   standbyMode: string
   standbyReviewCount: number
+  /** Boolean only — never the secret value. */
+  supportIngestSecretConfigured: boolean
+  emailConfigured: boolean
+  echoAiConfigured: boolean
+  chefsBrainConfigured: boolean
+  lastHeartbeatAgeMs: number | null
+  lastQuestionAgeMs: number | null
+  pendingOutbox: number
   error?: string
 }
 

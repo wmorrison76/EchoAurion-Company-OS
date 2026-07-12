@@ -16,6 +16,7 @@ Paid change requests must go through the **logged-in product avatar/profile**, n
 |---|---|
 | Signer | Profile `name` + `email` + `role` from session (lab: mock profile panel) |
 | Who may sign / request builds | **ADMIN**, **DIRECTOR**, or **EXEC** only |
+| EXEC aliases (→ EXEC) | `executive-chef`, `general-manager` / `gm`, `property-manager`, `owner`, `exec_*` |
 | Lower roles (LINE, SUPERVISOR, MANAGER) | Tech support OK; Build request shows blocked message |
 | Signature | Checkbox + typed name matching profile name → stored on `WorkAgreement` |
 | Authorize | **Blocked** without a `WorkAgreement` row (`code: AGREEMENT_REQUIRED`) |

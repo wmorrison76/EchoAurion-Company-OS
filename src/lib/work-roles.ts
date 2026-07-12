@@ -3,6 +3,10 @@
  * LINE and other staff can open Tech support; only ADMIN / DIRECTOR / EXEC
  * may submit Build requests or sign WorkAgreements.
  * See docs/PAID_VIA_PROFILE.md.
+ *
+ * EXEC-capable aliases (map → EXEC):
+ *   executive-chef, general-manager / gm, property-manager,
+ *   owner, exec_*, *executive*
  */
 
 export const PILOT_ROLES = [
@@ -24,12 +28,35 @@ export function normalizePilotRole(raw: string | null | undefined): PilotRole | 
   if (!raw) return null
   const key = raw.trim().toUpperCase().replace(/[\s-]+/g, '_')
   if ((PILOT_ROLES as readonly string[]).includes(key)) return key as PilotRole
-  // Common aliases from property HR / product mocks
-  if (key === 'GM' || key === 'GENERAL_MANAGER' || key === 'OWNER') return 'EXEC'
-  if (key === 'DIR' || key === 'VP') return 'DIRECTOR'
+  // Admin
   if (key === 'SYSADMIN' || key === 'IT_ADMIN') return 'ADMIN'
-  if (key === 'LEAD' || key === 'SHIFT_LEAD') return 'SUPERVISOR'
-  if (key === 'STAFF' || key === 'ASSOCIATE' || key === 'SERVER') return 'LINE'
+  // Director
+  if (
+    key === 'DIR' ||
+    key === 'VP' ||
+    key === 'REGIONAL_DIRECTOR' ||
+    key === 'FB_DIRECTOR' ||
+    key.endsWith('_DIRECTOR') ||
+    key.startsWith('DIR_')
+  ) {
+    return 'DIRECTOR'
+  }
+  // EXEC-capable property leadership (pay-gate)
+  if (
+    key === 'GM' ||
+    key === 'GENERAL_MANAGER' ||
+    key === 'PROPERTY_MANAGER' ||
+    key === 'EXECUTIVE_CHEF' ||
+    key === 'EXECUTIVE' ||
+    key === 'OWNER' ||
+    key.startsWith('EXEC_') ||
+    key.includes('EXECUTIVE')
+  ) {
+    return 'EXEC'
+  }
+  if (key === 'LEAD' || key === 'SHIFT_LEAD' || key === 'SOUS_CHEF') return 'SUPERVISOR'
+  if (key === 'STAFF' || key === 'ASSOCIATE' || key === 'SERVER' || key === 'HOURLY') return 'LINE'
+  if (key === 'CONTROLLER' || key.endsWith('_MANAGER')) return 'MANAGER'
   return null
 }
 
@@ -41,5 +68,5 @@ export function canRequestBuild(role: string | null | undefined): boolean {
 
 export function buildRoleGateMessage(role: string | null | undefined): string {
   const r = normalizePilotRole(role) ?? (role?.trim() || 'unknown')
-  return `Build requests are limited to ADMIN, DIRECTOR, or EXEC profiles. Your mock role is “${r}” — switch the profile role selector to EXEC (or ADMIN / DIRECTOR) to continue.`
+  return `Build requests are limited to ADMIN, DIRECTOR, or EXEC profiles (includes general-manager, property-manager, executive-chef). Your role maps to “${r}”.`
 }
