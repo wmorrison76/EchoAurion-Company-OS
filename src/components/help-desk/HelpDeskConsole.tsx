@@ -14,8 +14,8 @@ import {
 import { ClientAssistPanel } from '@/components/help-desk/ClientAssistPanel'
 import { ToolbeltPanel } from '@/components/help-desk/ToolbeltPanel'
 import { TicketTimeline } from '@/components/help-desk/TicketTimeline'
+import { DeadLetterOpsPanel } from '@/components/help-desk/DeadLetterOpsPanel'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
-import { HELP_DESK_MACROS } from '@/lib/help-desk'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
 import type { APIResponse } from '@/types'
 import type {
@@ -25,7 +25,14 @@ import type {
   IntakeGate,
 } from '@/types/help-desk'
 
-type FilterKey = 'open' | 'voice' | 'feature' | 'awaiting' | 'all'
+type FilterKey = 'open' | 'voice' | 'feature' | 'awaiting' | 'breached' | 'all'
+
+interface MacroChip {
+  id: string
+  label: string
+  body: string
+  source: 'builtin' | 'article'
+}
 
 const GATE_BADGE: Record<
   IntakeGate,
@@ -90,6 +97,8 @@ export function HelpDeskConsole() {
   const [showFeature, setShowFeature] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [scenario, setScenario] = useState<TestScenarioState | null>(null)
+  const [csatScore, setCsatScore] = useState<number | null>(null)
+  const [closeReason, setCloseReason] = useState('resolved_howto')
   const [, startTransition] = useTransition()
 
   const listKey = `/api/help-desk/tickets?filter=${filter}${
@@ -100,6 +109,9 @@ export function HelpDeskConsole() {
     jsonFetcher<HelpTicketListItem[]>,
     { refreshInterval: 20_000 }
   )
+  const { data: macros } = useSWR('/api/help-desk/macros', jsonFetcher<MacroChip[]>, {
+    revalidateOnFocus: false,
+  })
 
   const { data: standby, mutate: mutateStandby } = useSWR(
     '/api/support/standby',
@@ -231,10 +243,15 @@ export function HelpDeskConsole() {
       const res = await fetch(`/api/help-desk/tickets/${selectedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'RESOLVED' }),
+        body: JSON.stringify({
+          status: 'RESOLVED',
+          ...(csatScore != null ? { csatScore } : {}),
+          closeReason,
+        }),
       })
       const body = (await res.json()) as APIResponse<HelpTicketDetail>
       if (!body.success) throw new Error(body.error)
+      setCsatScore(null)
       await refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Resolve failed')
@@ -363,6 +380,7 @@ export function HelpDeskConsole() {
 
   const filters: { key: FilterKey; label: string }[] = [
     { key: 'open', label: 'Open' },
+    { key: 'breached', label: '✕ Breached' },
     { key: 'voice', label: 'Voice' },
     { key: 'feature', label: 'Feature' },
     { key: 'awaiting', label: 'Awaiting approval' },
@@ -380,6 +398,7 @@ export function HelpDeskConsole() {
   return (
     <div className="flex flex-col gap-4">
       <LabInstallLinks />
+      <DeadLetterOpsPanel />
 
       {/* Standby toggle — Knights may approve low-risk when William unavailable */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2a2a3f] bg-[#12121a] px-4 py-3">
@@ -446,20 +465,18 @@ export function HelpDeskConsole() {
             What you should also decide
           </summary>
           <ul className="mt-2 list-inside list-disc space-y-1 text-[11px] text-[#5a5a78]">
-            <li>SLA / &lt;10 min free-answer target + breach UI</li>
-            <li>Escalation: you → Knights draft → billable engineer</li>
+            <li>SLA clocks live — ✕ Breached / ▲ At risk / ✓ On track (filter: Breached)</li>
+            <li>CSAT 1–5 + close reason on Mark resolved</li>
+            <li>Delivery ops panel — dead-letter ingest + stuck outbox retry</li>
+            <li>Macros: builtins + Help Files tagged macro / isMacro</li>
+            <li>Email webhook `/api/webhooks/support-email` · IVR `/api/webhooks/support-ivr`</li>
+            <li>Public Help Center lite at `/help-center`</li>
             <li>Requester identity — only billing contact authorizes spend</li>
-            <li>Audit trail (already wired to audit_log)</li>
-            <li>After-hours / on-call via PWA push</li>
-            <li>Knowledge base / macros (stub list in reply box)</li>
-            <li>Multilingual hospitality crews</li>
-            <li>Guest-facing vs operator/system privacy split</li>
-            <li>Intake: relay · email · phone (Twilio later)</li>
-            <li>CSAT / close reason on resolve</li>
             <li>When NOT to use Knights (secrets, legal, HR)</li>
-            <li>Vendor vs client help desk (Knowledge Plane later)</li>
           </ul>
-          <p className="mt-2 font-mono text-[10px] text-[#D4AF37]">docs/HELP_DESK.md</p>
+          <p className="mt-2 font-mono text-[10px] text-[#D4AF37]">
+            docs/SUPPORT_90_DAY_PLAN.md · docs/HELP_DESK.md
+          </p>
         </details>
       </div>
 
@@ -598,6 +615,12 @@ export function HelpDeskConsole() {
                 >
                   <div className="flex flex-wrap gap-1.5">
                     <StatusBadge level={channelLevel(t.channel)} label={t.channel} />
+                    {t.sla && (
+                      <StatusBadge
+                        level={t.sla.status}
+                        label={`${t.sla.shape} SLA ${t.sla.label}`}
+                      />
+                    )}
                     {t.intakeGate && (
                       <StatusBadge
                         level={GATE_BADGE[t.intakeGate].level}
@@ -896,7 +919,7 @@ export function HelpDeskConsole() {
                   aria-label="Reply message"
                 />
                 <div className="flex flex-wrap gap-1.5">
-                  {HELP_DESK_MACROS.map((macro) => (
+                  {(macros ?? []).map((macro) => (
                     <button
                       key={macro.id}
                       type="button"
@@ -904,11 +927,58 @@ export function HelpDeskConsole() {
                       className="rounded-full border border-[#2a2a3f] px-2 py-0.5 text-[10px] text-[#5a5a78] hover:border-[#D4AF37] hover:text-[#D4AF37]"
                       aria-label={`Insert macro ${macro.label}`}
                     >
+                      {macro.source === 'article' ? '📄 ' : ''}
                       {macro.label}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* CSAT + resolve */}
+              {detail.status !== 'RESOLVED' && detail.status !== 'CLOSED' ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-[#D4AF37]">
+                    Resolve · CSAT
+                  </p>
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-label="CSAT score 1 to 5">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setCsatScore(n)}
+                        className={`rounded-full border px-2.5 py-1 font-mono text-xs ${
+                          csatScore === n
+                            ? 'border-[#D4AF37] text-[#D4AF37]'
+                            : 'border-[#2a2a3f] text-[#5a5a78]'
+                        }`}
+                        aria-label={`CSAT ${n} of 5`}
+                        aria-pressed={csatScore === n}
+                      >
+                        ★{n}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="text-[10px] text-[#5a5a78]" htmlFor="hd-close-reason">
+                    Close reason
+                  </label>
+                  <select
+                    id="hd-close-reason"
+                    value={closeReason}
+                    onChange={(e) => setCloseReason(e.target.value)}
+                    className="rounded-lg border border-[#2a2a3f] bg-[#12121a] px-2 py-1.5 text-xs text-white"
+                    aria-label="Close reason"
+                  >
+                    <option value="resolved_howto">Resolved · how-to</option>
+                    <option value="resolved_config">Resolved · config</option>
+                    <option value="resolved_fix">Resolved · fix</option>
+                    <option value="duplicate">Duplicate</option>
+                    <option value="spam">Spam</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+              ) : detail.csatScore != null ? (
+                <StatusBadge level="ok" label={`★ CSAT ${detail.csatScore}/5`} />
+              ) : null}
 
               {/* Actions */}
               <div className="flex flex-wrap gap-2">

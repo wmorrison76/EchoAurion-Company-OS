@@ -4,11 +4,23 @@
  */
 
 import { db } from '@/lib/db'
-import { INTAKE_GATES, type IntakeGate } from '@/lib/intake-gate'
+import {
+  INTAKE_GATES,
+  INTAKE_CHANNELS,
+  INTAKE_CHANNEL_META,
+  type IntakeGate,
+  type IntakeChannel,
+} from '@/lib/intake-gate'
 
 export interface SupportAnalyticsSnapshot {
   ticketsByGate: Array<{
     gate: IntakeGate | 'UNSET'
+    count: number
+    shape: string
+    label: string
+  }>
+  ticketsByChannel: Array<{
+    channel: IntakeChannel | 'UNSET'
     count: number
     shape: string
     label: string
@@ -24,6 +36,14 @@ export interface SupportAnalyticsSnapshot {
   /** Mean hours from create → resolve for RESOLVED tickets (proxy MTTR). */
   mttrHoursProxy: number | null
   resolvedSampleSize: number
+  /** Mean CSAT 1–5 over resolved sample with scores (90d). */
+  csatAverage: number | null
+  csatSampleSize: number
+  sla: {
+    openBreached: number
+    openAtRisk: number
+    openOnTrack: number
+  }
   ciDeployFailCounts: {
     openSystemInfra: number
     openSystemIntegration: number
@@ -37,6 +57,7 @@ export interface SupportAnalyticsSnapshot {
     unset: number
   }
   deadLetterNotify: number
+  stuckOutbox: number
   byClientKey: Array<{
     clientKey: string
     openTickets: number
@@ -53,11 +74,17 @@ const GATE_SHAPE: Record<IntakeGate | 'UNSET', { shape: string; label: string }>
   UNSET: { shape: '?', label: 'Unset' },
 }
 
+const OPEN = ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] as const
+
 export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot> {
   const since90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+  const now = new Date()
+  const warnHorizon = new Date(now.getTime() + 30 * 60_000)
+  const stuckCutoff = new Date(now.getTime() - 5 * 60_000)
 
   const [
     gateGroups,
+    channelGroups,
     patterns,
     resolved,
     openInfra,
@@ -67,10 +94,18 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
     fleet,
     rolloutUnset,
     deadLetter,
+    stuckOutbox,
     byClient,
+    openBreached,
+    openAtRisk,
+    openOnTrack,
   ] = await Promise.all([
     db.helpTicket.groupBy({
       by: ['intakeGate'],
+      _count: { _all: true },
+    }),
+    db.helpTicket.groupBy({
+      by: ['intakeChannel'],
       _count: { _all: true },
     }),
     db.errorPattern.findMany({
@@ -90,20 +125,20 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
         status: 'RESOLVED',
         resolvedAt: { not: null, gte: since90 },
       },
-      select: { createdAt: true, resolvedAt: true },
+      select: { createdAt: true, resolvedAt: true, csatScore: true },
       take: 500,
     }),
     db.helpTicket.count({
       where: {
         channel: 'SYSTEM',
-        status: { in: ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] },
+        status: { in: [...OPEN] },
         errorCategory: 'INFRA',
       },
     }),
     db.helpTicket.count({
       where: {
         channel: 'SYSTEM',
-        status: { in: ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] },
+        status: { in: [...OPEN] },
         errorCategory: 'INTEGRATION',
       },
     }),
@@ -114,19 +149,63 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
       where: {
         errorScope: 'GLOBAL',
         OR: [{ rolloutStage: null }, { rolloutStage: '' }],
-        status: { in: ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL', 'RESOLVED'] },
+        status: { in: [...OPEN, 'RESOLVED'] },
       },
     }),
     db.ingestJob.count({
       where: { kind: 'notify_fanout', status: 'FAILED' },
     }),
+    db.relayOutbox.count({
+      where: { deliveredAt: null, createdAt: { lt: stuckCutoff } },
+    }),
     db.helpTicket.groupBy({
       by: ['clientKey', 'productLine'],
       where: {
-        status: { in: ['OPEN', 'WAITING', 'WITH_KNIGHTS', 'AWAITING_APPROVAL'] },
+        status: { in: [...OPEN] },
         clientKey: { not: null },
       },
       _count: { _all: true },
+    }),
+    db.helpTicket.count({
+      where: {
+        status: { in: [...OPEN] },
+        OR: [
+          { slaBreachedAt: { not: null } },
+          { firstResponseAt: null, firstResponseDueAt: { lt: now } },
+          { resolveDueAt: { lt: now } },
+        ],
+      },
+    }),
+    db.helpTicket.count({
+      where: {
+        status: { in: [...OPEN] },
+        slaBreachedAt: null,
+        OR: [
+          {
+            firstResponseAt: null,
+            firstResponseDueAt: { gte: now, lte: warnHorizon },
+          },
+          { resolveDueAt: { gte: now, lte: warnHorizon } },
+        ],
+      },
+    }),
+    db.helpTicket.count({
+      where: {
+        status: { in: [...OPEN] },
+        slaBreachedAt: null,
+        AND: [
+          {
+            OR: [
+              { firstResponseAt: { not: null } },
+              { firstResponseDueAt: null },
+              { firstResponseDueAt: { gt: warnHorizon } },
+            ],
+          },
+          {
+            OR: [{ resolveDueAt: null }, { resolveDueAt: { gt: warnHorizon } }],
+          },
+        ],
+      },
     }),
   ])
 
@@ -145,6 +224,22 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
     }
   })
 
+  const channelMap = new Map<string, number>()
+  for (const c of channelGroups) {
+    channelMap.set(c.intakeChannel ?? 'UNSET', c._count._all)
+  }
+  const ticketsByChannel = [
+    ...INTAKE_CHANNELS.map((ch) => {
+      const meta = INTAKE_CHANNEL_META[ch]
+      return {
+        channel: ch as IntakeChannel | 'UNSET',
+        count: channelMap.get(ch) ?? 0,
+        shape: meta.shape,
+        label: meta.label,
+      }
+    }),
+  ]
+
   let mttrHoursProxy: number | null = null
   if (resolved.length > 0) {
     const hours = resolved
@@ -157,20 +252,19 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
       Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 10) / 10
   }
 
-  // Knight seats: count configured vs missing from env (same pattern as roster).
-  const seatEnvKeys = [
-    'PERPLEXITY_API_KEY',
-    'OPENAI_API_KEY',
-    'ANTHROPIC_API_KEY',
-    'GOOGLE_AI_API_KEY',
-    'GEMINI_API_KEY',
-    'ECHO_AI_URL',
-  ]
+  const csatScores = resolved
+    .map((r) => r.csatScore)
+    .filter((s): s is number => typeof s === 'number' && s >= 1 && s <= 5)
+  const csatAverage =
+    csatScores.length > 0
+      ? Math.round((csatScores.reduce((a, b) => a + b, 0) / csatScores.length) * 10) / 10
+      : null
+
   const knightSeatTotal = 6
   let configured = 0
   if (process.env.PERPLEXITY_API_KEY?.trim()) configured++
   if (process.env.OPENAI_API_KEY?.trim()) configured++
-  if (process.env.ANTHROPIC_API_KEY?.trim()) configured += 2 // strategist + architect
+  if (process.env.ANTHROPIC_API_KEY?.trim()) configured += 2
   if (
     process.env.GOOGLE_AI_API_KEY?.trim() ||
     process.env.GEMINI_API_KEY?.trim() ||
@@ -180,7 +274,6 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
   }
   if (process.env.ECHO_AI_URL?.trim() && process.env.ECHO_AI_KEY?.trim()) configured++
   const knightSeatDegraded = Math.max(0, knightSeatTotal - Math.min(configured, knightSeatTotal))
-  void seatEnvKeys
 
   const byClientKey = byClient
     .filter((r) => r.clientKey)
@@ -194,6 +287,7 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
 
   return {
     ticketsByGate,
+    ticketsByChannel,
     errorFingerprintsTop: patterns.map((p) => ({
       fingerprint: p.fingerprint.slice(0, 16),
       hitCount: p.hitCount,
@@ -204,6 +298,13 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
     })),
     mttrHoursProxy,
     resolvedSampleSize: resolved.length,
+    csatAverage,
+    csatSampleSize: csatScores.length,
+    sla: {
+      openBreached,
+      openAtRisk,
+      openOnTrack,
+    },
     ciDeployFailCounts: {
       openSystemInfra: openInfra,
       openSystemIntegration: openIntegration,
@@ -217,6 +318,7 @@ export async function buildSupportAnalytics(): Promise<SupportAnalyticsSnapshot>
       unset: rolloutUnset,
     },
     deadLetterNotify: deadLetter,
+    stuckOutbox,
     byClientKey,
     generatedAt: new Date().toISOString(),
   }

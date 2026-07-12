@@ -1,24 +1,25 @@
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { IVR_DTMF_TO_GATE, parseIntakeGate } from '@/lib/intake-gate'
+import { slaDueFieldsForCreate } from '@/lib/help-desk'
 import { processInboundQuestion } from '@/lib/help-desk-knights'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Future Twilio / phone IVR webhook scaffold.
- * DTMF → gate mapping (1 TECH, 2 BILLING, 3 BUILD, 4 OTHER) → HelpTicket.
- * Compiles without Twilio credentials. Auth: SUPPORT_IVR_WEBHOOK_SECRET or
- * SUPPORT_INGEST_SECRET Bearer (optional until production).
+ * Twilio / phone IVR webhook — DTMF → IntakeGate → HelpTicket.
+ * Feature-flagged:
+ * - No TWILIO_AUTH_TOKEN → Bearer secret or dev bypass
+ * - With TWILIO_AUTH_TOKEN → validate X-Twilio-Signature when present
  *
- * See docs/SUPPORT_IVR.md
+ * See docs/SUPPORT_IVR.md · docs/SUPPORT_90_DAY_PLAN.md
  */
 
 const schema = z.object({
-  /** Digits pressed, e.g. "1" */
   Digits: z.string().optional(),
   digits: z.string().optional(),
   gate: z.string().optional(),
@@ -26,11 +27,30 @@ const schema = z.object({
   CallSid: z.string().optional(),
   clientKey: z.string().optional(),
   transcript: z.string().optional(),
-  /** Opaque install id — required to attribute ticket. */
   SpeechResult: z.string().optional(),
 })
 
-function ivrAuthorized(req: Request): boolean {
+function twilioSignatureValid(req: Request, rawBody: string): boolean {
+  const token = process.env.TWILIO_AUTH_TOKEN?.trim()
+  const sig = req.headers.get('x-twilio-signature')
+  if (!token || !sig) return false
+  const url = process.env.SUPPORT_IVR_PUBLIC_URL?.trim() || req.url
+  const expected = createHmac('sha1', token).update(url + rawBody).digest('base64')
+  try {
+    const a = Buffer.from(expected)
+    const b = Buffer.from(sig)
+    return a.length === b.length && timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
+}
+
+function ivrAuthorized(req: Request, rawBody: string): boolean {
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN?.trim()
+  if (twilioToken && req.headers.get('x-twilio-signature')) {
+    return twilioSignatureValid(req, rawBody)
+  }
+
   const secret =
     process.env.SUPPORT_IVR_WEBHOOK_SECRET?.trim() ||
     process.env.SUPPORT_INGEST_SECRET?.trim()
@@ -41,13 +61,36 @@ function ivrAuthorized(req: Request): boolean {
   const header = req.headers.get('authorization') ?? ''
   const match = /^Bearer\s+(.+)$/i.exec(header)
   if (match && match[1] === secret) return true
-  const twilioSig = req.headers.get('x-twilio-signature')
-  // Full Twilio signature verify TODO when credentials exist.
-  return Boolean(twilioSig && process.env.NODE_ENV !== 'production')
+  // Dev convenience when Twilio posts without our Bearer.
+  return Boolean(req.headers.get('x-twilio-signature') && process.env.NODE_ENV !== 'production')
+}
+
+function twimlMenu(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather numDigits="1" action="/api/webhooks/support-ivr" method="POST" timeout="8">
+    <Say>Echo Aurion support. Press 1 for tech. Press 2 for billing. Press 3 for a paid build. Press 4 for other.</Say>
+  </Gather>
+  <Say>We did not get a selection. Goodbye.</Say>
+  <Hangup/>
+</Response>`
 }
 
 export async function POST(req: Request): Promise<Response> {
-  if (!ivrAuthorized(req)) {
+  const contentType = req.headers.get('content-type') ?? ''
+  let rawBody = ''
+  let raw: Record<string, unknown>
+
+  if (contentType.includes('application/json')) {
+    rawBody = await req.text()
+    raw = JSON.parse(rawBody || '{}') as Record<string, unknown>
+  } else {
+    rawBody = await req.text()
+    const params = new URLSearchParams(rawBody)
+    raw = Object.fromEntries(params.entries()) as Record<string, unknown>
+  }
+
+  if (!ivrAuthorized(req, rawBody)) {
     return Response.json(
       { success: false, error: 'Unauthorized', code: 'UNAUTHORIZED' },
       { status: 401 }
@@ -55,15 +98,6 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const contentType = req.headers.get('content-type') ?? ''
-    let raw: Record<string, unknown>
-    if (contentType.includes('application/json')) {
-      raw = (await req.json()) as Record<string, unknown>
-    } else {
-      const form = await req.formData()
-      raw = Object.fromEntries(form.entries()) as Record<string, unknown>
-    }
-
     const parsed = schema.safeParse(raw)
     if (!parsed.success) {
       return Response.json(
@@ -73,12 +107,34 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const digits = String(parsed.data.Digits ?? parsed.data.digits ?? '').trim()
+    const accept = req.headers.get('accept') ?? ''
+    const wantsTwiml =
+      accept.includes('xml') || contentType.includes('www-form-urlencoded')
+
+    // No digits yet → return Gather menu (Twilio first hit).
+    if (!digits && !parsed.data.gate && wantsTwiml) {
+      return new Response(twimlMenu(), {
+        status: 200,
+        headers: { 'Content-Type': 'text/xml' },
+      })
+    }
+
     const gate =
       parseIntakeGate(parsed.data.gate) ??
       (digits ? IVR_DTMF_TO_GATE[digits] : undefined) ??
       null
 
     if (!gate) {
+      if (wantsTwiml) {
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Unknown selection. Press 1 tech, 2 billing, 3 build, 4 other.</Say>
+  <Redirect>/api/webhooks/support-ivr</Redirect>
+</Response>`,
+          { status: 200, headers: { 'Content-Type': 'text/xml' } }
+        )
+      }
       return Response.json(
         {
           success: false,
@@ -96,6 +152,9 @@ export async function POST(req: Request): Promise<Response> {
     const question =
       String(parsed.data.transcript ?? parsed.data.SpeechResult ?? '').trim() ||
       `[Phone IVR] Caller selected ${gate} (DTMF ${digits || 'n/a'})`
+
+    const now = new Date()
+    const dues = slaDueFieldsForCreate(now, gate)
 
     const created = await db.customerQuestion.create({
       data: {
@@ -121,6 +180,8 @@ export async function POST(req: Request): Promise<Response> {
         subject: question.slice(0, 120),
         clientKey,
         customerQuestionId: created.id,
+        firstResponseDueAt: dues.firstResponseDueAt,
+        resolveDueAt: dues.resolveDueAt,
         messages: {
           create: [{ role: 'CUSTOMER', body: question }],
         },
@@ -133,9 +194,7 @@ export async function POST(req: Request): Promise<Response> {
       console.error('[support-ivr] processInboundQuestion failed', err)
     })
 
-    // Twilio-compatible TwiML stub (XML) when Accept prefers xml.
-    const accept = req.headers.get('accept') ?? ''
-    if (accept.includes('xml') || contentType.includes('www-form-urlencoded')) {
+    if (wantsTwiml) {
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Thanks. Your ${gate} request was received. Ticket ${ticket.id.slice(0, 8)}.</Say>
@@ -176,8 +235,20 @@ export async function POST(req: Request): Promise<Response> {
   }
 }
 
-/** GET — IVR tree documentation for operators (no secrets). */
-export async function GET(): Promise<Response> {
+/** GET — IVR tree + TwiML menu for operators / Twilio voice URL. */
+export async function GET(req: Request): Promise<Response> {
+  const accept = req.headers.get('accept') ?? ''
+  if (accept.includes('xml') || new URL(req.url).searchParams.get('twiml') === '1') {
+    return new Response(twimlMenu(), {
+      status: 200,
+      headers: { 'Content-Type': 'text/xml' },
+    })
+  }
+
+  const twilioConfigured = Boolean(
+    process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim()
+  )
+
   return Response.json({
     success: true,
     data: {
@@ -189,7 +260,10 @@ export async function GET(): Promise<Response> {
       ],
       endpoint: '/api/webhooks/support-ivr',
       docs: 'docs/SUPPORT_IVR.md',
+      twilioConfigured,
       twilioRequired: false,
+      shape: twilioConfigured ? '✓' : '◇',
+      label: twilioConfigured ? 'Twilio credentials present' : 'Feature-flagged scaffold',
     },
   })
 }

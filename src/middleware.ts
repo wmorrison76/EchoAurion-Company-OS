@@ -24,6 +24,6 @@ export const config = {
   // health check, webhooks, cron routes (CRON_SECRET), relay/knowledge ingest,
   // and static assets.
   matcher: [
-    '/((?!login|api/auth|api/health|api/financial/webhook|api/financial/sync|api/maintenance/dispatch|api/board-room/briefing|api/support/diagnostics|api/relay|api/knowledge/ingest|api/knowledge/retrieve|api/knowledge/book-ingest|api/webhooks/github|api/webhooks/support-ivr|api/ops/poll-failures|api/ops/drain-queue|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon-|apple-touch-icon|help-desk-icon).*)',
+    '/((?!login|api/auth|api/health|api/financial/webhook|api/financial/sync|api/maintenance/dispatch|api/board-room/briefing|api/support/diagnostics|api/relay|api/knowledge/ingest|api/knowledge/retrieve|api/knowledge/book-ingest|api/webhooks/github|api/webhooks/support-ivr|api/webhooks/support-email|api/help-center|help-center|api/ops/poll-failures|api/ops/drain-queue|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon-|apple-touch-icon|help-desk-icon).*)',
   ],
 }

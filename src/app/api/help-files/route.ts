@@ -42,6 +42,8 @@ export async function POST(req: Request): Promise<Response> {
       body?: string
       tags?: string[]
       panelId?: string | null
+      public?: boolean
+      isMacro?: boolean
     }
 
     const title = body.title?.trim()
@@ -69,7 +71,15 @@ export async function POST(req: Request): Promise<Response> {
     const tags = (body.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean)
 
     const created = await db.helpArticle.create({
-      data: { slug, title, body: articleBody, tags, panelId },
+      data: {
+        slug,
+        title,
+        body: articleBody,
+        tags,
+        panelId,
+        public: body.public === true,
+        isMacro: body.isMacro === true,
+      },
     })
 
     await audit('william_morrison', 'help_files.article.create', created.id, { slug })
@@ -99,6 +109,8 @@ export async function PATCH(req: Request): Promise<Response> {
       body?: string
       tags?: string[]
       panelId?: string | null
+      public?: boolean
+      isMacro?: boolean
     }
 
     if (!body.id) {
@@ -134,6 +146,8 @@ export async function PATCH(req: Request): Promise<Response> {
           ? { tags: body.tags.map((t) => t.trim().toLowerCase()).filter(Boolean) }
           : {}),
         ...(panelId !== undefined ? { panelId } : {}),
+        ...(body.public !== undefined ? { public: body.public } : {}),
+        ...(body.isMacro !== undefined ? { isMacro: body.isMacro } : {}),
       },
     })
 

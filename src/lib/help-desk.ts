@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
 import { classifySupportRequest } from '@/lib/support-policy'
+import { computeSlaDueDates, evaluateSla } from '@/lib/support-sla'
+import type { IntakeGate } from '@/lib/intake-gate'
 import type {
   HelpMessageView,
   HelpTicketDetail,
@@ -24,6 +26,14 @@ type TicketRow = {
   createdAt: Date
   updatedAt: Date
   resolvedAt: Date | null
+  firstResponseAt?: Date | null
+  firstResponseDueAt?: Date | null
+  resolveDueAt?: Date | null
+  slaBreachedAt?: Date | null
+  slaEscalatedAt?: Date | null
+  csatScore?: number | null
+  csatComment?: string | null
+  closeReason?: string | null
   errorScope?: string | null
   errorCategory?: string | null
   productLine?: string | null
@@ -92,13 +102,26 @@ export function toVoiceView(v: {
 }
 
 export function toListItem(t: TicketRow): HelpTicketListItem {
+  const gate = (t.intakeGate as IntakeGate | null) ?? null
+  const sla = evaluateSla({
+    createdAt: t.createdAt,
+    intakeGate: gate,
+    firstResponseAt: t.firstResponseAt,
+    firstResponseDueAt: t.firstResponseDueAt,
+    resolveDueAt: t.resolveDueAt,
+    resolvedAt: t.resolvedAt,
+    slaBreachedAt: t.slaBreachedAt,
+    slaEscalatedAt: t.slaEscalatedAt,
+    status: t.status,
+  })
+
   return {
     id: t.id,
     channel: t.channel as HelpTicketListItem['channel'],
     status: t.status as HelpTicketListItem['status'],
     priority: t.priority,
     subject: t.subject,
-    intakeGate: (t.intakeGate as HelpTicketListItem['intakeGate']) ?? null,
+    intakeGate: gate,
     intakeChannel: (t.intakeChannel as HelpTicketListItem['intakeChannel']) ?? 'IN_APP',
     clientKey: t.clientKey,
     requesterName: t.requesterName,
@@ -119,6 +142,22 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     rolloutStage: t.rolloutStage ?? null,
     canaryClientKeys: t.canaryClientKeys ?? [],
     moduleHint: t.moduleHint ?? null,
+    firstResponseAt: t.firstResponseAt?.toISOString() ?? null,
+    firstResponseDueAt: t.firstResponseDueAt?.toISOString() ?? sla.firstResponseDueAt,
+    resolveDueAt: t.resolveDueAt?.toISOString() ?? sla.resolveDueAt,
+    slaBreachedAt: t.slaBreachedAt?.toISOString() ?? null,
+    slaEscalatedAt: t.slaEscalatedAt?.toISOString() ?? null,
+    csatScore: t.csatScore ?? null,
+    closeReason: t.closeReason ?? null,
+    sla: {
+      status: sla.status,
+      shape: sla.shape,
+      label: sla.label,
+      firstResponseStatus: sla.firstResponseStatus,
+      resolveStatus: sla.resolveStatus,
+      minutesToFirstResponseDue: sla.minutesToFirstResponseDue,
+      minutesToResolveDue: sla.minutesToResolveDue,
+    },
   }
 }
 
@@ -147,6 +186,7 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
     cohortBrowser: t.cohortBrowser ?? null,
     cohortOs: t.cohortOs ?? null,
     cohortAppVersion: t.cohortAppVersion ?? null,
+    csatComment: t.csatComment ?? null,
     messages: (t.messages ?? []).map(toMessageView),
     voiceNotes: (t.voiceNotes ?? []).map(toVoiceView),
     policy: {
@@ -165,6 +205,14 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
       reason: verdict.reason,
     },
   }
+}
+
+/** SLA due dates to set on ticket create. */
+export function slaDueFieldsForCreate(
+  createdAt: Date,
+  gate: IntakeGate | null | undefined
+): { firstResponseDueAt: Date; resolveDueAt: Date } {
+  return computeSlaDueDates(createdAt, gate)
 }
 
 /** Find or create a Help Desk ticket linked to a Support inbox question/work item. */
@@ -187,6 +235,8 @@ export async function ensureTicketFromInbox(input: {
     if (!q) throw new Error('Question not found')
 
     const intakeGate = q.intakeGate ?? null
+    const now = new Date()
+    const dues = slaDueFieldsForCreate(now, intakeGate as IntakeGate | null)
     const ticket = await db.helpTicket.create({
       data: {
         channel: intakeGate === 'BUILD' ? 'FEATURE' : 'TEXT',
@@ -197,6 +247,8 @@ export async function ensureTicketFromInbox(input: {
         clientKey: q.clientKey,
         clientId: q.clientId,
         customerQuestionId: q.id,
+        firstResponseDueAt: dues.firstResponseDueAt,
+        resolveDueAt: dues.resolveDueAt,
         messages: {
           create: [
             {
@@ -245,15 +297,23 @@ export async function ensureTicketFromInbox(input: {
   const w = await db.workRequest.findUnique({ where: { id: input.id } })
   if (!w) throw new Error('Work request not found')
 
+  const workGate: IntakeGate = w.kind === 'ADDON' ? 'BUILD' : 'TECH'
+  const workNow = new Date()
+  const workDues = slaDueFieldsForCreate(workNow, workGate)
+
   const ticket = await db.helpTicket.create({
     data: {
       channel: w.kind === 'ADDON' ? 'FEATURE' : 'TEXT',
+      intakeGate: workGate,
+      intakeChannel: 'IN_APP',
       status: 'OPEN',
       subject: w.title.slice(0, 120),
       clientKey: w.clientKey,
       clientId: w.clientId,
       requesterName: w.requesterName,
       workRequestId: w.id,
+      firstResponseDueAt: workDues.firstResponseDueAt,
+      resolveDueAt: workDues.resolveDueAt,
       messages: {
         create: [
           {

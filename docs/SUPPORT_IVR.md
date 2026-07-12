@@ -1,34 +1,34 @@
-# Support Phone IVR (scaffold)
+# Support IVR — Phone intake
 
-Compiles **without** Twilio credentials. Production wiring is optional.
+**Status:** Twilio-ready scaffold (feature-flagged). Creates real `HelpTicket` rows with `intakeChannel=PHONE_IVR` and SLA clocks.
 
 ## DTMF tree
 
-| Digit | Gate | Label |
+| Digit | Gate | Shape+label |
 |---|---|---|
-| 1 | TECH | ◆ Tech support |
+| 1 | TECH | ◆ Tech |
 | 2 | BILLING | ● Billing |
-| 3 | BUILD | ■ Paid build / change |
+| 3 | BUILD | ■ Paid build |
 | 4 | OTHER | ○ Other |
 
-## Endpoint
+## Endpoints
 
-`POST /api/webhooks/support-ivr`
+- `POST /api/webhooks/support-ivr` — Gather digits / create ticket (TwiML or JSON)
+- `GET /api/webhooks/support-ivr` — tree docs; `?twiml=1` or `Accept: text/xml` → menu TwiML
 
-- JSON or `application/x-www-form-urlencoded` (Twilio-style `Digits`, `From`, `CallSid`, `SpeechResult`)
-- Creates `CustomerQuestion` + `HelpTicket` with `intakeChannel=PHONE_IVR` and `intakeGate`
-- Auth: `SUPPORT_IVR_WEBHOOK_SECRET` or `SUPPORT_INGEST_SECRET` Bearer; in non-production may accept without secret for local scaffold
-- Middleware: public (excluded like GitHub webhook)
+## Auth modes
 
-`GET /api/webhooks/support-ivr` returns the tree for operators.
+1. **Twilio live:** set `TWILIO_AUTH_TOKEN` (+ `TWILIO_ACCOUNT_SID`, `TWILIO_PHONE_NUMBER`). Requests with `X-Twilio-Signature` are verified. Set `SUPPORT_IVR_PUBLIC_URL` to the exact Voice webhook URL.
+2. **Bearer:** `SUPPORT_IVR_WEBHOOK_SECRET` or `SUPPORT_INGEST_SECRET`.
+3. **Dev:** no secret → allowed only when `NODE_ENV !== 'production'`.
 
-## Channel enum
+## Twilio console
 
-`IntakeChannel`: `IN_APP` | `VOICE` | `PHONE_IVR` (distinct from `HelpTicketChannel` TEXT/VOICE/FEATURE/SYSTEM).
+1. Buy/number → Voice webhook: `https://<host>/api/webhooks/support-ivr` (POST)
+2. Paste env vars on Render (never commit)
+3. Test: press 1 → Help Desk shows VOICE + PHONE_IVR + ◆ Tech + SLA badge
 
-## Next (William)
+## Related
 
-1. Buy/configure Twilio number
-2. Set `SUPPORT_IVR_WEBHOOK_SECRET`
-3. Point Twilio voice webhook to this URL
-4. Implement full Twilio signature verify (`x-twilio-signature`)
+- `docs/SUPPORT_90_DAY_PLAN.md`
+- `docs/SUPPORT_VOICE.md` (dictation / TTS — separate from IVR)

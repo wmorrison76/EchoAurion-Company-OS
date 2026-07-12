@@ -12,6 +12,28 @@ async function fetcher(url: string): Promise<SupportAnalyticsSnapshot> {
   return body.data
 }
 
+function Kpi({
+  title,
+  value,
+  sub,
+  shape,
+}: {
+  title: string
+  value: string
+  sub: string
+  shape: string
+}) {
+  return (
+    <div className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-2">
+      <p className="text-[10px] uppercase tracking-widest text-[#5a5a78]">{title}</p>
+      <p className="mt-0.5 font-mono text-lg font-semibold tabular-nums text-white">
+        <span aria-hidden>{shape}</span> {value}
+      </p>
+      <p className="text-[10px] text-[#a0a0b8]">{sub}</p>
+    </div>
+  )
+}
+
 /** Support & reliability KPIs — shape + label, PII-free. */
 export function SupportReliabilityPanel() {
   const { data, error, mutate, isLoading } = useSWR(
@@ -64,16 +86,43 @@ export function SupportReliabilityPanel() {
             ))}
           </div>
 
+          <div className="flex flex-wrap gap-2">
+            {data.ticketsByChannel.map((c) => (
+              <StatusBadge
+                key={c.channel}
+                level={c.count > 0 ? 'ok' : 'unknown'}
+                label={`${c.shape} ${c.label}: ${c.count}`}
+              />
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge
+              level={data.sla.openBreached > 0 ? 'error' : 'ok'}
+              label={`✕ Breached: ${data.sla.openBreached}`}
+            />
+            <StatusBadge
+              level={data.sla.openAtRisk > 0 ? 'warn' : 'ok'}
+              label={`▲ At risk: ${data.sla.openAtRisk}`}
+            />
+            <StatusBadge
+              level="ok"
+              label={`✓ On track: ${data.sla.openOnTrack}`}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Kpi
               title="MTTR proxy"
-              value={
-                data.mttrHoursProxy != null
-                  ? `${data.mttrHoursProxy}h`
-                  : '—'
-              }
+              value={data.mttrHoursProxy != null ? `${data.mttrHoursProxy}h` : '—'}
               sub={`${data.resolvedSampleSize} resolved (90d)`}
               shape="⏱"
+            />
+            <Kpi
+              title="CSAT avg"
+              value={data.csatAverage != null ? String(data.csatAverage) : '—'}
+              sub={`${data.csatSampleSize} scored (90d)`}
+              shape="★"
             />
             <Kpi
               title="CI / deploy fails"
@@ -85,19 +134,9 @@ export function SupportReliabilityPanel() {
               shape="✕"
             />
             <Kpi
-              title="Knight seats"
-              value={`${data.knightSeatTotal - data.knightSeatDegraded}/${data.knightSeatTotal}`}
-              sub={
-                data.knightSeatDegraded > 0
-                  ? `${data.knightSeatDegraded} degraded`
-                  : 'All configured'
-              }
-              shape={data.knightSeatDegraded > 0 ? '▲' : '✓'}
-            />
-            <Kpi
               title="Canary / fleet"
               value={`${data.canaryVsFleet.canary} / ${data.canaryVsFleet.fleet}`}
-              sub={`${data.deadLetterNotify} dead-letter notify`}
+              sub={`${data.deadLetterNotify} DL · ${data.stuckOutbox} stuck outbox`}
               shape="◎"
             />
           </div>
@@ -120,28 +159,5 @@ export function SupportReliabilityPanel() {
         </div>
       ) : null}
     </section>
-  )
-}
-
-function Kpi({
-  title,
-  value,
-  sub,
-  shape,
-}: {
-  title: string
-  value: string
-  sub: string
-  shape: string
-}) {
-  return (
-    <div className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-2">
-      <p className="text-[10px] uppercase tracking-widest text-[#D4AF37]">{title}</p>
-      <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-white">
-        <span aria-hidden>{shape} </span>
-        {value}
-      </p>
-      <p className="text-[10px] text-[#5a5a78]">{sub}</p>
-    </div>
   )
 }

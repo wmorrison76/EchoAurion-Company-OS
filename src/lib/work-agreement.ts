@@ -6,7 +6,15 @@ export function signaturesMatch(typed: string, signerName: string): boolean {
 }
 
 export async function requireWorkAgreement(workRequestId: string): Promise<
-  | { ok: true; agreement: { id: string; signerName: string; signerRole: string } }
+  | {
+      ok: true
+      agreement: {
+        id: string
+        signerName: string
+        signerRole: string
+        signerEmail: string | null
+      }
+    }
   | { ok: false; error: string; status: number; code?: string }
 > {
   const agreement = await db.workAgreement.findUnique({ where: { workRequestId } })
@@ -25,6 +33,7 @@ export async function requireWorkAgreement(workRequestId: string): Promise<
       id: agreement.id,
       signerName: agreement.signerName,
       signerRole: agreement.signerRole,
+      signerEmail: agreement.signerEmail,
     },
   }
 }

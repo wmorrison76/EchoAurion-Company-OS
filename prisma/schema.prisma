@@ -567,9 +567,15 @@ model WorkAgreement {
   agreedAt      DateTime @default(now())
   quoteTotal    Float? // frozen amount acknowledged at agree time
   source        String   @default("profile") // profile | lab | relay
+  /// Stripe Invoice id when created/linked after authorize (optional until keys set).
+  stripeInvoiceId String?
+  /// Hosted invoice URL for billing contact (no card data stored here).
+  stripeInvoiceUrl String?
+  invoiceStatus    String? // draft | open | paid | void | uncollectible | linked
   createdAt     DateTime @default(now())
 
   @@index([signerRole])
+  @@index([stripeInvoiceId])
   @@map("work_agreements")
 }
 
@@ -697,6 +703,21 @@ model HelpTicket {
   updatedAt          DateTime          @updatedAt
   resolvedAt         DateTime?
 
+  // ── SLA clocks (enforced targets — shape+label in UI) ─────────────────────
+  /// First admin/knight reply clock start is createdAt; stamped on first non-customer msg.
+  firstResponseAt    DateTime?
+  /// Due timestamps computed at create / gate change (see src/lib/support-sla.ts).
+  firstResponseDueAt DateTime?
+  resolveDueAt       DateTime?
+  slaBreachedAt      DateTime?
+  /// Escalation note when breach fires (operator Alert + timeline).
+  slaEscalatedAt     DateTime?
+
+  // ── Post-resolve CSAT (1–5) ───────────────────────────────────────────────
+  csatScore          Int? // 1–5
+  csatComment        String? // optional short note — scrub PII in analytics
+  closeReason        String? // resolved_howto | resolved_config | resolved_fix | duplicate | spam | other
+
   // ── Error capture / blast-radius (ZARO → Help Desk) ──────────────────────
   // See docs/ERROR_CAPTURE_AND_SCOPE.md. Fingerprint dedupes within 1h.
   errorScope         ErrorBlastScope?
@@ -756,6 +777,8 @@ enum IntakeChannel {
   IN_APP
   VOICE
   PHONE_IVR
+  EMAIL
+  SMS
 }
 
 /// Blast radius for auto-captured runtime errors.
@@ -867,10 +890,16 @@ model HelpArticle {
   body      String
   tags      String[] // e.g. ["login", "beo", "fleet", "company-os"]
   panelId   String? // optional Echo-like panel to open when sent (see help-panels.ts)
+  /// When true, visible on public /help-center (property-facing lite).
+  public    Boolean  @default(false)
+  /// Prefer as Help Desk macro chip (operator insert library).
+  isMacro   Boolean  @default(false)
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 
   @@index([updatedAt])
+  @@index([public, updatedAt])
+  @@index([isMacro, updatedAt])
   @@map("help_articles")
 }
 

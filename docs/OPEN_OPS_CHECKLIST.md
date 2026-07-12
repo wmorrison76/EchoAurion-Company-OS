@@ -15,8 +15,23 @@ These exist under `prisma/migrations/` and must be applied on Neon after each Co
 | `20260712210000_scale_and_echo_learning` | IngestJob queue, EchoKnowledgeChunk, fingerprint indexes |
 | `20260712220000_tenant_isolation_handshake` | RequestNonce + tenant-scoped fingerprint index |
 | `20260712230000_support_roadmap_frameworks` | intakeGate, intakeChannel, ingestSecretHash, CustomerCostSnapshot |
+| `20260712240000_support_p0_sla_csat_channels` | SLA clocks, CSAT, EMAIL/SMS channels, HelpArticle public/isMacro, WorkAgreement invoice fields |
 
 **Deploy note:** Render startCommand already runs `npx prisma migrate deploy`. If a migration fails, check `DATABASE_URL_UNPOOLED` (direct) vs pooled `DATABASE_URL`.
+
+---
+
+## 1b. Support P0 env (after migrate)
+
+| Env var | Purpose |
+|---|---|
+| `SUPPORT_EMAIL_WEBHOOK_SECRET` | Bearer for `POST /api/webhooks/support-email` (or reuse ingest secret) |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Live IVR signature verify + number |
+| `SUPPORT_IVR_PUBLIC_URL` | Exact public webhook URL Twilio signs |
+| `SUPPORT_IVR_WEBHOOK_SECRET` | Optional IVR Bearer override |
+| Stripe keys (existing) | Auto-create Invoice on WorkAgreement authorize |
+
+See `docs/SUPPORT_90_DAY_PLAN.md` for verify checklist after meeting.
 
 ---
 

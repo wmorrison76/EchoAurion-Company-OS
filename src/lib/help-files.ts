@@ -8,6 +8,8 @@ export function toArticleView(a: {
   body: string
   tags: string[]
   panelId: string | null
+  public?: boolean
+  isMacro?: boolean
   updatedAt: Date
   createdAt: Date
 }): HelpArticleView {
@@ -18,6 +20,8 @@ export function toArticleView(a: {
     body: a.body,
     tags: a.tags,
     panelId: a.panelId,
+    public: a.public ?? false,
+    isMacro: a.isMacro ?? false,
     updatedAt: a.updatedAt.toISOString(),
     createdAt: a.createdAt.toISOString(),
   }

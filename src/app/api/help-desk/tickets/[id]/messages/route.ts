@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
+import { isSlaBreached } from '@/lib/support-sla'
 import type { APIResponse } from '@/types'
 import type { HelpMessageRole, HelpTicketDetail } from '@/types/help-desk'
 
@@ -35,6 +36,7 @@ export async function POST(
     }
 
     const role: HelpMessageRole = body.role ?? 'ADMIN'
+    const now = new Date()
 
     await db.helpMessage.create({
       data: {
@@ -52,15 +54,50 @@ export async function POST(
           ? 'WAITING'
           : ticket.status
 
+    const stampFirstResponse =
+      !ticket.firstResponseAt && (role === 'ADMIN' || role === 'KNIGHT')
+
+    const breached = isSlaBreached({
+      firstResponseAt: stampFirstResponse ? now : ticket.firstResponseAt,
+      firstResponseDueAt: ticket.firstResponseDueAt,
+      resolveDueAt: ticket.resolveDueAt,
+      resolvedAt: ticket.resolvedAt,
+      status: nextStatus,
+      now,
+    })
+
     const updated = await db.helpTicket.update({
       where: { id },
-      data: { status: nextStatus },
+      data: {
+        status: nextStatus,
+        ...(stampFirstResponse ? { firstResponseAt: now } : {}),
+        ...(breached && !ticket.slaBreachedAt
+          ? { slaBreachedAt: now, slaEscalatedAt: ticket.slaEscalatedAt ?? now }
+          : {}),
+      },
       include: {
         messages: { orderBy: { createdAt: 'asc' } },
         voiceNotes: { orderBy: { createdAt: 'asc' } },
         _count: { select: { messages: true } },
       },
     })
+
+    if (breached && !ticket.slaBreachedAt) {
+      await db.alert
+        .create({
+          data: {
+            kind: 'system',
+            severity: 'WARN',
+            title: `SLA breach · ticket ${id.slice(0, 8)}`,
+            body: `Help Desk SLA breached for ${ticket.subject.slice(0, 80)}`,
+            entityRef: id,
+          },
+        })
+        .catch(() => {})
+      await audit('william_morrison', 'help_desk.sla.breach', id, {
+        firstResponseDueAt: ticket.firstResponseDueAt?.toISOString() ?? null,
+      })
+    }
 
     await audit('william_morrison', 'help_desk.message.create', id, { role })
 

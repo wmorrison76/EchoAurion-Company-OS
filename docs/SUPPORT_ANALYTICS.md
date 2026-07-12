@@ -1,37 +1,21 @@
-# Support Analytics
+# Support Analytics — Dr. OS
 
-PII-free aggregates for Dr. OS / Fleet. **No guest names, emails, or session PII** — counts, fingerprints, and `clientKey` / `productLine` only.
+PII-free aggregates for gate/channel mix, SLA, CSAT, MTTR, dead-letter, fingerprints.
 
-## API
+**API:** `GET /api/dr-os/support-analytics`  
+**UI:** `SupportReliabilityPanel` on `/dr-os`
 
-`GET /api/dr-os/support-analytics` (admin session)
+## Metrics
 
-Returns:
-
-| Field | Meaning |
+| Metric | Notes |
 |---|---|
-| `ticketsByGate` | Counts by TECH / BILLING / BUILD / OTHER (+ UNSET) with shape+label |
-| `errorFingerprintsTop` | Top-N ErrorPattern rows (truncated fingerprint, hitCount) |
-| `mttrHoursProxy` | Mean create→resolve hours for RESOLVED tickets (90d sample) |
-| `ciDeployFailCounts` | Open SYSTEM INFRA/INTEGRATION + agentWorking |
-| `knightSeatDegraded` | Seats missing env keys vs total |
-| `canaryVsFleet` | GLOBAL rollout stage counts |
-| `deadLetterNotify` | FAILED `notify_fanout` IngestJobs |
-| `byClientKey` | Open ticket counts per clientKey |
+| Tickets by `intakeGate` | TECH / BILLING / BUILD / OTHER / Unset — shape+label |
+| Tickets by `intakeChannel` | IN_APP / VOICE / PHONE_IVR / EMAIL / SMS |
+| SLA open | ✕ Breached · ▲ At risk · ✓ On track |
+| CSAT average | Mean 1–5 over scored resolves (90d) |
+| MTTR proxy | Mean create→resolve hours (90d) |
+| Dead-letter notify | Failed `notify_fanout` IngestJobs |
+| Stuck outbox | Undelivered RelayOutbox older than 5m |
+| Top fingerprints | Truncated; no guest PII |
 
-## UI
-
-- Dr. OS → **Support & reliability** panel (`SupportReliabilityPanel`)
-- Help Desk → gate filter chips + badges
-- Dead-letter re-drive: `GET/POST /api/help-desk/dead-letter`
-
-## Gates → policy
-
-| Gate | Shape | Path |
-|---|---|---|
-| TECH | ◆ | Free — Knights / system |
-| BILLING | ● | Billing policy (no code) |
-| BUILD | ■ | Paid WorkAgreement |
-| OTHER | ○ | General queue |
-
-See `src/lib/intake-gate.ts`.
+See `docs/SUPPORT_90_DAY_PLAN.md`.

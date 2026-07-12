@@ -1,6 +1,6 @@
 export type HelpTicketChannel = 'TEXT' | 'VOICE' | 'FEATURE' | 'SYSTEM'
 export type IntakeGate = 'TECH' | 'BILLING' | 'BUILD' | 'OTHER'
-export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR'
+export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR' | 'EMAIL' | 'SMS'
 export type HelpTicketStatus =
   | 'OPEN'
   | 'WAITING'
@@ -67,6 +67,23 @@ export interface HelpTicketListItem {
   rolloutStage: RolloutStage | string | null
   canaryClientKeys: string[]
   moduleHint: string | null
+  /** SLA clocks — shape+label in UI. */
+  firstResponseAt: string | null
+  firstResponseDueAt: string | null
+  resolveDueAt: string | null
+  slaBreachedAt: string | null
+  slaEscalatedAt: string | null
+  csatScore: number | null
+  closeReason: string | null
+  sla: {
+    status: 'ok' | 'warn' | 'error' | 'unknown'
+    shape: string
+    label: string
+    firstResponseStatus: string
+    resolveStatus: string
+    minutesToFirstResponseDue: number | null
+    minutesToResolveDue: number | null
+  }
 }
 
 export interface HelpTicketDetail extends HelpTicketListItem {
@@ -80,6 +97,7 @@ export interface HelpTicketDetail extends HelpTicketListItem {
   cohortBrowser: string | null
   cohortOs: string | null
   cohortAppVersion: string | null
+  csatComment: string | null
   messages: HelpMessageView[]
   voiceNotes: HelpVoiceNoteView[]
   policy: {

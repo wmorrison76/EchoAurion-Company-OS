@@ -5,6 +5,8 @@ export interface HelpArticleView {
   body: string
   tags: string[]
   panelId: string | null
+  public: boolean
+  isMacro: boolean
   updatedAt: string
   createdAt: string
 }

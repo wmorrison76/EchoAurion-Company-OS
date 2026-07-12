@@ -5,7 +5,7 @@
  */
 
 export type IntakeGate = 'TECH' | 'BILLING' | 'BUILD' | 'OTHER'
-export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR'
+export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR' | 'EMAIL' | 'SMS'
 
 export const INTAKE_GATES: readonly IntakeGate[] = [
   'TECH',
@@ -18,7 +18,20 @@ export const INTAKE_CHANNELS: readonly IntakeChannel[] = [
   'IN_APP',
   'VOICE',
   'PHONE_IVR',
+  'EMAIL',
+  'SMS',
 ] as const
+
+export const INTAKE_CHANNEL_META: Record<
+  IntakeChannel,
+  { shape: string; label: string }
+> = {
+  IN_APP: { shape: '▣', label: 'In-app' },
+  VOICE: { shape: '◎', label: 'Voice' },
+  PHONE_IVR: { shape: '☎', label: 'Phone IVR' },
+  EMAIL: { shape: '✉', label: 'Email' },
+  SMS: { shape: '💬', label: 'SMS' },
+}
 
 export interface IntakeGateMeta {
   gate: IntakeGate
@@ -91,6 +104,8 @@ export function parseIntakeChannel(value: unknown): IntakeChannel | null {
   if (normalized === 'PHONE_IVR' || normalized === 'PHONE' || normalized === 'IVR') {
     return 'PHONE_IVR'
   }
+  if (normalized === 'EMAIL' || normalized === 'MAIL') return 'EMAIL'
+  if (normalized === 'SMS' || normalized === 'TEXT_MSG') return 'SMS'
   return null
 }
 

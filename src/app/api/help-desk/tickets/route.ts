@@ -1,8 +1,9 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
-import { toDetail, toListItem } from '@/lib/help-desk'
+import { toDetail, toListItem, slaDueFieldsForCreate } from '@/lib/help-desk'
 import { ensureReceivedEvent } from '@/lib/help-timeline'
+import { parseIntakeGate } from '@/lib/intake-gate'
 import type { APIResponse } from '@/types'
 import type {
   HelpTicketChannel,
@@ -21,7 +22,7 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const url = new URL(req.url)
-    const filter = url.searchParams.get('filter') // open | voice | feature | awaiting | all | gate:TECH
+    const filter = url.searchParams.get('filter') // open | voice | feature | awaiting | all | breached
     const gateFilter = url.searchParams.get('gate') // TECH | BILLING | BUILD | OTHER
     const openStatuses: HelpTicketStatus[] = [
       'OPEN',
@@ -36,9 +37,21 @@ export async function GET(req: Request): Promise<Response> {
           ? { channel: 'FEATURE' as const }
           : filter === 'awaiting'
             ? { status: 'AWAITING_APPROVAL' as const }
-            : filter === 'all'
-              ? {}
-              : { status: { in: openStatuses } }
+            : filter === 'breached'
+              ? {
+                  status: { in: openStatuses },
+                  OR: [
+                    { slaBreachedAt: { not: null } },
+                    {
+                      firstResponseAt: null,
+                      firstResponseDueAt: { lt: new Date() },
+                    },
+                    { resolveDueAt: { lt: new Date() } },
+                  ],
+                }
+              : filter === 'all'
+                ? {}
+                : { status: { in: openStatuses } }
 
     const tickets = await db.helpTicket.findMany({
       where: {
@@ -89,6 +102,7 @@ export async function POST(req: Request): Promise<Response> {
       customerQuestionId?: string
       boardSessionId?: string
       spawnWorkRequest?: boolean
+      intakeGate?: string
     }
 
     const subject = body.subject?.trim()
@@ -98,6 +112,7 @@ export async function POST(req: Request): Promise<Response> {
 
     const channel: HelpTicketChannel = body.channel ?? 'TEXT'
     let workRequestId = body.workRequestId ?? null
+    const intakeGate = parseIntakeGate(body.intakeGate)
 
     if (channel === 'FEATURE' && body.spawnWorkRequest && !workRequestId) {
       const work = await db.workRequest.create({
@@ -119,18 +134,24 @@ export async function POST(req: Request): Promise<Response> {
       })
     }
 
+    const now = new Date()
+    const dues = slaDueFieldsForCreate(now, intakeGate)
+
     const ticket = await db.helpTicket.create({
       data: {
         channel,
         status: 'OPEN',
         priority: body.priority?.trim() || 'NORMAL',
         subject,
+        intakeGate: intakeGate ?? (channel === 'FEATURE' ? 'BUILD' : null),
         clientKey: body.clientKey?.trim() || null,
         clientId: body.clientId ?? null,
         requesterName: body.requesterName?.trim() || null,
         workRequestId,
         customerQuestionId: body.customerQuestionId ?? null,
         boardSessionId: body.boardSessionId ?? null,
+        firstResponseDueAt: dues.firstResponseDueAt,
+        resolveDueAt: dues.resolveDueAt,
         messages: {
           create: [
             {

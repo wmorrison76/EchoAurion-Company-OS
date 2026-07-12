@@ -4,6 +4,7 @@ import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
 import { relayAuthorized } from '@/lib/relay-auth'
 import { requireWorkAgreement } from '@/lib/work-agreement'
+import { linkOrCreateWorkInvoice } from '@/lib/work-invoice'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -75,7 +76,44 @@ export async function POST(
       entityRef: id,
       url: '/support',
     })
-    return Response.json({ success: true, data: { id } } satisfies APIResponse<{ id: string }>)
+
+    // Stripe invoice hook — no-op without STRIPE_SECRET_KEY; never blocks authorize.
+    const invoice = await linkOrCreateWorkInvoice({
+      workAgreementId: agreementGate.agreement.id,
+      workRequestId: id,
+      quoteTotal: work.quoteTotal,
+      clientKey: work.clientKey,
+      signerEmail: agreementGate.agreement.signerEmail,
+      actor: 'computer_agent',
+    }).catch((err) => ({
+      ok: false as const,
+      stripeInvoiceId: null,
+      stripeInvoiceUrl: null,
+      invoiceStatus: null,
+      mode: 'error' as const,
+      error: err instanceof Error ? err.message : 'invoice hook failed',
+    }))
+
+    return Response.json({
+      success: true,
+      data: {
+        id,
+        invoice: {
+          mode: invoice.mode,
+          stripeInvoiceId: invoice.stripeInvoiceId,
+          stripeInvoiceUrl: invoice.stripeInvoiceUrl,
+          invoiceStatus: invoice.invoiceStatus,
+        },
+      },
+    } satisfies APIResponse<{
+      id: string
+      invoice: {
+        mode: string
+        stripeInvoiceId: string | null
+        stripeInvoiceUrl: string | null
+        invoiceStatus: string | null
+      }
+    }>)
   } catch (error) {
     return Response.json(
       { success: false, error: error instanceof Error ? error.message : 'Authorize failed' },
