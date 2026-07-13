@@ -24,14 +24,18 @@ export function pickDraftSeat(): Seat | null {
  * sent automatically — William reviews and approves it before it goes back to
  * the deployment.
  */
-export async function draftAnswer(question: string, context?: unknown): Promise<DraftResult> {
+export async function draftAnswer(
+  question: string,
+  context?: unknown,
+  opts?: { replyLanguageLabel?: string | null }
+): Promise<DraftResult> {
   const seat = pickDraftSeat()
   if (!seat) return { seat: null, answer: null, error: 'No AI seat is configured' }
 
   const config = ROSTER[seat]
   const ctx = context ? `\n\nDeployment context:\n${JSON.stringify(context).slice(0, 2000)}` : ''
   const result = await dispatch(config, {
-    system: answerDraftSystemPrompt(),
+    system: answerDraftSystemPrompt({ replyLanguageLabel: opts?.replyLanguageLabel }),
     user: `Customer question:\n${question}${ctx}`,
   })
 

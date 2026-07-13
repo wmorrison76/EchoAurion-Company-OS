@@ -25,6 +25,7 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 | Help File KB (`HelpArticle`) | Live — `/help-files` |
 | Guided E2E test scenario | Live |
 | Twilio / real phone number | **Not yet** |
+| Multilingual (14 pilot locales → Knights reply in user language) | Live — see `OPS_TRAINING_MANUAL.md` |
 
 ---
 

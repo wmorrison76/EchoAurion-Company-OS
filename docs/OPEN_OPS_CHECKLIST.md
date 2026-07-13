@@ -143,3 +143,16 @@ Deep competitive analysis of automated + human tech support → what’s missing
 - **[`docs/SUPPORT_COMPETITIVE_ANALYSIS.md`](./SUPPORT_COMPETITIVE_ANALYSIS.md)** — sibling-authored analysis (use this as the gap roadmap)
 - Framework docs already on this branch: `SUPPORT_ANALYTICS.md`, `SUPPORT_VOICE.md`, `SUPPORT_IVR.md`, `CUSTOMER_AI_COST.md`
 - Remaining process (not code): SOC2 Type II kickoff
+
+---
+
+## 9. Diligence + training (docs)
+
+| Doc | Purpose |
+|---|---|
+| [`DILIGENCE_409A_DATAROOM.md`](./DILIGENCE_409A_DATAROOM.md) | Light data-room narrative + screenshot/export checklist (not a valuation) |
+| [`OPS_TRAINING_MANUAL.md`](./OPS_TRAINING_MANUAL.md) | Day-one operator guide — Help Desk, gates, secrets, crons, Fleet, CSAT, **14-language Knights** |
+
+### Multilingual (shipped)
+
+Pilot language picker (14 locales) → Help Desk forwards `locale` → Knights reply in customer language. See OPS training § Multilingual. RTL (`ar`, `he`) handled by product chrome; operator notes stay English LTR.

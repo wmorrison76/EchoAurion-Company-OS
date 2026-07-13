@@ -19,6 +19,8 @@ const schema = z.object({
   clientKey: z.string().min(1).max(200),
   question: z.string().min(1).max(4000),
   context: z.record(z.unknown()).optional(),
+  /** Pilot UI language code (en, es, ar, …) — merged into context.locale for Knights. */
+  locale: z.string().min(2).max(16).optional(),
   gate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
   intakeGate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
 })
@@ -64,12 +66,27 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
-    const { question, context } = parsed.data
+    const { question, context, locale } = parsed.data
     const intakeGate = gateFromQuestionPayload({
       gate: parsed.data.gate,
       intakeGate: parsed.data.intakeGate,
       context: context ?? null,
     })
+
+    // Merge top-level locale into context so Knights can resolve reply language.
+    const mergedContext: Record<string, unknown> = {
+      ...(context ?? {}),
+    }
+    if (locale?.trim()) {
+      mergedContext.locale = locale.trim()
+    } else if (
+      typeof mergedContext.locale !== 'string' &&
+      typeof mergedContext.uiLocale === 'string'
+    ) {
+      mergedContext.locale = mergedContext.uiLocale
+    }
+    const contextForStore =
+      Object.keys(mergedContext).length > 0 ? mergedContext : undefined
 
     const client = await upsertSupportClientByKey(key.clientKey)
     const created = await db.customerQuestion.create({
@@ -78,12 +95,13 @@ export async function POST(req: Request): Promise<Response> {
         clientId: client.id,
         question,
         intakeGate: intakeGate ?? undefined,
-        context: (context ?? undefined) as Prisma.InputJsonValue | undefined,
+        context: contextForStore as Prisma.InputJsonValue | undefined,
         actor: 'computer_agent',
       },
     })
     await audit('computer_agent', 'support.question.receive', created.id, {
       intakeGate,
+      locale: typeof mergedContext.locale === 'string' ? mergedContext.locale : undefined,
     })
 
     const gateMeta = intakeGate ? INTAKE_GATE_META[intakeGate] : null

@@ -133,6 +133,14 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 - [x] Billing portal stub `/portal/billing` (BillingContact token)
 - [x] Quote → Help File draft for T3+ (`POST /api/work/[id]/promote-help-file`)
 
+### Session 4 — diligence + multilingual (scoped)
+
+- [x] Multilingual Help Desk → Knights (14 pilot locales; locale forward + prompt path)
+- [x] `docs/DILIGENCE_409A_DATAROOM.md` (capability narrative + export checklist — not a valuation)
+- [x] `docs/OPS_TRAINING_MANUAL.md` (day-one ops + multilingual section)
+- [x] OPEN_OPS_CHECKLIST links to diligence / training
+
+**Still William clicks (not code):** ingest secret pairing, Render crons, Twilio/Stripe optional keys, PR #202 rebase (no force-merge).
 ---
 
 ## Env / Render clicks William must do (code cannot finish)

@@ -10,6 +10,11 @@ import { raiseAlert } from '@/lib/alerts'
 import { guardCorePaths } from '@/lib/core-path-guard'
 import { loadRunbookContext } from '@/lib/knight-learning'
 import { sanitizeAgentThreadForTenant } from '@/lib/tenant-isolation'
+import {
+  multilingualPromptBlock,
+  resolveHelpDeskLanguage,
+  type HelpDeskLanguageResolution,
+} from '@/lib/help-desk-locale'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -101,6 +106,32 @@ export async function dispatchKnightsOnTicket(
     errorCategory: ticket.errorCategory,
   })
 
+  // Multilingual: UI locale from CustomerQuestion.context + script detect on question text.
+  let questionContext: unknown = undefined
+  if (ticket.customerQuestionId) {
+    const cq = await db.customerQuestion.findUnique({
+      where: { id: ticket.customerQuestionId },
+      select: { context: true, question: true },
+    })
+    questionContext = cq?.context ?? undefined
+  }
+  const customerText =
+    ticket.messages.find((m) => m.role === 'CUSTOMER')?.body ?? ticket.subject
+  const lang: HelpDeskLanguageResolution = resolveHelpDeskLanguage({
+    text: customerText,
+    context: questionContext,
+  })
+  const replyLanguageLabel = `${lang.replyLabel} (${lang.replyLocale})`
+
+  await db.helpMessage.create({
+    data: {
+      ticketId,
+      role: 'SYSTEM',
+      // LTR English operator note — do not set dir=rtl here (ar/he drafts live in KNIGHT bodies).
+      body: `Language: reply in ${replyLanguageLabel} · UI locale ${lang.uiLocale ?? 'unset'} · source ${lang.source}`,
+    },
+  })
+
   const prompt = [
     `Help Desk ticket: ${ticket.subject}`,
     `Channel: ${ticket.channel}`,
@@ -108,6 +139,8 @@ export async function dispatchKnightsOnTicket(
     ticket.fingerprint ? `Fingerprint: ${ticket.fingerprint}` : null,
     ticket.errorScope ? `Scope: ${ticket.errorScope}` : null,
     ticket.errorCategory ? `Category: ${ticket.errorCategory}` : null,
+    '',
+    multilingualPromptBlock(lang),
     '',
     'Tenant isolation: do not reference other properties’ guest/staff data. Patterns only.',
     '',
@@ -139,7 +172,7 @@ export async function dispatchKnightsOnTicket(
       })
     }
   } else {
-    const primary = await draftAnswer(prompt)
+    const primary = await draftAnswer(prompt, undefined, { replyLanguageLabel })
     if (primary.answer) {
       knightBodies.push({ seat: primary.seat, body: primary.answer })
       if (primary.seat) responded.push(primary.seat)
@@ -168,7 +201,7 @@ export async function dispatchKnightsOnTicket(
     const extraResults = await Promise.allSettled(
       configuredExtras.map(async (seat) => {
         const result = await dispatch(ROSTER[seat], {
-          system: answerDraftSystemPrompt(),
+          system: answerDraftSystemPrompt({ replyLanguageLabel }),
           user: prompt,
         })
         if (result.status === 'RESPONDED' && result.content) {
