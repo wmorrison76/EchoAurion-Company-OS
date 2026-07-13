@@ -29,7 +29,8 @@ export function relayAuthorized(req: Request, opts?: { allowQueryToken?: boolean
 
   const header = req.headers.get('authorization') ?? ''
   const match = /^Bearer\s+(.+)$/i.exec(header)
-  if (match && match[1] === secret) {
+  // Trim bearer token — Render/env paste can leave trailing whitespace on either side.
+  if (match && match[1].trim() === secret) {
     return { ok: true }
   }
 
