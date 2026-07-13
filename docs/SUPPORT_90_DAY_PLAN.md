@@ -39,10 +39,10 @@
 - [x] Omnichannel lite SMS status updates (notify-when-fixed off-app) — webhook + Twilio stub
 - [x] Expand HelpEval + gate regression simulations (Fin “test before live”) — Friday cron scaffold
 - SOC2 Type II process kickoff (controls already mapped)
-- Cohort messaging UI (“Safari 17 broke print BEO”)
+- [x] Cohort messaging UI (“Safari 17 broke print BEO”) — Help Desk panel + `/api/help-desk/cohort-notify`
 - [x] Cost anomaly alerts (10× Knight burn per `clientKey`)
-- Billing-contact portal (quote history without full Dr. OS)
-- Guest-impact / meal-period auto-escalate priority
+- [x] Billing-contact portal (quote history without full Dr. OS) — `/portal/billing`
+- [x] Guest-impact / meal-period auto-escalate priority — `src/lib/guest-impact.ts`
 
 **Explicitly defer (P2):** WFM schedules, App Marketplace, ServiceNow CMDB, Sierra-class brand voice AI, MSP RMM/remote desktop.
 
@@ -53,9 +53,9 @@
 From competitive analysis §6 — schedule into P0 polish or early P1:
 
 1. [x] **Property reliability score** (open SYSTEM + MTTR + canary + CSAT) on Fleet Nexus  
-2. **Guest-impact mode** for meal-critical modules (priority escalate; no stack traces to floor)  
+2. [x] **Guest-impact mode** for meal-critical modules (priority escalate; no stack traces to floor)  
 3. [x] **Standby simulation nights** (weekly HelpEval before Friday rush)  
-4. **Quote → Help File draft** for T3+ paid builds (tenant-scrubbed)  
+4. [x] **Quote → Help File draft** for T3+ paid builds (tenant-scrubbed) — Work panel “→ Help File draft”  
 5. [x] **Public trust page** (handshake, PR-only, canary, retention) — SOC2-prep marketing — `/trust`
 6. [x] **Cost anomaly alerts** once CustomerCostSnapshot cron is live  
 
@@ -126,6 +126,13 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 - [x] Public `/trust` page  
 - [x] Blueprint crons for help-eval-friday + cost-anomaly  
 
+### Session 3 add-ons (P1 vertical slices)
+
+- [x] Guest-impact escalate on meal-critical `moduleHint` (▲ badge + HIGH/URGENT)
+- [x] Cohort messaging UI on Help Desk + floor-safe notify API
+- [x] Billing portal stub `/portal/billing` (BillingContact token)
+- [x] Quote → Help File draft for T3+ (`POST /api/work/[id]/promote-help-file`)
+
 ---
 
 ## Env / Render clicks William must do (code cannot finish)
@@ -143,8 +150,10 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 | `CRON_SECRET` + Render cron → `/api/ops/help-eval-friday` | Thu 22:00 UTC — Blueprint: `echoaurion-company-os-help-eval-friday` |
 | `CRON_SECRET` + Render cron → `/api/ops/cost-anomaly` | Daily after snapshots — Blueprint: `echoaurion-company-os-cost-anomaly` |
 | Confirm `echoaurion-company-os-ops-poll` in Super_Admin | If missing from list, search other folders / create from Blueprint — do not force-merge PR #202 |
+| Confirm help-eval-friday + cost-anomaly crons exist | Super_Admin next to other Company OS crons — see `docs/RENDER_ENVIRONMENTS.md` |
 | Pilot property UI: handle `open_panel` `support.csat` / deep link | luccca-web — rate surface |
 | Pilot PR #202 rebase | Dedicated conflict session — **do not force-merge** · see `docs/PILOT_PR_202_REBASE_NOTES.md` |
+| Share billing portal URL + token | `https://<company-os-host>/portal/billing` — token from Billing Contact create (shown once) |
 
 ---
 

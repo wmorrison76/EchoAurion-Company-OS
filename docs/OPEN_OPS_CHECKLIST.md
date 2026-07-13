@@ -126,9 +126,20 @@ If `RENDER_API_KEY` is available in the operator environment, matching secrets c
 
 ---
 
-## 7. Next: competitive gaps
+## 7. Billing portal (no Dr. OS login)
+
+| Item | Action |
+|---|---|
+| Create contact | Dr. OS / Support → billing contacts API creates token (**shown once**) |
+| Customer URL | `https://<company-os-host>/portal/billing` |
+| Auth | Paste token → quote history + agreement/invoice status |
+
+---
+
+## 8. Next: competitive gaps
 
 Deep competitive analysis of automated + human tech support → what’s missing to be #1:
 
 - **[`docs/SUPPORT_COMPETITIVE_ANALYSIS.md`](./SUPPORT_COMPETITIVE_ANALYSIS.md)** — sibling-authored analysis (use this as the gap roadmap)
 - Framework docs already on this branch: `SUPPORT_ANALYTICS.md`, `SUPPORT_VOICE.md`, `SUPPORT_IVR.md`, `CUSTOMER_AI_COST.md`
+- Remaining process (not code): SOC2 Type II kickoff

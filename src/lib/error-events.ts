@@ -20,6 +20,12 @@ import {
 import { redactMessage, redactStack } from '@/lib/error-redact'
 import { toDetail } from '@/lib/help-desk'
 import { recordTimelineEvent } from '@/lib/help-timeline'
+import {
+  escalateForGuestImpact,
+  guestImpactFloorCopy,
+  isGuestImpactModule,
+  priorityRank,
+} from '@/lib/guest-impact'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
 const DEDUPE_WINDOW_MS = 60 * 60 * 1000 // 1 hour
@@ -208,6 +214,13 @@ export async function ingestErrorEvent(
 
   if (existing) {
     const mergedKeys = Array.from(new Set([...(existing.affectedClientKeys ?? []), input.clientKey]))
+    const moduleForImpact = input.moduleHint ?? existing.moduleHint
+    const guestImpact = isGuestImpactModule(moduleForImpact)
+    const nextPriority = guestImpact
+      ? escalateForGuestImpact(existing.priority, { forceUrgent: scope === 'GLOBAL' })
+      : existing.priority
+    const priorityBumped = priorityRank(nextPriority) > priorityRank(existing.priority)
+
     const updated = await db.helpTicket.update({
       where: { id: existing.id },
       data: {
@@ -225,6 +238,7 @@ export async function ingestErrorEvent(
         cohortBrowser: input.browser ?? existing.cohortBrowser,
         cohortOs: input.os ?? input.platform ?? existing.cohortOs,
         cohortAppVersion: input.appVersion ?? existing.cohortAppVersion,
+        ...(priorityBumped ? { priority: nextPriority } : {}),
         // Never overwrite canaryClientKeys from relay ingest
         messages: {
           create: {
@@ -236,6 +250,9 @@ export async function ingestErrorEvent(
                 `category=${errorCategory}`,
                 `productLine=${productLine}`,
                 `source=${input.source ?? 'unknown'}`,
+                priorityBumped
+                  ? `guest-impact escalate → priority ${nextPriority} (meal-critical module; floor copy has no stacks)`
+                  : null,
                 stack ? `stack:\n${stack.slice(0, 1500)}` : null,
               ]
                 .filter(Boolean)
@@ -304,8 +321,13 @@ export async function ingestErrorEvent(
   }
 
   const subject = truncate(`[SYSTEM] ${message}`, 120)
-  const priority =
+  const guestImpact = isGuestImpactModule(input.moduleHint)
+  let priority =
     scope === 'GLOBAL' ? 'URGENT' : scope === 'ACCOUNT' || scope === 'COHORT' ? 'HIGH' : 'NORMAL'
+  if (guestImpact) {
+    priority = escalateForGuestImpact(priority, { forceUrgent: scope === 'GLOBAL' })
+  }
+  const floor = guestImpact ? guestImpactFloorCopy(input.moduleHint) : null
 
   const ticket = await db.helpTicket.create({
     data: {
@@ -345,6 +367,9 @@ export async function ingestErrorEvent(
                 `fingerprint=${fingerprint}`,
                 `errorClass=${input.errorClass ?? 'n/a'}`,
                 `module=${input.moduleHint ?? 'n/a'}`,
+                guestImpact
+                  ? `guestImpact=true · priority=${priority} · floor title “${floor?.title}” (no stacks to guests)`
+                  : null,
                 `source=${input.source ?? 'unknown'}`,
                 `appVersion=${input.appVersion ?? 'n/a'}`,
                 `platform=${input.platform ?? 'n/a'}`,
@@ -360,7 +385,9 @@ export async function ingestErrorEvent(
                 'Core paths (auth/middleware/relay secrets/destructive migrate) → NEEDS_HUMAN_CORE_REVIEW.',
                 'Safe tools (restart/clear_cache) OK under autonomy dial.',
                 'Tenant isolation: ticket scoped to this clientKey only.',
-              ].join('\n'),
+              ]
+                .filter(Boolean)
+                .join('\n'),
               6000
             ),
           },
@@ -390,8 +417,10 @@ export async function ingestErrorEvent(
   await recordTimelineEvent({
     ticketId: ticket.id,
     kind: 'detected',
-    label: 'Issue detected',
-    detail: `We’re on it — scope ${scope}. Friendly recovery only; no stack traces shown to guests.`,
+    label: guestImpact ? 'Guest-impact issue detected' : 'Issue detected',
+    detail: guestImpact
+      ? `${floor?.body ?? 'Service tools recovering.'} Scope ${scope}.`
+      : `We’re on it — scope ${scope}. Friendly recovery only; no stack traces shown to guests.`,
     actor: 'computer_agent',
   }).catch(() => {})
 
@@ -401,19 +430,30 @@ export async function ingestErrorEvent(
     errorCategory,
     productLine,
     clientKey: input.clientKey,
+    guestImpact,
+    priority,
   } as unknown as Prisma.InputJsonValue)
 
   await raiseAlert({
     kind: 'system',
-    severity: scope === 'GLOBAL' ? 'CRITICAL' : scope === 'ACCOUNT' || scope === 'COHORT' ? 'WARN' : 'INFO',
-    title: `Auto ticket: ${truncate(message, 80)}`,
-    body: `scope=${scope} · ${errorCategory} · ${productLine} · ${input.clientKey}`,
+    severity:
+      scope === 'GLOBAL' || guestImpact
+        ? 'CRITICAL'
+        : scope === 'ACCOUNT' || scope === 'COHORT'
+          ? 'WARN'
+          : 'INFO',
+    title: guestImpact
+      ? `▲ Guest impact: ${truncate(message, 70)}`
+      : `Auto ticket: ${truncate(message, 80)}`,
+    body: `scope=${scope} · ${errorCategory} · ${productLine} · ${input.clientKey}${
+      guestImpact ? ' · meal-critical module' : ''
+    }`,
     entityRef: ticket.id,
     url: `/help-desk?ticket=${ticket.id}`,
   })
 
   // Queue agent + Knights for GLOBAL / high severity (async worker / cron drain).
-  if (scope === 'GLOBAL' || priority === 'URGENT' || priority === 'HIGH') {
+  if (scope === 'GLOBAL' || priority === 'URGENT' || priority === 'HIGH' || guestImpact) {
     const { enqueueIngestJob } = await import('@/lib/ingest-queue')
     void enqueueIngestJob({
       kind: 'agent_loop',

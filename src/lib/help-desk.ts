@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { classifySupportRequest } from '@/lib/support-policy'
 import { computeSlaDueDates, evaluateSla } from '@/lib/support-sla'
+import { isGuestImpactModule } from '@/lib/guest-impact'
 import type { IntakeGate } from '@/lib/intake-gate'
 import type {
   HelpMessageView,
@@ -142,6 +143,7 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     rolloutStage: t.rolloutStage ?? null,
     canaryClientKeys: t.canaryClientKeys ?? [],
     moduleHint: t.moduleHint ?? null,
+    guestImpact: isGuestImpactModule(t.moduleHint),
     firstResponseAt: t.firstResponseAt?.toISOString() ?? null,
     firstResponseDueAt: t.firstResponseDueAt?.toISOString() ?? sla.firstResponseDueAt,
     resolveDueAt: t.resolveDueAt?.toISOString() ?? sla.resolveDueAt,

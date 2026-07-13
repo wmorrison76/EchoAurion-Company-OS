@@ -67,6 +67,8 @@ export interface HelpTicketListItem {
   rolloutStage: RolloutStage | string | null
   canaryClientKeys: string[]
   moduleHint: string | null
+  /** Meal-period-critical module — priority escalated; floor gets no stacks. */
+  guestImpact: boolean
   /** SLA clocks — shape+label in UI. */
   firstResponseAt: string | null
   firstResponseDueAt: string | null

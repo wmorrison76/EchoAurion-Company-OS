@@ -15,6 +15,7 @@ import { ClientAssistPanel } from '@/components/help-desk/ClientAssistPanel'
 import { ToolbeltPanel } from '@/components/help-desk/ToolbeltPanel'
 import { TicketTimeline } from '@/components/help-desk/TicketTimeline'
 import { DeadLetterOpsPanel } from '@/components/help-desk/DeadLetterOpsPanel'
+import { CohortMessagingPanel } from '@/components/help-desk/CohortMessagingPanel'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
 import type { APIResponse } from '@/types'
@@ -399,6 +400,7 @@ export function HelpDeskConsole() {
     <div className="flex flex-col gap-4">
       <LabInstallLinks />
       <DeadLetterOpsPanel />
+      <CohortMessagingPanel />
 
       {/* Standby toggle — Knights may approve low-risk when William unavailable */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2a2a3f] bg-[#12121a] px-4 py-3">
@@ -660,6 +662,9 @@ export function HelpDeskConsole() {
                     {t.moduleHint === 'autofix' && (
                       <StatusBadge level="warn" label="⟳ Bugbot autofix" />
                     )}
+                    {t.guestImpact && (
+                      <StatusBadge level="error" label="▲ Guest impact" />
+                    )}
                     {t.agentWorking && (
                       <StatusBadge level="warn" label="⟳ Agent + Knights" />
                     )}
@@ -717,6 +722,9 @@ export function HelpDeskConsole() {
                     label={detail.status.replace(/_/g, ' ')}
                   />
                   <StatusBadge level="unknown" label={`Priority ${detail.priority}`} />
+                  {detail.guestImpact && (
+                    <StatusBadge level="error" label="▲ Guest impact" />
+                  )}
                   {detail.errorScope && (
                     <StatusBadge
                       level={

@@ -43,8 +43,12 @@ function WorkCard({ w }: { w: WorkRequestView }) {
   const [hours, setHours] = useState<string>(w.humanHours ? String(w.humanHours) : '')
   const [rollback, setRollback] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [promoteNote, setPromoteNote] = useState<string | null>(null)
 
   const preview = computeQuote(tier, hours ? Number(hours) : undefined)
+  const canPromoteHelpFile =
+    Boolean(w.tier && ['T3', 'T4', 'T5'].includes(w.tier)) &&
+    (w.status === 'EXECUTED' || w.status === 'AUTHORIZED' || w.status === 'IN_PROGRESS')
 
   async function call(url: string, method: string, body?: object) {
     setBusy(url)
@@ -55,6 +59,28 @@ function WorkCard({ w }: { w: WorkRequestView }) {
         body: body ? JSON.stringify(body) : undefined,
       })
       await mutate(WORK_KEY)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function promoteHelpFile() {
+    setBusy('promote')
+    setPromoteNote(null)
+    try {
+      const res = await fetch(`/api/work/${w.id}/promote-help-file`, { method: 'POST' })
+      const body = (await res.json()) as APIResponse<{
+        article: { slug: string; title: string }
+        created: boolean
+      }>
+      if (!body.success) throw new Error(body.error)
+      setPromoteNote(
+        body.data.created
+          ? `✓ Draft Help File “${body.data.article.slug}” created`
+          : `○ Help File “${body.data.article.slug}” already exists`
+      )
+    } catch (e) {
+      setPromoteNote(`✕ ${e instanceof Error ? e.message : 'Promote failed'}`)
     } finally {
       setBusy(null)
     }
@@ -221,16 +247,40 @@ function WorkCard({ w }: { w: WorkRequestView }) {
           </div>
         </div>
       ) : w.status === 'EXECUTED' ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => call(`/api/work/${w.id}`, 'PATCH', { action: 'rollback' })}
+            disabled={busy !== null}
+            aria-label="Roll back change"
+            className="self-start rounded-lg border border-[#ef4444] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#22223a] disabled:opacity-40"
+          >
+            Roll back
+          </button>
+          {canPromoteHelpFile ? (
+            <button
+              type="button"
+              onClick={() => void promoteHelpFile()}
+              disabled={busy !== null}
+              aria-label="Promote quote to Help File draft"
+              className="rounded-lg border border-[#D4AF37] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-[#D4AF37] hover:bg-[#22223a] disabled:opacity-40"
+            >
+              → Help File draft
+            </button>
+          ) : null}
+        </div>
+      ) : canPromoteHelpFile ? (
         <button
           type="button"
-          onClick={() => call(`/api/work/${w.id}`, 'PATCH', { action: 'rollback' })}
+          onClick={() => void promoteHelpFile()}
           disabled={busy !== null}
-          aria-label="Roll back change"
-          className="self-start rounded-lg border border-[#ef4444] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#22223a] disabled:opacity-40"
+          aria-label="Promote quote to Help File draft"
+          className="self-start rounded-lg border border-[#D4AF37] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-[#D4AF37] hover:bg-[#22223a] disabled:opacity-40"
         >
-          Roll back
+          → Help File draft
         </button>
       ) : null}
+      {promoteNote ? <p className="text-[11px] text-[#a0a0b8]">{promoteNote}</p> : null}
     </li>
   )
 }
