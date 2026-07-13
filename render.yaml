@@ -125,3 +125,35 @@ services:
         sync: false
       - key: RENDER_API_KEY
         sync: false
+
+  # Thursday 22:00 UTC — HelpEval Friday simulation (standby night before rush).
+  - type: cron
+    name: echoaurion-company-os-help-eval-friday
+    runtime: node
+    schedule: "0 22 * * 4"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/help-eval-friday
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Daily after financial sync — CustomerCostSnapshot anomaly → Alert.
+  - type: cron
+    name: echoaurion-company-os-cost-anomaly
+    runtime: node
+    schedule: "30 8 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/cost-anomaly
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false

@@ -56,7 +56,7 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 2. **Guest-impact mode** for meal-critical modules (priority escalate; no stack traces to floor)  
 3. [x] **Standby simulation nights** (weekly HelpEval before Friday rush)  
 4. **Quote → Help File draft** for T3+ paid builds (tenant-scrubbed)  
-5. **Public trust page** (handshake, PR-only, canary, retention) — SOC2-prep marketing  
+5. [x] **Public trust page** (handshake, PR-only, canary, retention) — SOC2-prep marketing — `/trust`
 6. [x] **Cost anomaly alerts** once CustomerCostSnapshot cron is live  
 
 ---
@@ -85,16 +85,15 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 - [x] CSAT collection via relay directive to property UI — `POST /api/relay/csat`
 - [x] Stripe Invoice create-on-authorize (when keys present) — finalize + sendInvoice polish
 - [x] Help Files UI toggles for `public` / `isMacro`
-- Dead-letter drain cron health on Dr. OS — still open (P0 dead-letter UI already live)
+- [x] Dead-letter drain cron health on Dr. OS — `DeadLetterDrainChip` + `/api/dr-os/drain-health`
 
 ### Days 4–5 — Session 2 partial
 
 - [x] HelpEval gate regressions + Friday simulation checklist — `/api/ops/help-eval-friday`
 - [x] Cost anomaly alert → Alert row — `/api/ops/cost-anomaly`
-- Property Help Center search + panel deep-links — still open
+- [x] Property Help Center search + panel deep-links — `/help-center` URL sync + panel chips
 - [x] Pilot PR #202 conflict notes (separate; do not force-merge) — `docs/PILOT_PR_202_REBASE_NOTES.md`
-- Trust page draft — still open
-
+- [x] Trust page draft — `/trust` (handshake / draft-PR-only / canary / retention)
 ---
 
 ## Acceptance criteria (P0 “done enough” for buyer conversation)
@@ -122,6 +121,10 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 - [x] Help Files `public` / `isMacro` toggles in UI  
 - [x] Stripe invoice send after finalize  
 - [x] PR #202 rebase notes (no force-merge)  
+- [x] Dead-letter drain health chip on Dr. OS  
+- [x] Help Center search + panel deep-links  
+- [x] Public `/trust` page  
+- [x] Blueprint crons for help-eval-friday + cost-anomaly  
 
 ---
 
@@ -137,8 +140,9 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 | `SUPPORT_IVR_WEBHOOK_SECRET` | Optional override for IVR |
 | ElevenLabs TTS keys | Optional — voice replies |
 | Stripe live keys already used for MRR | Needed for real Invoice create + send |
-| `CRON_SECRET` + Render cron → `/api/ops/help-eval-friday` | Thu 22:00 UTC suggested |
-| `CRON_SECRET` + Render cron → `/api/ops/cost-anomaly` | Daily after snapshots exist |
+| `CRON_SECRET` + Render cron → `/api/ops/help-eval-friday` | Thu 22:00 UTC — Blueprint: `echoaurion-company-os-help-eval-friday` |
+| `CRON_SECRET` + Render cron → `/api/ops/cost-anomaly` | Daily after snapshots — Blueprint: `echoaurion-company-os-cost-anomaly` |
+| Confirm `echoaurion-company-os-ops-poll` in Super_Admin | If missing from list, search other folders / create from Blueprint — do not force-merge PR #202 |
 | Pilot property UI: handle `open_panel` `support.csat` / deep link | luccca-web — rate surface |
 | Pilot PR #202 rebase | Dedicated conflict session — **do not force-merge** · see `docs/PILOT_PR_202_REBASE_NOTES.md` |
 

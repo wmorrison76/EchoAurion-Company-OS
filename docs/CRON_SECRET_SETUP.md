@@ -46,12 +46,14 @@ Blueprint already declares `CRON_SECRET` with `sync: false` on web + all four cr
 
 `WEB_SERVICE_URL` is wired via Blueprint `fromService` → web `RENDER_EXTERNAL_URL`. Confirm it is set on each cron if Blueprint sync lagged.
 
-Optional later (same `CRON_SECRET`, not in Blueprint yet):
+Optional later (same `CRON_SECRET` — now in Blueprint as dedicated crons):
 
-| Path | Suggested schedule |
-|---|---|
-| `POST /api/ops/help-eval-friday` | Thu 22:00 UTC |
-| `POST /api/ops/cost-anomaly` | Daily after snapshots |
+| Service name (exact) | Schedule | Path |
+|---|---|---|
+| `echoaurion-company-os-help-eval-friday` | Thu 22:00 UTC | `POST /api/ops/help-eval-friday` |
+| `echoaurion-company-os-cost-anomaly` | Daily 08:30 UTC | `POST /api/ops/cost-anomaly` |
+
+Paste the **same** `CRON_SECRET` on these when Blueprint creates them (or add manually in Super_Admin). See `docs/RENDER_ENVIRONMENTS.md`.
 
 ## 4. Verify (5 minutes)
 

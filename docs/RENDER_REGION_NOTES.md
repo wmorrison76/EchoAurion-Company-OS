@@ -47,6 +47,8 @@ Render does **not** move a live service’s region in place. Practical cutover:
 
 `echoaurion-company-os-ops-poll` living in a luccca “Production” *workspace* is organizational only. Its **region** should still match Company OS web + DB.
 
+**Environment folders:** Render “Production” vs “Super_Admin” are labels only — see `docs/RENDER_ENVIRONMENTS.md`. Keep Company OS where it already runs (Super_Admin); empty Production is fine to ignore. Prefer ops-poll next to the other Company OS crons with the same `CRON_SECRET`.
+
 ---
 
 ## Recommendation

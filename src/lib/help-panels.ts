@@ -98,6 +98,18 @@ export const HELP_PANELS: HelpPanelDef[] = [
     group: 'company-os',
     description: 'Connection hub (stub)',
   },
+  {
+    id: 'support.csat',
+    label: 'CSAT rating',
+    group: 'support',
+    description: 'Post-resolve 1–5 CSAT surface',
+  },
+  {
+    id: 'support.help-center',
+    label: 'Help Center',
+    group: 'support',
+    description: 'Property-facing Help Center article',
+  },
 ]
 
 export const HELP_PANEL_IDS = HELP_PANELS.map((p) => p.id)

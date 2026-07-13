@@ -58,7 +58,8 @@ export async function GET(req: Request): Promise<Response> {
           (a) =>
             a.title.toLowerCase().includes(q) ||
             a.body.toLowerCase().includes(q) ||
-            a.tags.some((t) => t.toLowerCase().includes(q))
+            a.tags.some((t) => t.toLowerCase().includes(q)) ||
+            (a.panelId?.toLowerCase().includes(q) ?? false)
         )
       : articles
 
