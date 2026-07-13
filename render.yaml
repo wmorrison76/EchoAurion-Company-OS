@@ -38,7 +38,7 @@ services:
         sync: false
       - key: ADMIN_PASSWORD_HASH
         sync: false
-      # Must match CRON_SECRET on sync / briefing / maintenance crons (same value).
+      # Must match CRON_SECRET on sync / briefing / maintenance / ops-poll crons (same value).
       - key: CRON_SECRET
         sync: false
       - key: KNOWLEDGE_INGEST_SECRET
