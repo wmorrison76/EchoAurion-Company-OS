@@ -769,6 +769,43 @@ export function HelpDeskConsole() {
                   {detail.requesterName ?? '—'} · {detail.clientKey ?? 'no client key'} ·{' '}
                   {ago(detail.createdAt)}
                 </p>
+                {detail.status === 'AWAITING_APPROVAL' && (
+                  <div
+                    className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#f59e0b]/40 bg-[#0a0a0f] px-3 py-2"
+                    role="status"
+                    aria-label="Pilot waiting for approved reply"
+                  >
+                    <StatusBadge level="warn" label="Pilot waiting" />
+                    <p className="text-xs text-[#a0a0b8]">
+                      Draft is ready — click <span className="text-white">Approve &amp; send</span> to
+                      push the reply to the property Help Desk (or enable standby auto-answer for
+                      low-risk TEXT).
+                    </p>
+                  </div>
+                )}
+                {(detail.intakeGate === 'BILLING' || detail.intakeGate === 'BUILD') &&
+                  detail.status !== 'RESOLVED' &&
+                  detail.status !== 'CLOSED' && (
+                    <div
+                      className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-2"
+                      role="status"
+                      aria-label="No auto-Knights for this gate"
+                    >
+                      <StatusBadge
+                        level="unknown"
+                        label={
+                          detail.intakeGate === 'BUILD'
+                            ? '■ Build — no auto-reply'
+                            : '● Billing — no auto-reply'
+                        }
+                      />
+                      <p className="text-xs text-[#a0a0b8]">
+                        {detail.intakeGate === 'BUILD'
+                          ? 'Paid path — quote / WorkAgreement. Auto-Knights skipped.'
+                          : 'Billing path — handle manually. Auto-Knights skipped.'}
+                      </p>
+                    </div>
+                  )}
                 {(detail.fingerprint || detail.affectedClientKeys.length > 0) && (
                   <div className="mt-2 rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-2 text-[11px] text-[#a0a0b8]">
                     {detail.productLine && (

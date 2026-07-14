@@ -98,9 +98,14 @@ When pilot posts via `POST /api/company-os-relay/questions` → Company OS `POST
 
 1. Stores `CustomerQuestion`
 2. Creates/links Help Desk **TEXT** ticket
-3. If `AUTO_KNIGHTS_ON_QUESTION` is true (default) **or** standby/autonomy allows drafts → runs Knights
-4. Standby may auto-approve **low-risk TEXT only**; otherwise status stays **DRAFTED / AWAITING_APPROVAL** for William
-5. Auto-approve publishes relay outbox so the pilot can pull the answer
+3. **Gate policy:** `TECH` + `OTHER` auto-run Knights when `AUTO_KNIGHTS_ON_QUESTION` is true (default). `BILLING` + `BUILD` skip auto-Knights (human / paid path).
+4. Standby may auto-approve **low-risk TEXT only**; otherwise status stays **AWAITING_APPROVAL** for William
+5. **Pilot does not see a reply until** Approve & send (or standby auto-approve) publishes relay outbox `answer_ready`
+6. Pilot UI waiting copy is gate-honest: TECH/OTHER say drafting + needs approval; BILLING/BUILD say “no auto-reply for this category”
+
+### Why “Sent” but no reply in the pilot?
+
+Usually the ticket is sitting at **AWAITING_APPROVAL** in Company OS Help Desk. Open `/help-desk`, find the ticket (search by question id prefix if needed), review the Knights draft, click **Approve & send**.
 
 ## Connection health (Dr. OS)
 

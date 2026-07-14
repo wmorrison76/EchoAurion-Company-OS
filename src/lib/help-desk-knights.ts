@@ -379,8 +379,8 @@ export async function processInboundQuestion(
           role: 'SYSTEM',
           body:
             detail.intakeGate === 'BUILD'
-              ? 'BUILD gate — paid WorkAgreement path. Auto-Knights skipped; quote / agreement required.'
-              : 'BILLING gate — billing policy path. Auto-Knights skipped.',
+              ? 'BUILD gate — paid WorkAgreement path. Auto-Knights skipped; quote / agreement required. Pilot UI: no auto-reply for this category.'
+              : 'BILLING gate — billing policy path. Auto-Knights skipped. Pilot UI: no auto-reply for this category.',
         },
       })
     }
@@ -411,6 +411,14 @@ export async function processInboundQuestion(
   try {
     const result = await dispatchKnightsOnTicket(ticketId, { actor: 'computer_agent' })
     if (!result.autoApproved) {
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body:
+            'Draft ready — pilot is waiting. Click Approve & send (or enable standby auto-answer for low-risk TEXT) to deliver the reply to the property UI.',
+        },
+      })
       await raiseAlert({
         kind: 'question',
         severity: 'WARN',
