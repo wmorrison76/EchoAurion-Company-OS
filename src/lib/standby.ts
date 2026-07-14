@@ -5,6 +5,7 @@ import { publishAnswerReady } from '@/lib/relay-outbox'
 import { raiseAlert } from '@/lib/alerts'
 import { dispatch } from '@/lib/board-room/connectors'
 import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
+import { isPayrollStandbyBlocked } from '@/lib/payroll-refuse'
 
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
@@ -349,6 +350,15 @@ export function evaluateStandbyEligibility(input: {
     return {
       eligible: false,
       reason: 'Architect/code-change signal detected — force AWAITING_HUMAN',
+      forceAwaitingHuman: true,
+    }
+  }
+
+  // Belt-and-suspenders: payroll/compensation never auto-sends.
+  if (isPayrollStandbyBlocked(input.subject, [combined])) {
+    return {
+      eligible: false,
+      reason: 'Payroll / compensation topic — never standby auto-approve',
       forceAwaitingHuman: true,
     }
   }

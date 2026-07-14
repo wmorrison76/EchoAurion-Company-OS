@@ -8,6 +8,7 @@ import { pickDraftSeat } from '@/lib/support-relay'
 import { dispatch } from '@/lib/board-room/connectors'
 import { ROSTER } from '@/lib/board-room/knights'
 import { answerDraftSystemPrompt } from '@/lib/support-voice'
+import { detectPayrollRefuse } from '@/lib/payroll-refuse'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 import type { ContextualHelpResult } from '@/types/help-files'
@@ -46,6 +47,49 @@ export async function POST(
     })
     if (!ticket) {
       return Response.json({ success: false, error: 'Ticket not found' }, { status: 404 })
+    }
+
+    const payrollGate = detectPayrollRefuse({
+      text: question,
+      subject: ticket.subject,
+      context: body.context,
+      operatorOverride: true,
+    })
+    if (payrollGate.refuse) {
+      await db.helpMessage.create({
+        data: { ticketId: id, role: 'SYSTEM', body: payrollGate.operatorNote },
+      })
+      await db.helpMessage.create({
+        data: {
+          ticketId: id,
+          role: 'KNIGHT',
+          seat: 'policy',
+          body: payrollGate.customerReply,
+        },
+      })
+      const updated = await db.helpTicket.update({
+        where: { id },
+        data: { status: 'AWAITING_APPROVAL' },
+        include: {
+          messages: { orderBy: { createdAt: 'asc' } },
+          voiceNotes: { orderBy: { createdAt: 'asc' } },
+          _count: { select: { messages: true } },
+        },
+      })
+      await audit('william_morrison', 'help_desk.contextual.payroll_refuse', id, {
+        reason: payrollGate.reason,
+        matched: payrollGate.matched,
+      })
+      const contextual: ContextualHelpResult = {
+        draftAnswer: payrollGate.customerReply,
+        suggestedDirectives: [],
+        citedArticleIds: [],
+        seat: 'policy',
+      }
+      return Response.json({
+        success: true,
+        data: { ticket: toDetail(updated), contextual },
+      } satisfies APIResponse<{ ticket: HelpTicketDetail; contextual: ContextualHelpResult }>)
     }
 
     if (!pickDraftSeat()) {

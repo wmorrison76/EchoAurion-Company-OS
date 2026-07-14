@@ -15,6 +15,7 @@ import {
   resolveHelpDeskLanguage,
   type HelpDeskLanguageResolution,
 } from '@/lib/help-desk-locale'
+import { detectPayrollRefuse } from '@/lib/payroll-refuse'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -76,6 +77,80 @@ export async function dispatchKnightsOnTicket(
     throw new Error('No AI seat is configured — set knight API keys')
   }
 
+  // Multilingual + payroll gate need CustomerQuestion.context before convene.
+  let questionContext: unknown = undefined
+  let questionText: string | undefined
+  if (ticket.customerQuestionId) {
+    const cq = await db.customerQuestion.findUnique({
+      where: { id: ticket.customerQuestionId },
+      select: { context: true, question: true },
+    })
+    questionContext = cq?.context ?? undefined
+    questionText = cq?.question
+  }
+  const customerText =
+    ticket.messages.find((m) => m.role === 'CUSTOMER')?.body ??
+    questionText ??
+    ticket.subject
+
+  const payrollGate = detectPayrollRefuse({
+    text: customerText,
+    subject: ticket.subject,
+    context: questionContext,
+    operatorOverride: actor === 'william_morrison',
+  })
+  if (payrollGate.refuse) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: payrollGate.operatorNote,
+      },
+    })
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'KNIGHT',
+        seat: 'policy',
+        body: payrollGate.customerReply,
+      },
+    })
+    if (ticket.customerQuestionId) {
+      await db.customerQuestion.update({
+        where: { id: ticket.customerQuestionId },
+        data: {
+          draftAnswer: payrollGate.customerReply,
+          draftSeat: 'policy',
+          status: 'DRAFTED',
+        },
+      })
+    }
+    const refused = await db.helpTicket.update({
+      where: { id: ticketId },
+      data: {
+        status: 'AWAITING_APPROVAL',
+        agentWorking: false,
+      },
+      include: {
+        messages: { orderBy: { createdAt: 'asc' } },
+        voiceNotes: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { messages: true } },
+      },
+    })
+    await audit(actor, 'help_desk.knights.payroll_refuse', ticketId, {
+      reason: payrollGate.reason,
+      matched: payrollGate.matched,
+    })
+    return {
+      ticket: toDetail(refused),
+      knightCount: 0,
+      autoApproved: false,
+      responded: [],
+      skipped: [{ seat: 'all', reason: `payroll_refuse:${payrollGate.reason}` }],
+      reason: payrollGate.reason ?? 'payroll_refuse',
+    }
+  }
+
   await db.helpTicket.update({
     where: { id: ticketId },
     data: {
@@ -106,17 +181,6 @@ export async function dispatchKnightsOnTicket(
     errorCategory: ticket.errorCategory,
   })
 
-  // Multilingual: UI locale from CustomerQuestion.context + script detect on question text.
-  let questionContext: unknown = undefined
-  if (ticket.customerQuestionId) {
-    const cq = await db.customerQuestion.findUnique({
-      where: { id: ticket.customerQuestionId },
-      select: { context: true, question: true },
-    })
-    questionContext = cq?.context ?? undefined
-  }
-  const customerText =
-    ticket.messages.find((m) => m.role === 'CUSTOMER')?.body ?? ticket.subject
   const lang: HelpDeskLanguageResolution = resolveHelpDeskLanguage({
     text: customerText,
     context: questionContext,
@@ -411,18 +475,22 @@ export async function processInboundQuestion(
   try {
     const result = await dispatchKnightsOnTicket(ticketId, { actor: 'computer_agent' })
     if (!result.autoApproved) {
+      const payrollRefused = result.reason?.startsWith('payroll') || result.reason?.includes('compensation')
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body:
-            'Draft ready — pilot is waiting. Click Approve & send (or unlock auto-send / standby low-risk TEXT) to deliver the reply to the property UI.',
+          body: payrollRefused
+            ? 'Payroll / compensation refuse draft ready — review before send. Never invent pay figures; Approve only the safe refuse text (or reply manually after verifying role).'
+            : 'Draft ready — pilot is waiting. Click Approve & send (or unlock auto-send / standby low-risk TEXT) to deliver the reply to the property UI.',
         },
       })
       await raiseAlert({
         kind: 'question',
         severity: 'WARN',
-        title: 'Knights drafted — awaiting approval',
+        title: payrollRefused
+          ? 'Payroll refuse — awaiting review'
+          : 'Knights drafted — awaiting approval',
         body: detail.subject.slice(0, 140),
         entityRef: ticketId,
         url: `/help-desk?ticket=${ticketId}`,

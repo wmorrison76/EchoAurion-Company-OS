@@ -37,6 +37,7 @@ You are not remote-controlling the property. You approve answers, quotes, and (w
 ### When **not** to use Knights
 
 - Secrets, passwords, legal, HR, guest PII fishing  
+- **Payroll / compensation / “how much is someone making?”** — hard-refused in code (`src/lib/payroll-refuse.ts`). Knights have no product RBAC and no payroll DB. A safe refuse draft is left for you; never invent dollar amounts. William may reply manually only after verifying the asker is authorized in-product.  
 - Anything that needs a signed contract before work  
 - Core auth / middleware “just delete it” ideas — constitution blocks; escalate to human
 

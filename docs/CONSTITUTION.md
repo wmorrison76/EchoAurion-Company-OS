@@ -18,6 +18,8 @@ This is the non-negotiable operating charter for autonomous Help Desk, Knights s
 | `autopilot_limits` | Autopilot limits | Autopilot may auto-answer low-risk TEXT and emit stub directives — **never** merge, paid execute, or T3+ auto-approve. |
 | `no_core_self_harm` | No core self-harm | Knights/Architect must **not** auto-modify auth, middleware, relay secrets, billing, or destructive prisma. Deny-list → `NEEDS_HUMAN_CORE_REVIEW` + dual human control. Never auto-execute schema drops / secret rotation / auth removal. |
 
+**Payroll / compensation (Help Desk):** Hard refuse in `src/lib/payroll-refuse.ts` — Knights have no product RBAC and no payroll DB. Salary / “how much is X making” never gets an inventing draft; standby never auto-sends. William may reply manually only after verifying in-product authorization.
+
 ## Core-path deny-list (hallucination guard)
 
 See `src/lib/core-path-guard.ts`. Hits force `AWAITING_APPROVAL` + `needsHumanCoreReview` and **block standby auto-approve**.
