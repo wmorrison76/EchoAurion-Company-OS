@@ -37,7 +37,7 @@ You are not remote-controlling the property. You approve answers, quotes, and (w
 ### When **not** to use Knights
 
 - Secrets, passwords, legal, HR, guest PII fishing  
-- **Payroll / compensation / “how much is someone making?”** — hard-refused in code (`src/lib/payroll-refuse.ts`). Knights have no product RBAC and no payroll DB. A safe refuse draft is left for you; never invent dollar amounts. William may reply manually only after verifying the asker is authorized in-product.  
+- **Payroll / compensation / “how much is someone making?”** — hard-refused in code (`src/lib/payroll-refuse.ts`). Knights have no product RBAC and no payroll DB. A safe refuse draft is left for you; never invent dollar amounts. Pilot should include `context.profileRole` (Build-gate roles). William may reply manually only after verifying the asker is authorized in-product. Macro Help File: **We do not disclose payroll via Help Desk**.  
 - Anything that needs a signed contract before work  
 - Core auth / middleware “just delete it” ideas — constitution blocks; escalate to human
 

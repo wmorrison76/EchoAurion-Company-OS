@@ -146,6 +146,7 @@ const HELP_ARTICLES: Array<{
   body: string
   tags: string[]
   panelId?: string
+  isMacro?: boolean
 }> = [
   {
     slug: 'login-reset',
@@ -244,15 +245,20 @@ const HELP_ARTICLES: Array<{
     body: 'How-to and config guidance is free. New features, data migrations, or code changes need a quoted work request. Only the designated billing contact can authorize spend. Operators: use Approve free only for true gifts; otherwise Send quote.',
     tags: ['quote', 'billing', 'change-request', 'policy'],
   },
+  {
+    slug: 'payroll-no-disclose-help-desk',
+    title: 'We do not disclose payroll via Help Desk',
+    body: 'Help Desk and Knights cannot share salary, wages, compensation amounts, or payroll figures. There is no payroll database on Company OS and no product RBAC for pay data. Staff should use their property’s HR/Payroll tools or ask a property administrator with payroll access. Operators: use the safe refuse draft; never invent dollar amounts. Asker role may appear as context.profileRole (ADMIN/DIRECTOR/EXEC/…) from the pilot session — still do not invent figures.',
+    tags: ['payroll', 'compensation', 'policy', 'refuse', 'help-desk'],
+    isMacro: true,
+  },
 ]
 
 async function seedHelpArticles() {
-  const existing = await db.helpArticle.count()
-  if (existing > 0) {
-    console.log(`helpArticles: ${existing} already present, skipping`)
-    return
-  }
+  let created = 0
   for (const a of HELP_ARTICLES) {
+    const existing = await db.helpArticle.findUnique({ where: { slug: a.slug } })
+    if (existing) continue
     await db.helpArticle.create({
       data: {
         slug: a.slug,
@@ -260,10 +266,12 @@ async function seedHelpArticles() {
         body: a.body,
         tags: a.tags,
         panelId: a.panelId ?? null,
+        isMacro: a.isMacro ?? false,
       },
     })
+    created += 1
   }
-  console.log(`helpArticles: seeded ${HELP_ARTICLES.length}`)
+  console.log(`helpArticles: created ${created} new (${HELP_ARTICLES.length} defined)`)
 }
 
 async function seedHelpEvalCases() {
