@@ -301,6 +301,7 @@ It means: **a Miccosukee-class multi-property group trusts Echo to detect, conta
 8. **Cost anomaly alerts** — if one `clientKey` burns 10× Knight seats, intake-gate or rate-limit with operator alert (pairs with CustomerCostSnapshot).  
 9. **Partner MSP mode (optional)** — white-label Help Desk for franchise IT partners with Echo repair underneath — only if GTM wants it (P2).  
 10. **Public “trust” page** — handshake, PR-only, canary policy, retention — SOC2-prep marketing without waiting for the badge.
+11. **Night Cleaner Mole** — equip EKG Panel Sweep as hospitality night cleaners: walk guest + operator corridors after close, leave a **morning-open task report** (broken links, stubs, role 403s, i18n, CVE, secrets) as Help Desk SYSTEM tickets — never silent auto-merge. See [`NIGHT_CLEANER_MOLE.md`](./NIGHT_CLEANER_MOLE.md).
 
 ---
 
@@ -315,7 +316,7 @@ It means: **a Miccosukee-class multi-property group trusts Echo to detect, conta
 - Freshdesk Freddy AI explainers (2026)  
 - HubSpot Service Hub product + pricing guides  
 - ServiceNow / JSM / Freshservice ITSM comparisons (2025–2026 industry blogs)  
-- Internal: `docs/HELP_DESK.md`, `KNIGHTS_FLYWHEEL.md`, `ERROR_CAPTURE_AND_SCOPE.md`, `DATA_ISOLATION_AND_COMPLIANCE.md`, `CUSTOMER_CHANGE_REQUEST_FLOW.md`, `PAID_VIA_PROFILE.md`, `ELITE_DR_OS.md`, `OPEN_OPS_CHECKLIST.md`
+- Internal: `docs/HELP_DESK.md`, `KNIGHTS_FLYWHEEL.md`, `ERROR_CAPTURE_AND_SCOPE.md`, `DATA_ISOLATION_AND_COMPLIANCE.md`, `CUSTOMER_CHANGE_REQUEST_FLOW.md`, `PAID_VIA_PROFILE.md`, `ELITE_DR_OS.md`, `OPEN_OPS_CHECKLIST.md`, `NIGHT_CLEANER_MOLE.md`
 
 ---
 

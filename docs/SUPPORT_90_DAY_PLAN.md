@@ -58,6 +58,7 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 4. [x] **Quote → Help File draft** for T3+ paid builds (tenant-scrubbed) — Work panel “→ Help File draft”  
 5. [x] **Public trust page** (handshake, PR-only, canary, retention) — SOC2-prep marketing — `/trust`
 6. [x] **Cost anomaly alerts** once CustomerCostSnapshot cron is live  
+7. [ ] **Night Cleaner Mole** — EKG panel sweep as hospitality night cleaners → morning-open **task report** (not auto-fix). See [`NIGHT_CLEANER_MOLE.md`](./NIGHT_CLEANER_MOLE.md) · ingest `POST /api/ops/night-cleaner-report`
 
 ---
 
@@ -157,6 +158,7 @@ From competitive analysis §6 — schedule into P0 polish or early P1:
 | Stripe live keys already used for MRR | Needed for real Invoice create + send |
 | `CRON_SECRET` + Render cron → `/api/ops/help-eval-friday` | Thu 22:00 UTC — Blueprint: `echoaurion-company-os-help-eval-friday` |
 | `CRON_SECRET` + Render cron → `/api/ops/cost-anomaly` | Daily after snapshots — Blueprint: `echoaurion-company-os-cost-anomaly` |
+| `CRON_SECRET` + nightly night-cleaner ingest | Pilot script → `POST /api/ops/night-cleaner-report` — see `docs/NIGHT_CLEANER_MOLE.md` · tag `pre-night-cleaner-mole-20260714` before big runner work |
 | Confirm `echoaurion-company-os-ops-poll` in Super_Admin | If missing from list, search other folders / create from Blueprint — do not force-merge PR #202 |
 | Confirm help-eval-friday + cost-anomaly crons exist | Super_Admin next to other Company OS crons — see `docs/RENDER_ENVIRONMENTS.md` |
 | Pilot property UI: handle `open_panel` `support.csat` / deep link | luccca-web — rate surface |

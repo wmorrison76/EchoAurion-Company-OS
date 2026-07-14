@@ -31,7 +31,7 @@ These exist under `prisma/migrations/` and must be applied on Neon after each Co
 | `SUPPORT_IVR_PUBLIC_URL` | Exact public webhook URL Twilio signs |
 | `SUPPORT_IVR_WEBHOOK_SECRET` | Optional IVR Bearer override |
 | Stripe keys (existing) | Auto-create + send Invoice on WorkAgreement authorize |
-| `CRON_SECRET` | Also guards `/api/ops/cost-anomaly` + `/api/ops/help-eval-friday` |
+| `CRON_SECRET` | Also guards `/api/ops/cost-anomaly` + `/api/ops/help-eval-friday` + `/api/ops/night-cleaner-report` |
 
 ### Suggested Render crons (optional)
 
@@ -39,6 +39,9 @@ These exist under `prisma/migrations/` and must be applied on Neon after each Co
 |---|---|
 | Thu 22:00 UTC | `POST /api/ops/help-eval-friday` |
 | Daily (e.g. after financial sync) | `POST /api/ops/cost-anomaly` |
+| Nightly after close / before open | Pilot night-cleaner script → `POST /api/ops/night-cleaner-report` (Bearer `CRON_SECRET`) |
+
+Night cleaner = morning-open **task list** (SYSTEM/TECH tickets), not silent merges. See [`NIGHT_CLEANER_MOLE.md`](./NIGHT_CLEANER_MOLE.md).
 
 See `docs/SUPPORT_90_DAY_PLAN.md` · `docs/SUPPORT_SMS.md` · `docs/HELP_EVAL.md` · `docs/PILOT_PR_202_REBASE_NOTES.md`.
 
