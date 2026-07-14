@@ -91,6 +91,11 @@ Seed: 14 starter articles (login, BEO print, Ask support, Fleet, Company OS oper
 Modes: `off` | `draft_only` | `auto_answer_low_risk`.  
 Auto-answer is **TEXT how-to only** — never auto-execute code or FEATURE work. See `docs/PILOT_CONNECTION.md`.
 
+### Timed auto-send permit
+
+On `StandbySettings`: `helpDeskAutoSendEnabled` + `helpDeskAutoSendUntil`.  
+Help Desk UI: **Permit / Unlock auto-send** with day+time expiry. While `now < until`, low-risk TEXT Tech/Other may auto-send via the same `maybeStandbyAutoApprove` path (does not permanently flip standby mode). BUILD/BILLING never auto-send. See Ops Training Manual → *Permit / Unlock auto-send*.
+
 ---
 
 ## Status flow

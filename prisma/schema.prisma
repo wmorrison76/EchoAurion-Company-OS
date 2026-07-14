@@ -923,12 +923,17 @@ model RelayOutbox {
 /// Single-row operator settings for Knights standby when William is unavailable.
 /// mode also accepts elite autonomy dial: assist | standby | autopilot
 /// (mapped in src/lib/autonomy.ts). Legacy: off | draft_only | auto_answer_low_risk
+/// Timed unlock: helpDeskAutoSendEnabled + helpDeskAutoSendUntil permits low-risk
+/// TEXT TECH/OTHER auto-send without permanently flipping standby mode.
 model StandbySettings {
-  id             String   @id @default("default")
-  mode           String   @default("off") // off | draft_only | auto_answer_low_risk | assist | standby | autopilot
-  maxAutoPerHour Int      @default(10)
-  updatedAt      DateTime @updatedAt
-  updatedBy      String? // william_morrison | computer_agent
+  id                      String    @id @default("default")
+  mode                    String    @default("off") // off | draft_only | auto_answer_low_risk | assist | standby | autopilot
+  maxAutoPerHour          Int       @default(10)
+  /// Temporary permit: when true and now < helpDeskAutoSendUntil, low-risk TEXT may auto-send.
+  helpDeskAutoSendEnabled Boolean   @default(false)
+  helpDeskAutoSendUntil   DateTime?
+  updatedAt               DateTime  @updatedAt
+  updatedBy               String? // william_morrison | computer_agent
 
   @@map("standby_settings")
 }

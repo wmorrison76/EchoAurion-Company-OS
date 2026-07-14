@@ -45,6 +45,14 @@ const GATE_BADGE: Record<
   OTHER: { level: 'unknown', label: '○ Other' },
 }
 
+/** ISO → value for `<input type="datetime-local">` in the browser's local zone. */
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 async function jsonFetcher<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: 'no-store' })
   const body = (await res.json()) as APIResponse<T>
@@ -116,9 +124,73 @@ export function HelpDeskConsole() {
 
   const { data: standby, mutate: mutateStandby } = useSWR(
     '/api/support/standby',
-    jsonFetcher<{ mode: string; maxAutoPerHour: number }>,
-    { refreshInterval: 60_000 }
+    jsonFetcher<{
+      mode: string
+      maxAutoPerHour: number
+      helpDeskAutoSendEnabled: boolean
+      helpDeskAutoSendUntil: string | null
+      autoSendActive: boolean
+    }>,
+    { refreshInterval: 15_000 }
   )
+
+  const [permitUntilLocal, setPermitUntilLocal] = useState(() =>
+    toDatetimeLocalValue(new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString())
+  )
+  const [permitBusy, setPermitBusy] = useState(false)
+  const [permitError, setPermitError] = useState<string | null>(null)
+
+  // Sync picker when server has an active window (e.g. after refresh / extend elsewhere).
+  useEffect(() => {
+    if (standby?.autoSendActive && standby.helpDeskAutoSendUntil) {
+      setPermitUntilLocal(toDatetimeLocalValue(standby.helpDeskAutoSendUntil))
+    }
+  }, [standby?.autoSendActive, standby?.helpDeskAutoSendUntil])
+
+  const unlockAutoSend = useCallback(async () => {
+    setPermitBusy(true)
+    setPermitError(null)
+    try {
+      const until = new Date(permitUntilLocal)
+      if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+        throw new Error('Pick a day and time in the future')
+      }
+      const res = await fetch('/api/support/standby', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          helpDeskAutoSendEnabled: true,
+          helpDeskAutoSendUntil: until.toISOString(),
+        }),
+      })
+      const body = (await res.json()) as APIResponse<unknown>
+      if (!body.success) throw new Error(body.error)
+      await mutateStandby()
+    } catch (e) {
+      setPermitError(e instanceof Error ? e.message : 'Failed to unlock auto-send')
+    } finally {
+      setPermitBusy(false)
+    }
+  }, [permitUntilLocal, mutateStandby])
+
+  const lockAutoSend = useCallback(async () => {
+    setPermitBusy(true)
+    setPermitError(null)
+    try {
+      const res = await fetch('/api/support/standby', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ helpDeskAutoSendEnabled: false }),
+      })
+      const body = (await res.json()) as APIResponse<unknown>
+      if (!body.success) throw new Error(body.error)
+      await mutateStandby()
+    } catch (e) {
+      setPermitError(e instanceof Error ? e.message : 'Failed to lock auto-send')
+    } finally {
+      setPermitBusy(false)
+    }
+  }, [mutateStandby])
 
   const {
     data: detail,
@@ -455,6 +527,92 @@ export function HelpDeskConsole() {
         </div>
       </div>
 
+      {/* Timed unlock — temporary dual-control permit (expiry-based, not permanent) */}
+      <div className="rounded-xl border border-[#2a2a3f] bg-[#12121a] px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs uppercase tracking-widest text-[#D4AF37]">
+              Permit / Unlock auto-send
+            </p>
+            <p className="mt-1 text-[11px] text-[#a0a0b8]">
+              Temporarily allow low-risk TEXT Tech/Other drafts to send after Knights — without
+              leaving standby on forever. Build &amp; Billing never auto-send. Core paths stay
+              draft-PR-only.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {standby?.autoSendActive ? (
+                <StatusBadge
+                  level="ok"
+                  label={`Unlocked until ${
+                    standby.helpDeskAutoSendUntil
+                      ? new Date(standby.helpDeskAutoSendUntil).toLocaleString(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })
+                      : '…'
+                  }${
+                    standby.helpDeskAutoSendUntil
+                      ? ` · ${formatDistanceToNow(new Date(standby.helpDeskAutoSendUntil), {
+                          addSuffix: true,
+                        })}`
+                      : ''
+                  }`}
+                />
+              ) : (
+                <StatusBadge level="warn" label="Locked — approve required" />
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <label className="flex flex-col gap-1 text-[11px] text-[#a0a0b8]">
+              <span>Expires (day + time)</span>
+              <input
+                type="datetime-local"
+                value={permitUntilLocal}
+                onChange={(e) => setPermitUntilLocal(e.target.value)}
+                aria-label="Auto-send permit expiry day and time"
+                className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-1.5 text-sm text-white"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={permitBusy}
+                aria-label={
+                  standby?.autoSendActive
+                    ? 'Extend auto-send unlock until selected time'
+                    : 'Unlock auto-send until selected time'
+                }
+                aria-pressed={Boolean(standby?.autoSendActive)}
+                onClick={() => void unlockAutoSend()}
+                className={
+                  standby?.autoSendActive
+                    ? 'rounded-lg border border-[#D4AF37] bg-[#1a1a26] px-3 py-1.5 text-xs text-[#D4AF37] disabled:opacity-50'
+                    : 'rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] hover:bg-[#22223a] disabled:opacity-50'
+                }
+              >
+                {permitBusy ? '…' : standby?.autoSendActive ? 'Extend until…' : '◎ Unlock until…'}
+              </button>
+              <button
+                type="button"
+                disabled={permitBusy || !standby?.autoSendActive}
+                aria-label="Lock auto-send — require Approve and send"
+                onClick={() => void lockAutoSend()}
+                className="rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] hover:bg-[#22223a] disabled:opacity-40"
+              >
+                ■ Lock now
+              </button>
+            </div>
+          </div>
+        </div>
+        {permitError && (
+          <p className="mt-2 flex items-center gap-2 text-xs text-[#a0a0b8]" role="alert">
+            <span aria-label="Error">✕</span>
+            <span>{permitError}</span>
+          </p>
+        )}
+      </div>
+
       {/* Operator guide */}
       <div className="rounded-xl border border-[#2a2a3f] bg-gradient-to-b from-[#12121a] to-[#0a0a0f] p-4">
         <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Operator guide</p>
@@ -778,7 +936,7 @@ export function HelpDeskConsole() {
                     <StatusBadge level="warn" label="Pilot waiting" />
                     <p className="text-xs text-[#a0a0b8]">
                       Draft is ready — click <span className="text-white">Approve &amp; send</span> to
-                      push the reply to the property Help Desk (or enable standby auto-answer for
+                      push the reply to the property Help Desk (or unlock auto-send / standby
                       low-risk TEXT).
                     </p>
                   </div>

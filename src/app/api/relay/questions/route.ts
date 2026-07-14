@@ -9,6 +9,7 @@ import {
   processInboundQuestion,
   shouldAutoKnightsOnQuestion,
 } from '@/lib/help-desk-knights'
+import { getStandbyConfig } from '@/lib/standby'
 import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
 import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
 import type { APIResponse } from '@/types'
@@ -145,6 +146,27 @@ export async function POST(req: Request): Promise<Response> {
       url: '/support/inbox',
     })
 
+    const standby = await getStandbyConfig()
+    const autoSendUnlockedUntil =
+      standby.autoSendActive &&
+      (intakeGate === 'TECH' || intakeGate === 'OTHER' || intakeGate == null)
+        ? standby.helpDeskAutoSendUntil
+        : null
+
+    /** Pilot-facing expectation — dual control unless timed unlock is active. */
+    let waitingHint: string
+    if (intakeGate === 'BUILD') {
+      waitingHint = 'queued for paid build / quote — no auto-reply for this category'
+    } else if (intakeGate === 'BILLING') {
+      waitingHint = 'queued for billing — no auto-reply for this category'
+    } else if (autoSendUnlockedUntil) {
+      waitingHint = `Aurion auto-reply unlocked until ${autoSendUnlockedUntil}`
+    } else if (autoKnights) {
+      waitingHint = 'waiting for Aurion approval'
+    } else {
+      waitingHint = 'queued for Aurion — no auto-draft right now'
+    }
+
     return Response.json(
       {
         success: true,
@@ -153,14 +175,8 @@ export async function POST(req: Request): Promise<Response> {
           autoKnights,
           intakeGate,
           routeHint: gateMeta?.routeHint ?? null,
-          /** Pilot-facing expectation — dual control: draft → William Approve & send. */
-          waitingHint: autoKnights
-            ? 'waiting for Aurion approval'
-            : intakeGate === 'BUILD'
-              ? 'queued for paid build / quote — no auto-reply for this category'
-              : intakeGate === 'BILLING'
-                ? 'queued for billing — no auto-reply for this category'
-                : 'queued for Aurion — no auto-draft right now',
+          waitingHint,
+          autoSendUnlockedUntil,
         },
       } satisfies APIResponse<{
         id: string
@@ -168,6 +184,7 @@ export async function POST(req: Request): Promise<Response> {
         intakeGate: string | null
         routeHint: string | null
         waitingHint: string
+        autoSendUnlockedUntil: string | null
       }>,
       { status: 201 }
     )

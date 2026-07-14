@@ -35,6 +35,26 @@ export interface StandbyConfig {
   source: 'db' | 'env' | 'default'
   updatedAt: string | null
   updatedBy: string | null
+  /** Operator toggle — may be true while expired; prefer autoSendActive. */
+  helpDeskAutoSendEnabled: boolean
+  helpDeskAutoSendUntil: string | null
+  /** True when enabled and until is in the future — dual-control unlocked for low-risk TEXT. */
+  autoSendActive: boolean
+}
+
+/** True when the timed Help Desk auto-send permit is currently valid. */
+export function isHelpDeskAutoSendActive(input: {
+  helpDeskAutoSendEnabled: boolean
+  helpDeskAutoSendUntil: Date | string | null | undefined
+  now?: Date
+}): boolean {
+  if (!input.helpDeskAutoSendEnabled || !input.helpDeskAutoSendUntil) return false
+  const until =
+    input.helpDeskAutoSendUntil instanceof Date
+      ? input.helpDeskAutoSendUntil
+      : new Date(input.helpDeskAutoSendUntil)
+  if (Number.isNaN(until.getTime())) return false
+  return until.getTime() > (input.now ?? new Date()).getTime()
 }
 
 const CODE_CHANGE_SIGNAL =
@@ -65,8 +85,63 @@ function envMaxAuto(): number {
   return Math.floor(n)
 }
 
+function emptyAutoSend(): Pick<
+  StandbyConfig,
+  'helpDeskAutoSendEnabled' | 'helpDeskAutoSendUntil' | 'autoSendActive'
+> {
+  return {
+    helpDeskAutoSendEnabled: false,
+    helpDeskAutoSendUntil: null,
+    autoSendActive: false,
+  }
+}
+
+function mapAutoSend(row: {
+  helpDeskAutoSendEnabled: boolean
+  helpDeskAutoSendUntil: Date | null
+}): Pick<
+  StandbyConfig,
+  'helpDeskAutoSendEnabled' | 'helpDeskAutoSendUntil' | 'autoSendActive'
+> {
+  const active = isHelpDeskAutoSendActive({
+    helpDeskAutoSendEnabled: row.helpDeskAutoSendEnabled,
+    helpDeskAutoSendUntil: row.helpDeskAutoSendUntil,
+  })
+  return {
+    helpDeskAutoSendEnabled: row.helpDeskAutoSendEnabled,
+    helpDeskAutoSendUntil: row.helpDeskAutoSendUntil?.toISOString() ?? null,
+    autoSendActive: active,
+  }
+}
+
+/**
+ * Lazy-clear expired permit so UI shows Locked without a manual toggle.
+ * Best-effort — never throws into callers.
+ */
+async function clearExpiredAutoSendPermit(): Promise<void> {
+  try {
+    const row = await db.standbySettings.findUnique({ where: { id: 'default' } })
+    if (!row?.helpDeskAutoSendEnabled || !row.helpDeskAutoSendUntil) return
+    if (isHelpDeskAutoSendActive(row)) return
+    await db.standbySettings.update({
+      where: { id: 'default' },
+      data: {
+        helpDeskAutoSendEnabled: false,
+        helpDeskAutoSendUntil: null,
+        updatedBy: 'computer_agent',
+      },
+    })
+    await audit('computer_agent', 'help_desk.auto_send.expire', 'default', {
+      previousUntil: row.helpDeskAutoSendUntil.toISOString(),
+    })
+  } catch {
+    // ignore — migrate/race
+  }
+}
+
 export async function getStandbyConfig(): Promise<StandbyConfig> {
   try {
+    await clearExpiredAutoSendPermit()
     const row = await db.standbySettings.findUnique({ where: { id: 'default' } })
     if (row) {
       const mode = STANDBY_MODES.includes(row.mode as StandbyMode)
@@ -78,6 +153,7 @@ export async function getStandbyConfig(): Promise<StandbyConfig> {
         source: 'db',
         updatedAt: row.updatedAt.toISOString(),
         updatedBy: row.updatedBy,
+        ...mapAutoSend(row),
       }
     }
   } catch {
@@ -90,6 +166,7 @@ export async function getStandbyConfig(): Promise<StandbyConfig> {
     source: mode === 'off' && !process.env.KNIGHTS_STANDBY_MODE ? 'default' : 'env',
     updatedAt: null,
     updatedBy: null,
+    ...emptyAutoSend(),
   }
 }
 
@@ -123,6 +200,81 @@ export async function setStandbyConfig(input: {
     source: 'db',
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy,
+    ...mapAutoSend(row),
+  }
+}
+
+/**
+ * Enable / extend / disable the timed Help Desk auto-send permit.
+ * Does not permanently change standby mode — when active, low-risk TEXT
+ * uses the same maybeStandbyAutoApprove path as auto_answer_low_risk.
+ */
+export async function setHelpDeskAutoSendPermit(input: {
+  enabled: boolean
+  until?: Date | null
+  updatedBy: 'william_morrison' | 'computer_agent'
+}): Promise<StandbyConfig> {
+  const existing = await db.standbySettings.findUnique({ where: { id: 'default' } })
+  const wasActive = existing
+    ? isHelpDeskAutoSendActive({
+        helpDeskAutoSendEnabled: existing.helpDeskAutoSendEnabled,
+        helpDeskAutoSendUntil: existing.helpDeskAutoSendUntil,
+      })
+    : false
+
+  if (input.enabled) {
+    if (!input.until || Number.isNaN(input.until.getTime())) {
+      throw new Error('helpDeskAutoSendUntil is required when enabling the permit')
+    }
+    if (input.until.getTime() <= Date.now()) {
+      throw new Error('helpDeskAutoSendUntil must be in the future')
+    }
+  }
+
+  const nextEnabled = input.enabled
+  const nextUntil = input.enabled ? input.until! : null
+
+  const row = await db.standbySettings.upsert({
+    where: { id: 'default' },
+    create: {
+      id: 'default',
+      mode: envMode(),
+      maxAutoPerHour: envMaxAuto(),
+      helpDeskAutoSendEnabled: nextEnabled,
+      helpDeskAutoSendUntil: nextUntil,
+      updatedBy: input.updatedBy,
+    },
+    update: {
+      helpDeskAutoSendEnabled: nextEnabled,
+      helpDeskAutoSendUntil: nextUntil,
+      updatedBy: input.updatedBy,
+    },
+  })
+
+  let action: string
+  if (!nextEnabled) {
+    action = 'help_desk.auto_send.disable'
+  } else if (wasActive) {
+    action = 'help_desk.auto_send.extend'
+  } else {
+    action = 'help_desk.auto_send.enable'
+  }
+
+  await audit(input.updatedBy, action, row.id, {
+    enabled: nextEnabled,
+    until: nextUntil?.toISOString() ?? null,
+    previousUntil: existing?.helpDeskAutoSendUntil?.toISOString() ?? null,
+  })
+
+  return {
+    mode: (STANDBY_MODES.includes(row.mode as StandbyMode)
+      ? row.mode
+      : envMode()) as StandbyMode,
+    maxAutoPerHour: row.maxAutoPerHour,
+    source: 'db',
+    updatedAt: row.updatedAt.toISOString(),
+    updatedBy: row.updatedBy,
+    ...mapAutoSend(row),
   }
 }
 
@@ -235,8 +387,15 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   reason: string
 }> {
   const config = await getStandbyConfig()
-  if (!modeAllowsAutoAnswer(config.mode)) {
-    return { autoApproved: false, reason: `Standby/autonomy mode is ${config.mode}` }
+  const modeOk = modeAllowsAutoAnswer(config.mode)
+  const permitOk = config.autoSendActive
+  if (!modeOk && !permitOk) {
+    return {
+      autoApproved: false,
+      reason: config.helpDeskAutoSendEnabled
+        ? `Standby mode is ${config.mode} and auto-send permit expired`
+        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required)`,
+    }
   }
 
   const ticket = await db.helpTicket.findUnique({
@@ -251,6 +410,23 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     return {
       autoApproved: false,
       reason: 'FEATURE / WorkRequest never auto-executed or auto-approved in standby',
+    }
+  }
+  // BUILD / BILLING never auto-send — even with timed unlock or standby mode.
+  if (ticket.intakeGate === 'BUILD' || ticket.intakeGate === 'BILLING') {
+    return {
+      autoApproved: false,
+      reason: `${ticket.intakeGate} gate never auto-sends — Approve & send required`,
+    }
+  }
+  // Timed unlock is TECH/OTHER only (null gate treated as OTHER-adjacent triage).
+  if (permitOk && !modeOk) {
+    const gate = ticket.intakeGate
+    if (gate != null && gate !== 'TECH' && gate !== 'OTHER') {
+      return {
+        autoApproved: false,
+        reason: `Auto-send permit does not cover gate ${gate}`,
+      }
     }
   }
 
@@ -351,10 +527,13 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     ticketId,
     subject: ticket.subject,
     channel: ticket.channel,
+    intakeGate: ticket.intakeGate,
     seats: [...seats, ...(maestroBody ? ['maestro'] : [])],
     knightDrafts: knightBodies,
     approvedAnswer: answer,
     mode: config.mode,
+    viaAutoSendPermit: permitOk && !modeOk,
+    helpDeskAutoSendUntil: config.helpDeskAutoSendUntil,
   }
 
   await db.helpMessage.create({
@@ -369,7 +548,9 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     data: {
       ticketId,
       role: 'SYSTEM',
-      body: 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.',
+      body: permitOk && !modeOk
+        ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
+        : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.',
     },
   })
 

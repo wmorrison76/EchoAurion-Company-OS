@@ -87,6 +87,7 @@ export async function getAutonomyConfig(): Promise<AutonomyConfig> {
     dial = standbyModeToDial(raw)
   }
   const mapped = dialToStandbyMode(dial)
+  const limits = limitsFor(dial)
   return {
     dial,
     standbyMode: mapped,
@@ -94,7 +95,9 @@ export async function getAutonomyConfig(): Promise<AutonomyConfig> {
     source: standby.source,
     updatedAt: standby.updatedAt,
     updatedBy: standby.updatedBy,
-    ...limitsFor(dial),
+    ...limits,
+    // Timed Help Desk unlock uses the same low-risk auto-answer path.
+    mayAutoAnswer: limits.mayAutoAnswer || standby.autoSendActive,
   }
 }
 

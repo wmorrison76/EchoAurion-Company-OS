@@ -416,7 +416,7 @@ export async function processInboundQuestion(
           ticketId,
           role: 'SYSTEM',
           body:
-            'Draft ready — pilot is waiting. Click Approve & send (or enable standby auto-answer for low-risk TEXT) to deliver the reply to the property UI.',
+            'Draft ready — pilot is waiting. Click Approve & send (or unlock auto-send / standby low-risk TEXT) to deliver the reply to the property UI.',
         },
       })
       await raiseAlert({

@@ -44,6 +44,24 @@ You are not remote-controlling the property. You approve answers, quotes, and (w
 
 **Standby: Knights may approve low-risk** — only for safe TEXT how-tos. Never assumes paid Build. Turn off when you want every draft through your eyes.
 
+### Permit / Unlock auto-send (timed)
+
+Default: every Knights draft waits for **Approve & send**.
+
+When you need a short window without babysitting every Tech/Other how-to:
+
+1. Open **Help Desk** → **Permit / Unlock auto-send**
+2. Pick **Expires (day + time)** — when the window ends
+3. Click **◎ Unlock until…** (or **Extend until…** if already unlocked)
+4. Badge shows **Unlocked until …** plus a countdown; when time passes it clears to **Locked — approve required**
+5. Click **■ Lock now** anytime to require Approve & send again
+
+**What unlocks:** low-risk TEXT **Tech** / **Other** only — same safety checks as standby `auto_answer_low_risk` (Maestro synthesis, no code-change signals, rate limit, core-path block).
+
+**Never auto-sends:** Billing, Build/paid work, FEATURE, core/auth paths (still draft-PR only).
+
+Audit log records `help_desk.auto_send.enable` / `.extend` / `.disable` (and `.expire` when the window lapses).
+
 ---
 
 ## Free vs paid (gates)
