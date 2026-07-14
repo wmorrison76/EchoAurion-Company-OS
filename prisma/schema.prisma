@@ -465,10 +465,36 @@ model CustomerQuestion {
   updatedAt       DateTime       @updatedAt
   answeredAt      DateTime?
 
+  attachments HelpAttachment[]
+
   @@index([status])
   @@index([clientKey, delivered])
   @@index([standbyApproved, answeredAt])
   @@map("customer_questions")
+}
+
+/// Pilot Help Desk screenshots (max 2 per question). DB bytes — no S3 runtime yet.
+/// Retention: ~90 days (see docs/HELP_DESK.md). Never log `data` bytes.
+model HelpAttachment {
+  id                 String            @id @default(cuid())
+  customerQuestionId String?
+  customerQuestion   CustomerQuestion? @relation(fields: [customerQuestionId], references: [id], onDelete: Cascade)
+  ticketId           String?
+  ticket             HelpTicket?       @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  mimeType           String // image/png | image/jpeg | image/webp
+  fileName           String?
+  altText            String?
+  byteSize           Int
+  widthPx            Int?
+  heightPx           Int?
+  /// EXIF-stripped image bytes. Prefer Help Desk screenshots over Cursor Bugbot Autofix for cost.
+  data               Bytes
+  createdAt          DateTime          @default(now())
+
+  @@index([customerQuestionId])
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("help_attachments")
 }
 
 enum QuestionStatus {
@@ -746,9 +772,10 @@ model HelpTicket {
   /// computer_agent + Knights actively drafting / PR-planning
   agentWorking     Boolean          @default(false)
 
-  messages   HelpMessage[]
-  voiceNotes HelpVoiceNote[]
-  timeline   HelpTimelineEvent[]
+  messages    HelpMessage[]
+  voiceNotes  HelpVoiceNote[]
+  timeline    HelpTimelineEvent[]
+  attachments HelpAttachment[]
 
   @@index([status, updatedAt])
   @@index([channel, status])

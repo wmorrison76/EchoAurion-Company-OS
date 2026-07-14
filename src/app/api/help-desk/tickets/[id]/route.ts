@@ -13,6 +13,7 @@ export const dynamic = 'force-dynamic'
 const DETAIL_INCLUDE = {
   messages: { orderBy: { createdAt: 'asc' as const } },
   voiceNotes: { orderBy: { createdAt: 'asc' as const } },
+  attachments: { orderBy: { createdAt: 'asc' as const } },
   _count: { select: { messages: true } },
 }
 

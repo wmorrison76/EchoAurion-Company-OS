@@ -40,6 +40,20 @@ export interface HelpVoiceNoteView {
   createdAt: string
 }
 
+/** Metadata only — image bytes served via thumbUrl (auth). */
+export interface HelpAttachmentView {
+  id: string
+  mimeType: string
+  fileName: string | null
+  altText: string | null
+  byteSize: number
+  widthPx: number | null
+  heightPx: number | null
+  createdAt: string
+  /** Operator fetch path — `/api/help-desk/attachments/:id` */
+  thumbUrl: string
+}
+
 export interface HelpTicketListItem {
   id: string
   channel: HelpTicketChannel
@@ -102,6 +116,8 @@ export interface HelpTicketDetail extends HelpTicketListItem {
   csatComment: string | null
   messages: HelpMessageView[]
   voiceNotes: HelpVoiceNoteView[]
+  /** Pilot screenshots (max 2) — thumbs for Knights/William. */
+  attachments: HelpAttachmentView[]
   policy: {
     recommendation: string
     shape: string

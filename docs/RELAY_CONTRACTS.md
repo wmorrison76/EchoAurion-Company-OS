@@ -48,9 +48,21 @@ No guest PII in `details`.
 {
   "clientKey": "opaque-install-id",
   "question": "How do I re-run last night's close?",
-  "context": { "screen": "close", "appVersion": "1.2.3" }
+  "context": { "screen": "close", "appVersion": "1.2.3" },
+  "attachments": [
+    {
+      "mimeType": "image/jpeg",
+      "dataBase64": "<compressed-no-data-url-prefix>",
+      "altText": "Screenshot 1",
+      "fileName": "close-error.jpg",
+      "widthPx": 1200,
+      "heightPx": 800
+    }
+  ]
 }
 ```
+
+Optional `attachments`: max **2**, PNG/JPEG/WebP, ≤ ~1.5MB each decoded (client compresses). Stored as DB bytes (EXIF stripped); operators see thumbs in Help Desk. Prefer this path over Cursor Bugbot Autofix for cost.
 
 Pull approved answers: `GET /api/relay/questions/pull?clientKey=…`
 

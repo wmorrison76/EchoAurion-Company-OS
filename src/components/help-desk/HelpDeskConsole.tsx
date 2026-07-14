@@ -1076,6 +1076,47 @@ export function HelpDeskConsole() {
                 </div>
               )}
 
+              {/* Pilot screenshots — shape+label, not color-only */}
+              {(detail.attachments?.length ?? 0) > 0 && (
+                <div
+                  className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-3"
+                  aria-label={`${detail.attachments.length} screenshot attachments`}
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <StatusBadge
+                      level="ok"
+                      label={`${detail.attachments.length} screenshot${detail.attachments.length === 1 ? '' : 's'}`}
+                    />
+                    <span className="text-[11px] text-[#5a5a78]">
+                      ▦ User attached — review for fix context (prefer Help Desk over Bugbot Autofix)
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {detail.attachments.map((a, i) => (
+                      <a
+                        key={a.id}
+                        href={a.thumbUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex flex-col gap-1"
+                        aria-label={`Open screenshot ${i + 1}: ${a.altText || a.fileName || a.mimeType}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={a.thumbUrl}
+                          alt={a.altText || `Screenshot ${i + 1}`}
+                          className="h-28 w-auto max-w-[180px] rounded-md border border-[#2a2a3f] object-contain bg-[#12121a] transition-opacity duration-150 group-hover:opacity-90"
+                        />
+                        <span className="max-w-[180px] truncate font-mono text-[10px] text-[#a0a0b8]">
+                          ▦ {a.altText || `Shot ${i + 1}`} ·{' '}
+                          {Math.round(a.byteSize / 1024)} KB
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Messages */}
               <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto">
                 {detail.messages.map((m) => (

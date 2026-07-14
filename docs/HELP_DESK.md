@@ -28,6 +28,7 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 | Multilingual (14 pilot locales → Knights reply in user language) | Live — see `OPS_TRAINING_MANUAL.md` |
 | Pilot Help Desk **thread history** (15 days, `GET /api/relay/questions`) | Live — pull still one-shot; history does not mark delivered |
 | **Payroll / compensation hard refuse** | Live — Knights skipped; safe refuse draft + operator note; never standby auto-send |
+| **Screenshot attachments** (max 2 × ~1.5MB, DB bytes, ~90d retention) | Live — prefer Help Desk + screenshots over Cursor Bugbot Autofix for cost; optional: turn Autofix off for this repo in Cursor settings |
 
 ---
 

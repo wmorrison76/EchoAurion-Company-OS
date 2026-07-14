@@ -12,6 +12,11 @@ import {
 import { getStandbyConfig } from '@/lib/standby'
 import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
 import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
+import {
+  attachmentAuditMeta,
+  parseIncomingAttachments,
+  persistAttachments,
+} from '@/lib/help-desk-attachments'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -27,6 +32,20 @@ const schema = z.object({
   locale: z.string().min(2).max(16).optional(),
   gate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
   intakeGate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
+  /** Up to 2 screenshots (PNG/JPEG/WebP), base64 — max ~1.5MB each decoded. */
+  attachments: z
+    .array(
+      z.object({
+        mimeType: z.string().min(3).max(64),
+        dataBase64: z.string().min(1).max(2_200_000),
+        fileName: z.string().max(200).optional(),
+        altText: z.string().max(200).optional(),
+        widthPx: z.number().int().positive().max(10000).optional(),
+        heightPx: z.number().int().positive().max(10000).optional(),
+      })
+    )
+    .max(2)
+    .optional(),
 })
 
 interface QuestionHistoryItem {
@@ -184,7 +203,15 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
-    const { question, context, locale } = parsed.data
+    const { question, context, locale, attachments: rawAttachments } = parsed.data
+    const parsedAtt = parseIncomingAttachments(rawAttachments)
+    if (!parsedAtt.ok) {
+      return Response.json(
+        { success: false, error: parsedAtt.error, code: parsedAtt.code },
+        { status: 400 }
+      )
+    }
+
     const intakeGate = gateFromQuestionPayload({
       gate: parsed.data.gate,
       intakeGate: parsed.data.intakeGate,
@@ -192,8 +219,13 @@ export async function POST(req: Request): Promise<Response> {
     })
 
     // Merge top-level locale into context so Knights can resolve reply language.
+    // Never store raw image bytes in context JSON — only metadata after persist.
     const mergedContext: Record<string, unknown> = {
       ...(context ?? {}),
+    }
+    // Strip any accidental base64 blobs from context before store.
+    if ('attachments' in mergedContext) {
+      delete mergedContext.attachments
     }
     if (locale?.trim()) {
       mergedContext.locale = locale.trim()
@@ -203,8 +235,6 @@ export async function POST(req: Request): Promise<Response> {
     ) {
       mergedContext.locale = mergedContext.uiLocale
     }
-    const contextForStore =
-      Object.keys(mergedContext).length > 0 ? mergedContext : undefined
 
     const client = await upsertSupportClientByKey(key.clientKey)
     const created = await db.customerQuestion.create({
@@ -213,13 +243,38 @@ export async function POST(req: Request): Promise<Response> {
         clientId: client.id,
         question,
         intakeGate: intakeGate ?? undefined,
-        context: contextForStore as Prisma.InputJsonValue | undefined,
+        context:
+          Object.keys(mergedContext).length > 0
+            ? (mergedContext as Prisma.InputJsonValue)
+            : undefined,
         actor: 'computer_agent',
       },
     })
+
+    let attachmentMetas: Awaited<ReturnType<typeof persistAttachments>> = []
+    if (parsedAtt.prepared.length > 0) {
+      attachmentMetas = await persistAttachments({
+        customerQuestionId: created.id,
+        prepared: parsedAtt.prepared,
+      })
+      mergedContext.attachmentMeta = attachmentMetas.map((a) => ({
+        id: a.id,
+        mimeType: a.mimeType,
+        altText: a.altText,
+        byteSize: a.byteSize,
+      }))
+      await db.customerQuestion.update({
+        where: { id: created.id },
+        data: { context: mergedContext as Prisma.InputJsonValue },
+      })
+    }
+
     await audit('computer_agent', 'support.question.receive', created.id, {
       intakeGate,
       locale: typeof mergedContext.locale === 'string' ? mergedContext.locale : undefined,
+      ...(attachmentMetas.length
+        ? { attachments: attachmentAuditMeta(attachmentMetas) }
+        : {}),
     })
 
     const gateMeta = intakeGate ? INTAKE_GATE_META[intakeGate] : null
@@ -230,7 +285,7 @@ export async function POST(req: Request): Promise<Response> {
       .then((r) => {
         if (!autoKnights) return
         console.info(
-          `[relay/questions] processed ${created.id} → ticket ${r.ticketId} knights=${r.knightsRan} auto=${r.autoApproved} gate=${intakeGate ?? 'unset'}`
+          `[relay/questions] processed ${created.id} → ticket ${r.ticketId} knights=${r.knightsRan} auto=${r.autoApproved} gate=${intakeGate ?? 'unset'} attachments=${attachmentMetas.length}`
         )
       })
       .catch((err) => {
@@ -254,11 +309,16 @@ export async function POST(req: Request): Promise<Response> {
             ? 'New customer question — Knights drafting'
             : 'New customer question'
 
+    const shotNote =
+      attachmentMetas.length > 0
+        ? ` · ${attachmentMetas.length} screenshot${attachmentMetas.length === 1 ? '' : 's'}`
+        : ''
+
     await raiseAlert({
       kind: 'question',
       severity: 'WARN',
       title: alertTitle,
-      body: `${gateMeta ? `${gateMeta.shape} ${gateMeta.label}: ` : ''}${question.slice(0, 120)}`,
+      body: `${gateMeta ? `${gateMeta.shape} ${gateMeta.label}: ` : ''}${question.slice(0, 120)}${shotNote}`,
       entityRef: created.id,
       url: '/support/inbox',
     })
@@ -270,18 +330,18 @@ export async function POST(req: Request): Promise<Response> {
         ? standby.helpDeskAutoSendUntil
         : null
 
-    /** Pilot-facing expectation — dual control unless timed unlock is active. */
+    /** Pilot-facing expectation — customer-safe (no Company OS / Approve language). */
     let waitingHint: string
     if (intakeGate === 'BUILD') {
-      waitingHint = 'queued for paid build / quote — no auto-reply for this category'
+      waitingHint = 'queued for a paid build / quote — Aurion will follow up'
     } else if (intakeGate === 'BILLING') {
-      waitingHint = 'queued for billing — no auto-reply for this category'
+      waitingHint = 'queued for billing — Aurion will follow up'
     } else if (autoSendUnlockedUntil) {
-      waitingHint = `Aurion auto-reply unlocked until ${autoSendUnlockedUntil}`
+      waitingHint = '✓ Sent — waiting for Aurion'
     } else if (autoKnights) {
-      waitingHint = 'waiting for Aurion approval'
+      waitingHint = '✓ Sent — waiting for Aurion'
     } else {
-      waitingHint = 'queued for Aurion — no auto-draft right now'
+      waitingHint = '✓ Sent — Aurion will follow up'
     }
 
     return Response.json(
@@ -294,6 +354,7 @@ export async function POST(req: Request): Promise<Response> {
           routeHint: gateMeta?.routeHint ?? null,
           waitingHint,
           autoSendUnlockedUntil,
+          attachmentCount: attachmentMetas.length,
         },
       } satisfies APIResponse<{
         id: string
@@ -302,6 +363,7 @@ export async function POST(req: Request): Promise<Response> {
         routeHint: string | null
         waitingHint: string
         autoSendUnlockedUntil: string | null
+        attachmentCount: number
       }>,
       { status: 201 }
     )

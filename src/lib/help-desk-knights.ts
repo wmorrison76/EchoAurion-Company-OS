@@ -16,6 +16,10 @@ import {
   type HelpDeskLanguageResolution,
 } from '@/lib/help-desk-locale'
 import { detectPayrollRefuse } from '@/lib/payroll-refuse'
+import {
+  attachmentPromptBlock,
+  loadAttachmentsForTicket,
+} from '@/lib/help-desk-attachments'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -196,6 +200,27 @@ export async function dispatchKnightsOnTicket(
     },
   })
 
+  const attachmentViews = await loadAttachmentsForTicket({
+    ticketId,
+    customerQuestionId: ticket.customerQuestionId,
+  })
+  const shotsBlock = attachmentPromptBlock(
+    attachmentViews.map((a) => ({
+      altText: a.altText,
+      mimeType: a.mimeType,
+      byteSize: a.byteSize,
+    }))
+  )
+  if (attachmentViews.length > 0) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: `📎 User attached ${attachmentViews.length} screenshot${attachmentViews.length === 1 ? '' : 's'} — open Help Desk thumbnails to review (text Knights cannot see pixels).`,
+      },
+    })
+  }
+
   const prompt = [
     `Help Desk ticket: ${ticket.subject}`,
     `Channel: ${ticket.channel}`,
@@ -205,6 +230,8 @@ export async function dispatchKnightsOnTicket(
     ticket.errorCategory ? `Category: ${ticket.errorCategory}` : null,
     '',
     multilingualPromptBlock(lang),
+    '',
+    shotsBlock,
     '',
     'Tenant isolation: do not reference other properties’ guest/staff data. Patterns only.',
     '',

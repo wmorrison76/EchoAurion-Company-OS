@@ -4,11 +4,13 @@ import { computeSlaDueDates, evaluateSla } from '@/lib/support-sla'
 import { isGuestImpactModule } from '@/lib/guest-impact'
 import type { IntakeGate } from '@/lib/intake-gate'
 import type {
+  HelpAttachmentView,
   HelpMessageView,
   HelpTicketDetail,
   HelpTicketListItem,
   HelpVoiceNoteView,
 } from '@/types/help-desk'
+import { toAttachmentView } from '@/lib/help-desk-attachments'
 
 type TicketRow = {
   id: string
@@ -66,6 +68,16 @@ type TicketRow = {
     transcript: string
     durationSec: number | null
     source: string
+    createdAt: Date
+  }>
+  attachments?: Array<{
+    id: string
+    mimeType: string
+    fileName: string | null
+    altText: string | null
+    byteSize: number
+    widthPx: number | null
+    heightPx: number | null
     createdAt: Date
   }>
 }
@@ -191,6 +203,7 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
     csatComment: t.csatComment ?? null,
     messages: (t.messages ?? []).map(toMessageView),
     voiceNotes: (t.voiceNotes ?? []).map(toVoiceView),
+    attachments: (t.attachments ?? []).map(toAttachmentView),
     policy: {
       recommendation: verdict.recommendation,
       shape: verdict.shape,
@@ -228,10 +241,30 @@ export async function ensureTicketFromInbox(input: {
       include: {
         messages: { orderBy: { createdAt: 'asc' } },
         voiceNotes: { orderBy: { createdAt: 'asc' } },
+        attachments: { orderBy: { createdAt: 'asc' } },
         _count: { select: { messages: true } },
       },
     })
-    if (existing) return toDetail(existing)
+    if (existing) {
+      // Backfill ticketId on any question-only attachments.
+      await db.helpAttachment.updateMany({
+        where: { customerQuestionId: input.id, ticketId: null },
+        data: { ticketId: existing.id },
+      })
+      if ((existing.attachments?.length ?? 0) === 0) {
+        const refreshed = await db.helpTicket.findUnique({
+          where: { id: existing.id },
+          include: {
+            messages: { orderBy: { createdAt: 'asc' } },
+            voiceNotes: { orderBy: { createdAt: 'asc' } },
+            attachments: { orderBy: { createdAt: 'asc' } },
+            _count: { select: { messages: true } },
+          },
+        })
+        return toDetail(refreshed ?? existing)
+      }
+      return toDetail(existing)
+    }
 
     const q = await db.customerQuestion.findUnique({ where: { id: input.id } })
     if (!q) throw new Error('Question not found')
@@ -280,10 +313,25 @@ export async function ensureTicketFromInbox(input: {
       include: {
         messages: { orderBy: { createdAt: 'asc' } },
         voiceNotes: { orderBy: { createdAt: 'asc' } },
+        attachments: { orderBy: { createdAt: 'asc' } },
         _count: { select: { messages: true } },
       },
     })
-    return toDetail(ticket)
+    // Link any pre-stored question screenshots to this ticket.
+    await db.helpAttachment.updateMany({
+      where: { customerQuestionId: q.id, ticketId: null },
+      data: { ticketId: ticket.id },
+    })
+    const withAtt = await db.helpTicket.findUnique({
+      where: { id: ticket.id },
+      include: {
+        messages: { orderBy: { createdAt: 'asc' } },
+        voiceNotes: { orderBy: { createdAt: 'asc' } },
+        attachments: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { messages: true } },
+      },
+    })
+    return toDetail(withAtt ?? ticket)
   }
 
   const existing = await db.helpTicket.findFirst({

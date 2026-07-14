@@ -120,6 +120,7 @@
 | Echo unique | Overlap / gap |
 |---|---|
 | **Already wired:** GitHub webhook + Bugbot/cursor[bot] ingest → SYSTEM tickets (`moduleHint=autofix`) + CI/deploy failure → same Knights/agent_loop; draft PR only | Not a general GitHub marketplace bot; strength is **product runtime errors + ops failures** in one Help Desk with customer notify-when-fixed |
+| **Prefer for product UI bugs:** Pilot Help Desk + up to 2 screenshots → Company OS console (Knights/William) — cheaper than Cursor Bugbot Autofix (~$125+); optional turn Autofix off for this repo | Autofix remains useful for PR/CI streams already ingested as SYSTEM tickets |
 
 ---
 
