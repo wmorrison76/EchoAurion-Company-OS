@@ -100,7 +100,8 @@ export async function GET(): Promise<Response> {
       docs: 'docs/NIGHT_CLEANER_MOLE.md',
       schemaVersion: 1,
       labels: { ok: '✓ Ready for morning open', warn: '▲ Needs day-shift attention', error: '✕ Blocks morning open' },
-      policy: 'TASK tickets only — no silent merges, no auto-fix',
+      policy: 'TASK tickets only — morning-open task list; no silent merges, no overnight remodel',
+      systemImprovements: 'optional string[] — plain-English improvements (slow panels, Coming soon, stubs)',
       exampleMinimal: example,
     },
   })

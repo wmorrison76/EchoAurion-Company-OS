@@ -1,6 +1,7 @@
 /**
  * CI / PR / Render deploy failure → same HelpTicket SYSTEM + agent loop path
  * as runtime crashes. Fingerprints are stable; payloads are redacted.
+ * Railway: scaffold only (poll stub + webhook ingest) — not live like Render.
  * See docs/ERROR_CAPTURE_AND_SCOPE.md § CI/PR/Deploy.
  */
 
@@ -34,6 +35,10 @@ function clientKeyForRepo(fullName: string): string {
 
 function clientKeyForRender(serviceId: string): string {
   return `render/${serviceId}`
+}
+
+function clientKeyForRailway(serviceId: string): string {
+  return `railway/${serviceId}`
 }
 
 /** Link open WorkRequest / HelpTicket when commit or PR number is known.
@@ -713,4 +718,132 @@ export async function pollGithubCiFailures(): Promise<{
   }
 
   return { checked, ingested, ticketIds }
+}
+
+/**
+ * Ingest a Railway deploy/build failure (webhook or future poll).
+ * Same SYSTEM / INFRA path as Render — platform tagged `railway`.
+ */
+export async function ingestRailwayDeployFailure(input: {
+  serviceId: string
+  serviceName: string
+  deploymentId: string
+  status: string
+  commitSha?: string | null
+  environmentName?: string | null
+}): Promise<{ ingested: boolean; ticketId?: string; reason?: string }> {
+  const status = (input.status ?? '').toLowerCase()
+  const failed =
+    status.includes('fail') ||
+    status === 'crashed' ||
+    status === 'removed' ||
+    status === 'skipped'
+  if (!failed) return { ingested: false, reason: 'not_failed' }
+
+  const fingerprint = fpHash([
+    'railway',
+    input.serviceId,
+    input.deploymentId,
+    input.status,
+  ])
+  const productLine: ProductLine = /company.?os/i.test(input.serviceName)
+    ? 'company-os'
+    : /luccca|echo|pilot|product/i.test(input.serviceName)
+      ? 'echoaurion'
+      : 'unknown'
+
+  const message = redactSensitive(
+    `Railway deploy failed: ${input.serviceName} (${input.status})`,
+    500
+  )
+  const stack = redactSensitive(
+    [
+      `source=railway.deploy`,
+      `serviceId=${input.serviceId}`,
+      `serviceName=${input.serviceName}`,
+      `deploymentId=${input.deploymentId}`,
+      `status=${input.status}`,
+      `sha=${input.commitSha ?? 'n/a'}`,
+      input.environmentName ? `env=${input.environmentName}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    4000
+  )
+
+  const result = await ingestErrorEvent({
+    clientKey: clientKeyForRailway(input.serviceId),
+    fingerprint,
+    message,
+    stack,
+    errorClass: 'DeployFailure',
+    moduleHint: 'deploy',
+    categoryHint: 'INFRA',
+    productLine,
+    scopeHint: 'GLOBAL',
+    source: 'railway.deploy',
+    platform: 'railway',
+  })
+
+  const related = await findRelatedIds({ commitSha: input.commitSha })
+  await annotateRelatedTicket(
+    result.ticket.id,
+    related,
+    `Railway deploy failed — repair queued · ${input.serviceName}`
+  )
+
+  return { ingested: true, ticketId: result.ticket.id }
+}
+
+/**
+ * Poll Railway for failed deployments.
+ *
+ * Honest status: **not wired like Render**. Requires `RAILWAY_TOKEN` (+ optional
+ * `RAILWAY_PROJECT_ID`). Until GraphQL list-deployments is implemented, returns
+ * `skipped: true` and does not invent failures. Prefer webhook stub
+ * `POST /api/webhooks/railway` when Railway is still in use.
+ *
+ * Note: pilot docs (`RAILWAY-RETIREMENT.md`) recommend retiring Railway —
+ * Render is the live production path today.
+ */
+export async function pollRailwayDeployFailures(): Promise<{
+  checked: number
+  ingested: number
+  ticketIds: string[]
+  skipped: boolean
+  reason?: string
+}> {
+  const token = process.env.RAILWAY_TOKEN?.trim()
+  if (!token) {
+    return {
+      checked: 0,
+      ingested: 0,
+      ticketIds: [],
+      skipped: true,
+      reason: 'RAILWAY_TOKEN unset — Railway poll scaffold only (Render is live)',
+    }
+  }
+
+  const projectId = process.env.RAILWAY_PROJECT_ID?.trim()
+  if (!projectId) {
+    return {
+      checked: 0,
+      ingested: 0,
+      ticketIds: [],
+      skipped: true,
+      reason:
+        'RAILWAY_PROJECT_ID unset — set token + project to enable GraphQL poll (TODO)',
+    }
+  }
+
+  // TODO(claude): Wire Railway GraphQL deployments query → ingestRailwayDeployFailure.
+  // Pattern exists (ingest + fingerprint); API list not implemented — avoid fake polls.
+  return {
+    checked: 0,
+    ingested: 0,
+    ticketIds: [],
+    skipped: true,
+    reason:
+      'Railway GraphQL poll not implemented — use POST /api/webhooks/railway or retire Railway',
+  }
 }

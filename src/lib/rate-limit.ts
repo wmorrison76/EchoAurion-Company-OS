@@ -23,6 +23,8 @@ export const INGEST_BUDGETS = {
   knowledgeGlobal: Number(process.env.RATE_KNOWLEDGE_GLOBAL ?? 200),
   /** GitHub webhook events / minute */
   githubWebhook: Number(process.env.RATE_GITHUB_WEBHOOK ?? 120),
+  /** Railway webhook events / minute (scaffold) */
+  railwayWebhook: Number(process.env.RATE_RAILWAY_WEBHOOK ?? 60),
   /** Ops poll / minute (cron) */
   opsPoll: Number(process.env.RATE_OPS_POLL ?? 6),
 } as const
@@ -82,7 +84,13 @@ export type ThrottleResult =
 
 /** Dual budget: per-clientKey + global. Both must pass. */
 export function allowIngestThrottle(input: {
-  scope: 'error' | 'knowledge' | 'self_report' | 'github_webhook' | 'ops_poll'
+  scope:
+    | 'error'
+    | 'knowledge'
+    | 'self_report'
+    | 'github_webhook'
+    | 'railway_webhook'
+    | 'ops_poll'
   clientKey?: string | null
 }): ThrottleResult {
   if (input.scope === 'error') {
@@ -166,6 +174,19 @@ export function allowIngestThrottle(input: {
         retryAfterSec: r.retryAfterSec,
         code: 'RATE_LIMITED',
         label: '⚠ Throttled — GitHub webhook budget',
+      }
+    }
+    return { ok: true }
+  }
+
+  if (input.scope === 'railway_webhook') {
+    const r = allowRateLimit('ingest:railway_webhook', INGEST_BUDGETS.railwayWebhook, WINDOW_MS)
+    if (!r.ok) {
+      return {
+        ok: false,
+        retryAfterSec: r.retryAfterSec,
+        code: 'RATE_LIMITED',
+        label: '⚠ Throttled — Railway webhook budget',
       }
     }
     return { ok: true }

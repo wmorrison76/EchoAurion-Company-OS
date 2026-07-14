@@ -107,6 +107,12 @@ export interface NightCleanerReport {
   telemetrySummary?: NightCleanerTelemetrySummary
   categories: NightCleanerCategoryResult[]
   tasks: NightCleanerTask[]
+  /**
+   * Plain-English system improvements for day shift / William —
+   * not just breaks: slow panels, “Coming soon” buttons, unfinished stubs.
+   * Report is a task list — never auto-remodel overnight.
+   */
+  systemImprovements?: string[]
   /** Optional ideas William isn’t thinking of — hospitality-flavored */
   expandIdeas?: string[]
   /** Markdown mirror for ops inbox (optional) */

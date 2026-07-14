@@ -93,8 +93,9 @@ When Company OS **and** luccca-web both ship Layer-3 handshake headers:
 | Secret | Set `GITHUB_WEBHOOK_SECRET` on Company OS to match GitHub webhook secret |
 | Ops poll cron | `echoaurion-company-os-ops-poll` in `render.yaml` — needs `CRON_SECRET` + `WEB_SERVICE_URL` / `RENDER_SERVICE_URL` |
 | Manual test | `POST /api/ops/poll-failures` with `Authorization: Bearer $CRON_SECRET` |
+| Railway | **Not live** — scaffold only (`/api/webhooks/railway`, poll returns `skipped`). Prefer retire Railway; Render captures deploys. Optional: set `RAILWAY_WEBHOOK_SECRET` if a Railway service still exists |
 
-Docs: `docs/ERROR_CAPTURE_AND_SCOPE.md`, `docs/CRON_SECRET_SETUP.md`.
+Docs: `docs/ERROR_CAPTURE_AND_SCOPE.md`, `docs/CRON_SECRET_SETUP.md`, `docs/UPDATE_WITHOUT_LOSING_WORK.md`.
 
 ---
 

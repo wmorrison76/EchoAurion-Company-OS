@@ -101,6 +101,14 @@ export function formatNightCleanerTicketBody(report: NightCleanerReport): string
     }
   }
 
+  if (report.systemImprovements && report.systemImprovements.length > 0) {
+    lines.push('')
+    lines.push('System improvements (day-shift task list — not auto-fixed overnight)')
+    for (const item of report.systemImprovements.slice(0, 40)) {
+      lines.push(`  · ${scrubLine(item, 200)}`)
+    }
+  }
+
   if (report.expandIdeas && report.expandIdeas.length > 0) {
     lines.push('')
     lines.push('Expand ideas')
@@ -110,7 +118,9 @@ export function formatNightCleanerTicketBody(report: NightCleanerReport): string
   }
 
   lines.push('')
-  lines.push('Policy: night cleaner reports only — no silent merges, no auto-fix.')
+  lines.push(
+    'Policy: night cleaner leaves a morning-open task list only — no silent merges, no overnight remodel.'
+  )
   return lines.join('\n')
 }
 

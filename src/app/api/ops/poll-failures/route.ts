@@ -1,6 +1,10 @@
 import { audit } from '@/lib/audit'
 import { allowIngestThrottle, throttleResponse } from '@/lib/rate-limit'
-import { pollGithubCiFailures, pollRenderDeployFailures } from '@/lib/ops-failure-ingest'
+import {
+  pollGithubCiFailures,
+  pollRailwayDeployFailures,
+  pollRenderDeployFailures,
+} from '@/lib/ops-failure-ingest'
 import { processIngestJobs } from '@/lib/ingest-queue'
 import { purgeExpiredNonces } from '@/lib/request-handshake'
 import type { APIResponse } from '@/types'
@@ -11,6 +15,13 @@ export const maxDuration = 60
 type PollResult = {
   render: { checked: number; ingested: number; ticketIds: string[] }
   github: { checked: number; ingested: number; ticketIds: string[] }
+  railway: {
+    checked: number
+    ingested: number
+    ticketIds: string[]
+    skipped: boolean
+    reason?: string
+  }
   queue: { processed: number; done: number; failed: number }
   label: string
 }
@@ -19,6 +30,8 @@ type PollResult = {
  * POST /api/ops/poll-failures
  * Cron: poll Render failed deploys + GitHub CI failures → SYSTEM tickets,
  * then drain a batch of ingest jobs (agent loop / notify / learning).
+ * Railway: scaffold poll (skipped unless RAILWAY_TOKEN + project wired) —
+ * honest: only Render + GitHub are live today.
  *
  * Auth: Authorization: Bearer $CRON_SECRET
  */
@@ -36,14 +49,15 @@ export async function POST(req: Request): Promise<Response> {
   if (!throttle.ok) return throttleResponse(throttle)
 
   try {
-    const [render, github] = await Promise.all([
+    const [render, github, railway] = await Promise.all([
       pollRenderDeployFailures(),
       pollGithubCiFailures(),
+      pollRailwayDeployFailures(),
     ])
     const queue = await processIngestJobs(10)
     const noncesPurged = await purgeExpiredNonces()
 
-    const ingested = render.ingested + github.ingested
+    const ingested = render.ingested + github.ingested + railway.ingested
     const label =
       ingested > 0
         ? `⚠ Ops failures captured · ${ingested} ticket(s)`
@@ -52,13 +66,21 @@ export async function POST(req: Request): Promise<Response> {
     await audit('computer_agent', 'ops.poll_failures', undefined, {
       render,
       github,
+      railway,
       queue,
       noncesPurged,
     })
 
     return Response.json({
       success: true,
-      data: { render, github, queue, noncesPurged, label } satisfies PollResult & {
+      data: {
+        render,
+        github,
+        railway,
+        queue,
+        noncesPurged,
+        label,
+      } satisfies PollResult & {
         noncesPurged: number
       },
     } satisfies APIResponse<PollResult & { noncesPurged: number }>)

@@ -117,15 +117,75 @@ NightCleanerReport {
   telemetrySummary: { … }     // counts only — no event payloads with PII
   categories: NightCleanerCategoryResult[]
   tasks: NightCleanerTask[]    // actionable checklist → Help Desk
+  systemImprovements?: string[] // plain English: slow panels, Coming soon, stubs
   expandIdeas?: string[]       // optional “William isn’t thinking of”
 }
 ```
 
 Each **task** becomes a checklist line on the SYSTEM ticket (or a child finding). Prefer **one rollup ticket per night per productLine** (fingerprint dedupe) over ticket spam.
 
+**Explicit:** the report is a **task list for day shift / William** — not an overnight remodel. Nothing auto-merges; nothing silently rewrites Chronos.
+
 ---
 
-## 5. Checklist categories (top 10 + expand)
+## 5. System improvements (plain English for William)
+
+Night cleaners don’t only write “✕ broken.” They also note what still feels unfinished or slow — so morning open knows what to improve, not just what to firefight.
+
+### What the mole found overnight (how to read it)
+
+| Report field | Plain English |
+|---|---|
+| `overall` ✓ / ▲ / ✕ | Can we open the floor? Ready / needs attention / blocks open |
+| `categories` + `findings` | What corridors were walked (links, stubs, panels, deploy…) |
+| `tasks` | Checkbox list for day shift — fix these |
+| `systemImprovements` | Softer notes: slow loads, “Coming soon” buttons, unfinished stubs — **improvements**, not only breaks |
+| `telemetrySummary` | Counts only (panels ok/slow/blank) — no guest names |
+
+### What’s still unfinished (scaffold honesty)
+
+| Piece | Status |
+|---|---|
+| Company OS ingest API | ✓ Scaffolded (`POST /api/ops/night-cleaner-report`) |
+| Report types + fingerprint ticket | ✓ Scaffolded |
+| Pilot static scanners (placeholders, registry, npm audit…) | ✕ Not wired yet |
+| Playwright guest/operator 390px smoke | ✕ Stub / outline only |
+| EKG export → report mapper | ✕ Not wired yet |
+| Dr. OS “last night” chip | ✕ Not built yet |
+| Render nightly cron | ✕ Not in Blueprint yet |
+
+Until scanners run, ingest still accepts a hand-built or dry-run report — useful for contract testing, not a full floor walk.
+
+### Suggested improvements (examples — not just breaks)
+
+Write these into `systemImprovements: string[]` in hospitality language:
+
+- “Schedule panel loads slow after close — managers wait on morning open.”
+- “This button still says Coming soon on the banquet path.”
+- “Empty banquet list has no next-step CTA — looks broken to front desk.”
+- “Chronos role gate returns 403 for a launch-tier role we promised.”
+- “Mobile 390px: sidebar overlaps the BEO print action.”
+- “i18n key leaking as raw text on ES locale guest path.”
+
+### Morning open checklist (hospitality language)
+
+Before you trust the floor:
+
+1. **Read the night cleaner ticket** — Overall ✓ / ▲ / ✕ (shape + label).  
+2. **Guest corridor first** — deep-links, empty states, i18n, anything guests touch.  
+3. **Staff corridor** — Chronos / schedule / registry blanks and role gates.  
+4. **Deploy readiness** — audit / secrets / relay heartbeat (ops).  
+5. **Work the Tasks list** — day shift owns fixes; mole does not remodel overnight.  
+6. **Skim System improvements** — slow panels and “Coming soon” are still unfinished hospitality, even if not ✕.  
+7. **Do not expect silent merges** — draft PR + dual control only when you choose.
+
+### Policy line (repeat)
+
+> The Night Cleaner Mole leaves a **morning-open task list**. It does **not** auto-fix product code, silent-merge PRs, or remodel the hotel overnight.
+
+---
+
+## 6. Checklist categories (top 10 + expand)
 
 Hospitality framing: guest corridor vs staff corridor.
 
@@ -163,7 +223,7 @@ Hospitality framing: guest corridor vs staff corridor.
 
 ---
 
-## 6. Help Desk / Dr. OS intake — TASKS, not silent merges
+## 7. Help Desk / Dr. OS intake — TASKS, not silent merges
 
 ### Ticket policy
 
@@ -204,17 +264,22 @@ Deploy readiness
 Tasks (do not auto-merge)
   [ ] Fix BEO deep-link
   [ ] Chronos PnL blank — EKG error …
+
+System improvements (day-shift — not auto-fixed overnight)
+  · Schedule panel loads slow
+  · Banquet path button still says Coming soon
 ```
 
 ### What never happens
 
 - Mole does not open draft PRs without constitution + dual control  
 - Mole does not resolve its own tickets  
-- Mole does not include PII, stack traces with cookies, or raw Sentry event payloads — IDs and counts only
+- Mole does not include PII, stack traces with cookies, or raw Sentry event payloads — IDs and counts only  
+- Mole does **not** remodel overnight — report = task list for William / day shift
 
 ---
 
-## 7. Security & privacy
+## 8. Security & privacy
 
 1. **No PII in reports** — no names, emails, room numbers, phone, card, free-text guest notes.  
 2. **Redact** env values — report “Stripe configured: ✓/✕”, never keys.  
@@ -225,7 +290,7 @@ Tasks (do not auto-merge)
 
 ---
 
-## 8. Headless path outline (Playwright not fully wired)
+## 9. Headless path outline (Playwright not fully wired)
 
 Prefer a **script first**, browser later:
 
@@ -252,7 +317,7 @@ Until Playwright is wired: cron runs static scanners + optional EKG export JSON 
 
 ---
 
-## 9. Schedule recommendation
+## 10. Schedule recommendation
 
 | Environment | Cron | Notes |
 |---|---|---|
@@ -266,7 +331,7 @@ Suggested OPEN_OPS line: `CRON_SECRET` + nightly POST of report to `/api/ops/nig
 
 ---
 
-## 10. Build sequence (next week)
+## 11. Build sequence (next week)
 
 1. **Freeze tag** `pre-night-cleaner-mole-20260714` on Company OS (and pilot when starting runner work).  
 2. Land this doc + report types + ingest API stub (this change).  
@@ -279,15 +344,16 @@ Suggested OPEN_OPS line: `CRON_SECRET` + nightly POST of report to `/api/ops/nig
 
 ---
 
-## 11. Related docs
+## 12. Related docs
 
 - [`SUPPORT_90_DAY_PLAN.md`](./SUPPORT_90_DAY_PLAN.md) — standby sim nights; night cleaner is floor walk  
 - [`OPEN_OPS_CHECKLIST.md`](./OPEN_OPS_CHECKLIST.md) — cron + secret clicks  
 - [`SUPPORT_COMPETITIVE_ANALYSIS.md`](./SUPPORT_COMPETITIVE_ANALYSIS.md) — reliability differentiation  
 - [`HELP_EVAL.md`](./HELP_EVAL.md) — Friday classifier sim (complementary)  
 - [`ERROR_CAPTURE_AND_SCOPE.md`](./ERROR_CAPTURE_AND_SCOPE.md) — SYSTEM tickets, no PII  
+- [`UPDATE_WITHOUT_LOSING_WORK.md`](./UPDATE_WITHOUT_LOSING_WORK.md) — deploy + soft reload (not overnight hot-patch)  
 - Pilot: `client/modules/EKGSystem/telemetry/panelSweepRunner.ts`
 
 ---
 
-*Aurion Holdings, Inc. · EchoAurion · night cleaners → morning open*
+*Aurion Holdings, Inc. · EchoAurion · night cleaners → morning open task list (not overnight remodel)*

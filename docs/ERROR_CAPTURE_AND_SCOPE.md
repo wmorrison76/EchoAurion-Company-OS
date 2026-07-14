@@ -87,7 +87,8 @@ System failures on **fix deployment** enter the same path as app crashes:
 
 ```
 GitHub webhook (workflow_run / check_suite / pull_request)
-  or cron POST /api/ops/poll-failures (Render + GitHub poll)
+  or cron POST /api/ops/poll-failures (Render + GitHub poll; Railway scaffold)
+  or POST /api/webhooks/railway (scaffold — not live until secret set)
         │
         ▼
   ops-failure-ingest → redact → fingerprint (ops-sha…)
@@ -99,10 +100,13 @@ GitHub webhook (workflow_run / check_suite / pull_request)
   enqueue agent_loop → WorkRequest FIX + draft PR plan + Knights
 ```
 
-| Ingress | Auth | Notes |
-|---|---|---|
-| `POST /api/webhooks/github` | `X-Hub-Signature-256` + `GITHUB_WEBHOOK_SECRET` | CI/PR + **Bugbot/cursor autofix** comments |
-| `POST /api/ops/poll-failures` | `Bearer $CRON_SECRET` | Render failed deploys + recent CI + queue drain |
+| Ingress | Auth | Live? | Notes |
+|---|---|---|---|
+| `POST /api/webhooks/github` | `X-Hub-Signature-256` + `GITHUB_WEBHOOK_SECRET` | **Yes** | CI/PR + **Bugbot/cursor autofix** comments |
+| `POST /api/ops/poll-failures` | `Bearer $CRON_SECRET` | **Yes** (Render + GitHub) | Render failed deploys + recent CI + queue drain; Railway poll returns `skipped` |
+| `POST /api/webhooks/railway` | `Bearer $RAILWAY_WEBHOOK_SECRET` | **Scaffold** | Same `DeployFailure` ingest path; GraphQL poll not implemented |
+
+**Honest status — Railway:** Deploy/build failures are **not** captured like Render today. Only Render + GitHub are wired. Scaffold exists (`ingestRailwayDeployFailure`, poll stub, webhook stub). Pilot `RAILWAY-RETIREMENT.md` recommends retiring Railway; Render is sole production for luccca-web.
 
 **Bugbot / cursor[bot] (rewire class, e.g. luccca-web PR #202):**
 - Webhook events: `issue_comment`, `pull_request_review_comment`
