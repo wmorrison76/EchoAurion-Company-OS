@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayGuard, requireClientKey } from '@/lib/relay-auth'
+import { relayAuthorized, relayGuard, requireClientKey } from '@/lib/relay-auth'
 import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import {
   processInboundQuestion,
@@ -16,6 +16,9 @@ import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
+/** Pilot Help Desk thread retention window (multi-device re-fetch). */
+const HELP_DESK_HISTORY_DAYS = 15
+
 const schema = z.object({
   clientKey: z.string().min(1).max(200),
   question: z.string().min(1).max(4000),
@@ -25,6 +28,120 @@ const schema = z.object({
   gate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
   intakeGate: z.enum(['TECH', 'BILLING', 'BUILD', 'OTHER']).optional(),
 })
+
+interface QuestionHistoryItem {
+  id: string
+  question: string
+  answer: string | null
+  status: string
+  intakeGate: string | null
+  createdAt: string
+  answeredAt: string | null
+  /** Waiting for reply | Replied — shape+label friendly for pilots. */
+  replyState: 'waiting' | 'replied'
+}
+
+/** Strip emails / long digit runs from pilot-facing text (PII hygiene). */
+function redactPilotText(text: string, max = 4000): string {
+  return text
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\b\d{10,}\b/g, '[digits]')
+    .slice(0, max)
+}
+
+/**
+ * GET /api/relay/questions?clientKey=…&userId=…
+ * Last 15 days of Q&A for this deployment (does NOT mark delivered).
+ * Optional userId scopes to context.userId when questions were submitted with it.
+ */
+export async function GET(req: Request): Promise<Response> {
+  const a = relayAuthorized(req)
+  if (!a.ok) {
+    return Response.json(
+      { success: false, error: a.error, code: a.code },
+      { status: a.status }
+    )
+  }
+  const url = new URL(req.url)
+  const key = requireClientKey(url.searchParams.get('clientKey'))
+  if (!key.ok) {
+    return Response.json(
+      { success: false, error: key.error, code: key.code },
+      { status: key.status }
+    )
+  }
+  const userIdRaw = url.searchParams.get('userId')?.trim() ?? ''
+  const userId =
+    userIdRaw && userIdRaw.length <= 128 && /^[a-zA-Z0-9_.:-]+$/.test(userIdRaw)
+      ? userIdRaw
+      : null
+
+  try {
+    const since = new Date(
+      Date.now() - HELP_DESK_HISTORY_DAYS * 24 * 60 * 60 * 1000
+    )
+    const where: Prisma.CustomerQuestionWhereInput = {
+      clientKey: key.clientKey,
+      createdAt: { gte: since },
+      status: { not: 'DISMISSED' },
+    }
+    if (userId) {
+      where.context = {
+        path: ['userId'],
+        equals: userId,
+      }
+    }
+
+    const rows = await db.customerQuestion.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        question: true,
+        answer: true,
+        status: true,
+        intakeGate: true,
+        createdAt: true,
+        answeredAt: true,
+      },
+    })
+
+    const data: QuestionHistoryItem[] = rows.map((r) => {
+      const replied = Boolean(r.answer && r.status === 'ANSWERED')
+      return {
+        id: r.id,
+        question: redactPilotText(r.question),
+        answer: r.answer ? redactPilotText(r.answer) : null,
+        status: r.status,
+        intakeGate: r.intakeGate ?? null,
+        createdAt: r.createdAt.toISOString(),
+        answeredAt: r.answeredAt?.toISOString() ?? null,
+        replyState: replied ? 'replied' : 'waiting',
+      }
+    })
+
+    return Response.json({
+      success: true,
+      data,
+      meta: {
+        lastUpdated: new Date().toISOString(),
+        days: HELP_DESK_HISTORY_DAYS,
+      },
+    } as APIResponse<QuestionHistoryItem[]> & {
+      meta: { lastUpdated: string; days: number }
+    })
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'History fetch failed',
+        code: 'HISTORY_FAILED',
+      },
+      { status: 500 }
+    )
+  }
+}
 
 /**
  * A deployment submits a customer question.

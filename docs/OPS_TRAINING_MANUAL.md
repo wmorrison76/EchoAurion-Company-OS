@@ -9,7 +9,7 @@
 
 ## Day one — what you are operating
 
-Company OS is the internal brain. The **Help Desk** is where live customer questions and product errors land. The **pilot app** (property floor UI) has a headset icon next to the language flag; staff pick a category and type a question. That message travels over a secure relay into Company OS. **Knights** (AI seats) may draft a reply. **You** approve before anything is sent — unless Standby is on for low-risk text.
+Company OS is the internal brain. The **Help Desk** is where live customer questions and product errors land. The **pilot app** (property floor UI) has a headset icon next to the language flag; staff pick a category and type a question. That message travels over a secure relay into Company OS. **Knights** (AI seats) may draft a reply. **You** approve before anything is sent — unless Standby is on for low-risk text. Pilots keep the last **15 days** of their Help Desk thread (server history + local cache) — viewing a reply does not wipe it.
 
 You are not remote-controlling the property. You approve answers, quotes, and (when needed) draft pull requests.
 

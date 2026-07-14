@@ -26,6 +26,8 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 | Guided E2E test scenario | Live |
 | Twilio / real phone number | **Not yet** |
 | Multilingual (14 pilot locales → Knights reply in user language) | Live — see `OPS_TRAINING_MANUAL.md` |
+| Pilot Help Desk **thread history** (15 days, `GET /api/relay/questions`) | Live — pull still one-shot; history does not mark delivered |
+| **Payroll / compensation hard refuse** | Live — Knights skipped; safe refuse draft + operator note; never standby auto-send |
 
 ---
 
