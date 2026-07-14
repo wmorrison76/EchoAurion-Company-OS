@@ -153,14 +153,14 @@ export async function POST(req: Request): Promise<Response> {
           autoKnights,
           intakeGate,
           routeHint: gateMeta?.routeHint ?? null,
-          /** Pilot-facing expectation — drafts still need Approve & send unless standby. */
+          /** Pilot-facing expectation — dual control: draft → William Approve & send. */
           waitingHint: autoKnights
-            ? 'Aurion is drafting — reply appears after Help Desk approves (or standby auto-sends).'
+            ? 'waiting for Aurion approval'
             : intakeGate === 'BUILD'
-              ? 'Queued for paid build / quote — no auto-reply for this category.'
+              ? 'queued for paid build / quote — no auto-reply for this category'
               : intakeGate === 'BILLING'
-                ? 'Queued for Aurion billing — no auto-reply for this category.'
-                : 'Queued for Aurion — no auto-draft right now.',
+                ? 'queued for billing — no auto-reply for this category'
+                : 'queued for Aurion — no auto-draft right now',
         },
       } satisfies APIResponse<{
         id: string
