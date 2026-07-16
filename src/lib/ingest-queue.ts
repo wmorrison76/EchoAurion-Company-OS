@@ -15,6 +15,7 @@ export type IngestJobKind =
   | 'knowledge_embed'
   | 'echo_learn_from_runbook'
   | 'echo_learn_from_pattern'
+  | 'echo_learn_from_help'
 
 export type IngestJobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
 
@@ -102,6 +103,9 @@ async function runOne(job: {
     } else if (job.kind === 'echo_learn_from_pattern') {
       const { ingestErrorPatternChunk } = await import('@/lib/echo-learning')
       await ingestErrorPatternChunk(String(payload.patternId ?? ''))
+    } else if (job.kind === 'echo_learn_from_help') {
+      const { ingestHelpArticleChunk } = await import('@/lib/echo-learning')
+      await ingestHelpArticleChunk(String(payload.articleId ?? ''))
     } else if (job.kind === 'knowledge_embed') {
       // Placeholder — embeddings deferred until Neon pgvector enabled.
       await audit('computer_agent', 'echo.knowledge.embed.skip', undefined, {

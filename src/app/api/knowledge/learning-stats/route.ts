@@ -32,6 +32,8 @@ export async function GET(): Promise<Response> {
     } satisfies APIResponse<{
       chunks: number
       bySection: { section: string; count: number }[]
+      lastIngestAt: string | null
+      lastSignalAt: string | null
       piiScrubActive: true
       embeddingsEnabled: false
       queue: { pending: number; running: number; failed: number }

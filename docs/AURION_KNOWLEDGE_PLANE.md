@@ -110,10 +110,14 @@ Vendors access **learning products**, not tenant databases. Company OS remains t
 | Surface | Role |
 |---|---|
 | `POST /api/knowledge/ingest` | Bearer `KNOWLEDGE_INGEST_SECRET` (or `SUPPORT_INGEST_SECRET`) — allowlisted signals only |
+| `POST /api/knowledge/backfill` | Admin session / `CRON_SECRET` — seed chunks + `knowledge_meta` from runbooks / help / patterns |
 | `GET /api/knowledge/insights` | Admin session — list assembled insights |
 | `GET /api/knowledge/signals` | Admin — **counts / meta only**, not raw dumps in UI |
+| `GET /api/knowledge/learning-stats` | Admin — chunk counts + last ingest time |
 | Vendor APIs | Approve / deny stubs for `VendorAccessRequest` |
-| `/knowledge-plane` | Admin UI + privacy banner |
+| `/knowledge-plane` | Admin UI + privacy banner + **Backfill learning** |
+
+Internal learning (PROMOTED runbooks, GLOBAL/COHORT patterns, ops Help Files) writes **EchoKnowledgeChunk** and a PII-safe **knowledge_meta** `KnowledgeSignal` so the Signals KPI is not stuck at 0 waiting for an unimplemented Echo edge client. See `docs/ECHO_LEARNING_PLANE.md`.
 
 Product relay contracts (diagnostics, questions, work, knowledge-telemetry) live in `docs/RELAY_CONTRACTS.md`. **No product client is implemented in this repo.**
 

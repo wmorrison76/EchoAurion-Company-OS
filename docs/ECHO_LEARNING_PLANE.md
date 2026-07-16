@@ -77,13 +77,36 @@ Ingest rejects bodies with forbidden keys (`findForbiddenPiiKey`) and always run
 |---|---|---|
 | `POST /api/knowledge/retrieve` | `KNOWLEDGE_INGEST_SECRET` or `ECHO_AI_KEY` | Keyword retrieve for Echo |
 | `POST /api/knowledge/book-ingest` | ingest secret | Pre-extracted book/PDF **text** → scrubbed chunks (no raw upload) |
-| `GET /api/knowledge/learning-stats` | session | Counts + `✓ PII scrub active` |
+| `GET /api/knowledge/learning-stats` | session | Counts + last ingest + `✓ PII scrub active` |
+| `POST /api/knowledge/backfill` | session or `CRON_SECRET` | One-shot seed from runbooks / patterns / help |
 | Existing `POST /api/knowledge/ingest` | ingest secret | Telemetry signals (rate-limited) |
+
+### How learning fills (automatic)
+
+| Source | When | Writes |
+|---|---|---|
+| **PROMOTED** KnightRunbook | After SYSTEM ticket resolve (William confirm or eval ≥ 0.72) or promote | `EchoKnowledgeChunk` + `knowledge_meta` signal |
+| ErrorPattern **GLOBAL / COHORT** | On pattern upsert from error ingest | Queued → chunk + meta signal |
+| HelpArticle **public / ops / macro** | On create/update (blocked tags skipped) | Queued → chunk + meta signal |
+| IngestJob drain | After resolve + ops-poll cron (`processIngestJobs`) | Executes `echo_learn_*` jobs |
+
+**Why the plane showed 0:** Edge Echo telemetry was never POSTed (product client not wired), learning jobs were queued but not always drained, patterns/help never enqueued, and chunk upserts did not emit `KnowledgeSignal` — so both Signals and Chunks KPIs stayed empty.
+
+ACCOUNT / USER patterns never enter fleet retrieve. Redact + `FORBIDDEN_PII_KEYS` always apply.
+
+### William — verify after deploy
+
+1. Confirm migrate already applied: `20260712210000_scale_and_echo_learning` (tables `echo_knowledge_chunks`, `ingest_jobs`, `knowledge_signals`).
+2. Open `/knowledge-plane` → click **Backfill learning** (or `POST /api/knowledge/backfill` with session cookie).
+3. Expect non-zero **Learning chunks** and **Signals** if any PROMOTED runbooks, GLOBAL/COHORT patterns, or ops/public help exist; otherwise resolve a SYSTEM ticket or promote a runbook, then refresh.
+4. Ops cron: `POST /api/ops/poll-failures` / `drain-queue` with `CRON_SECRET` continues draining the queue (set on Render — see `docs/CRON_SECRET_SETUP.md`).
 
 Automatic hooks:
 
-- Knight runbook upsert/promote → queue `echo_learn_from_runbook`
-- (Patterns can be queued via `queueLearnFromPattern`)
+- Knight runbook upsert/promote → queue `echo_learn_from_runbook` (PROMOTED only) + drain
+- Error pattern GLOBAL/COHORT → queue `echo_learn_from_pattern`
+- Help public/ops/macro → queue `echo_learn_from_help`
+- Resolve flywheel → `drainLearningQueue` so UI fills without waiting for cron
 
 ---
 

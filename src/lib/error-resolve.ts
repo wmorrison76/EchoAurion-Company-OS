@@ -92,6 +92,12 @@ export async function onErrorTicketResolved(input: {
     })
   }
 
+  // Drain learning / agent jobs so Knowledge Plane fills without waiting for cron.
+  const { drainLearningQueue } = await import('@/lib/echo-learning')
+  await drainLearningQueue(8).catch((err) => {
+    console.error('[error-resolve] learning queue drain failed', err)
+  })
+
   await audit(actor, 'help_desk.error_event.resolved_flywheel', ticket.id, {
     evalScore,
     fingerprint: ticket.fingerprint,

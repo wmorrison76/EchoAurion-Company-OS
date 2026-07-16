@@ -105,5 +105,11 @@ export async function promoteWorkToHelpFile(input: {
     slug,
   })
 
+  // Public promote only — draft paid-build notes stay out of fleet learning until ops-tagged/public.
+  if (article.public === true) {
+    const { queueLearnFromHelp } = await import('@/lib/echo-learning')
+    void queueLearnFromHelp(article.id).catch(() => {})
+  }
+
   return { ok: true, article: toArticleView(article), created: true }
 }

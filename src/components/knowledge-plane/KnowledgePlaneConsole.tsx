@@ -88,11 +88,13 @@ export function KnowledgePlaneConsole() {
     jsonFetcher<VendorRow[]>,
     { refreshInterval: 60_000 }
   )
-  const { data: learning } = useSWR(
+  const { data: learning, mutate: mutateLearning } = useSWR(
     '/api/knowledge/learning-stats',
     jsonFetcher<{
       chunks: number
       bySection: { section: string; count: number }[]
+      lastIngestAt: string | null
+      lastSignalAt: string | null
       piiScrubActive: boolean
       embeddingsEnabled: boolean
       queue: { pending: number; running: number; failed: number }
@@ -105,6 +107,8 @@ export function KnowledgePlaneConsole() {
   const [vendorName, setVendorName] = useState('')
   const [useCase, setUseCase] = useState('')
   const [busy, setBusy] = useState(false)
+  const [backfillBusy, setBackfillBusy] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
 
   async function createVendor(e: React.FormEvent) {
     e.preventDefault()
@@ -131,6 +135,37 @@ export function KnowledgePlaneConsole() {
       body: JSON.stringify({ id, op }),
     })
     await mutate('/api/knowledge/vendors')
+  }
+
+  async function runBackfill() {
+    setBackfillBusy(true)
+    setBackfillMsg(null)
+    try {
+      const res = await fetch('/api/knowledge/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 200 }),
+      })
+      const body = (await res.json()) as APIResponse<{
+        chunksAfter: number
+        signalsAfter: number
+        label: string
+      }>
+      if (!body.success) {
+        setBackfillMsg(`✕ ${body.error}`)
+        return
+      }
+      setBackfillMsg(body.data.label)
+      await Promise.all([
+        mutateLearning(),
+        mutate('/api/knowledge/signals'),
+        mutate('/api/knowledge/insights'),
+      ])
+    } catch (err) {
+      setBackfillMsg(err instanceof Error ? `✕ ${err.message}` : '✕ Backfill failed')
+    } finally {
+      setBackfillBusy(false)
+    }
   }
 
   return (
@@ -178,13 +213,26 @@ export function KnowledgePlaneConsole() {
         className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4"
         aria-label="Echo learning plane stats"
       >
-        <h2 className="text-xs uppercase tracking-widest text-[#D4AF37]">
-          Echo learning plane
-        </h2>
-        <p className="mt-1 text-xs text-[#a0a0b8]">
-          PII-safe chunks for runbooks / help / error patterns. See{' '}
-          <code className="text-[#D4AF37]">docs/ECHO_LEARNING_PLANE.md</code>.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs uppercase tracking-widest text-[#D4AF37]">
+              Echo learning plane
+            </h2>
+            <p className="mt-1 text-xs text-[#a0a0b8]">
+              PII-safe chunks for runbooks / help / error patterns. See{' '}
+              <code className="text-[#D4AF37]">docs/ECHO_LEARNING_PLANE.md</code>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={runBackfill}
+            disabled={backfillBusy}
+            aria-label="Backfill learning from runbooks and help files"
+            className="rounded-lg border border-[#D4AF37] px-3 py-2 text-xs text-[#D4AF37] transition-colors duration-150 hover:bg-[#1a1a26] disabled:opacity-50"
+          >
+            {backfillBusy ? 'Backfilling…' : 'Backfill learning'}
+          </button>
+        </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <StatusBadge
             level={learning?.piiScrubActive ? 'ok' : 'error'}
@@ -202,7 +250,20 @@ export function KnowledgePlaneConsole() {
                 : 'Queue —'
             }
           />
+          {learning?.lastIngestAt ? (
+            <StatusBadge
+              level="ok"
+              label={`Last chunk ${ago(learning.lastIngestAt)}`}
+            />
+          ) : (
+            <StatusBadge level="unknown" label="No chunks ingested yet" />
+          )}
         </div>
+        {backfillMsg ? (
+          <p className="mt-2 text-xs text-[#a0a0b8]" role="status">
+            {backfillMsg}
+          </p>
+        ) : null}
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <KPICard title="Learning chunks">
             <KPIValue
@@ -238,7 +299,10 @@ export function KnowledgePlaneConsole() {
         ) : !signals ? (
           <p className="mt-3 animate-pulse text-sm text-[#5a5a78]">Loading signal counts…</p>
         ) : signals.recent.length === 0 ? (
-          <p className="mt-3 text-sm text-[#a0a0b8]">No signals yet — ingest via POST /api/knowledge/ingest.</p>
+          <p className="mt-3 text-sm text-[#a0a0b8]">
+            No signals yet — auto-filled when learning chunks are ingested (knowledge_meta), or via
+            Echo edge POST /api/knowledge/ingest. Use Backfill learning above after deploy.
+          </p>
         ) : (
           <ul className="mt-3 divide-y divide-[#2a2a3f]">
             {signals.recent.map((s) => (

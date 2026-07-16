@@ -7,7 +7,7 @@
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { redactSensitive } from '@/lib/error-redact'
-import { enqueueIngestJob } from '@/lib/ingest-queue'
+import { enqueueIngestJob, processIngestJobs } from '@/lib/ingest-queue'
 import {
   assertGlobalKnowledgeWriteAllowed,
   TenantIsolationError,
@@ -23,6 +23,47 @@ export type EchoKnowledgeSection =
   | 'domain'
 
 export type EchoShareScope = 'GLOBAL' | 'COHORT' | 'ACCOUNT'
+
+const OPS_HELP_TAG = /^(ops|public|procedure|runbook|macro|help)$/i
+const BLOCKED_HELP_TAG = /private|crm|investor|pii|guest|staff/i
+
+/**
+ * Hub meta signal so Knowledge Plane "Signals" KPI moves with internal learning.
+ * Payload is allowlisted knowledge_meta only — no PII keys, no raw text.
+ * ACCOUNT chunks never emit fleet signals.
+ */
+async function emitLearningMetaSignal(input: {
+  section: string
+  sourceType: string
+  sourceRef?: string | null
+  shareScope: EchoShareScope
+  chunkId: string
+  created: boolean
+}): Promise<void> {
+  if (input.shareScope === 'ACCOUNT') return
+  try {
+    await db.knowledgeSignal.create({
+      data: {
+        clientKey: 'system:echo-learning',
+        schemaVersion: '1',
+        signalType: 'knowledge_meta',
+        aggregationLevel: 'network',
+        payload: {
+          event: input.created ? 'chunk_created' : 'chunk_updated',
+          section: input.section,
+          sourceType: input.sourceType,
+          sourceRefPrefix: input.sourceRef?.slice(0, 12) ?? null,
+          shareScope: input.shareScope,
+          chunkIdPrefix: input.chunkId.slice(0, 12),
+        },
+        sampleSize: 1,
+        confidence: 1,
+      },
+    })
+  } catch (err) {
+    console.error('[echo-learning] meta signal failed', err)
+  }
+}
 
 export async function upsertKnowledgeChunk(input: {
   section: EchoKnowledgeSection
@@ -102,6 +143,14 @@ export async function upsertKnowledgeChunk(input: {
         clientKey: boundClientKey,
         created: false,
       })
+      await emitLearningMetaSignal({
+        section: input.section,
+        sourceType: input.sourceType,
+        sourceRef: input.sourceRef,
+        shareScope,
+        chunkId: existing.id,
+        created: false,
+      })
       return { id: existing.id, created: false }
     }
   }
@@ -129,6 +178,15 @@ export async function upsertKnowledgeChunk(input: {
     created: true,
   })
 
+  await emitLearningMetaSignal({
+    section: input.section,
+    sourceType: input.sourceType,
+    sourceRef: input.sourceRef,
+    shareScope,
+    chunkId: row.id,
+    created: true,
+  })
+
   await enqueueIngestJob({
     kind: 'knowledge_embed',
     payload: { chunkId: row.id },
@@ -143,6 +201,8 @@ export async function ingestRunbookChunk(runbookId: string): Promise<{ ok: boole
   const rb = await db.knightRunbook.findUnique({ where: { id: runbookId } })
   if (!rb) return { ok: false, reason: 'not_found' }
   if (rb.status === 'REJECTED') return { ok: false, reason: 'rejected_runbook' }
+  // Fleet learning only from confirmed / promoted runbooks — never DRAFT speculation.
+  if (rb.status !== 'PROMOTED') return { ok: false, reason: 'not_promoted' }
 
   const content = [
     `Runbook: ${rb.title}`,
@@ -224,11 +284,12 @@ export async function ingestHelpArticleChunk(
   const a = await db.helpArticle.findUnique({ where: { id: articleId } })
   if (!a) return { ok: false, reason: 'not_found' }
 
-  // Only ops/public-ish tags — skip anything tagged private/crm/investor.
-  const blocked = a.tags.some((t) =>
-    /private|crm|investor|pii|guest|staff/i.test(t)
-  )
+  // Only ops/public Help Files — skip private/crm/investor and drafts without ops tags.
+  const blocked = a.tags.some((t) => BLOCKED_HELP_TAG.test(t))
   if (blocked) return { ok: false, reason: 'tag_blocked' }
+  const allow =
+    a.public === true || a.tags.some((t) => OPS_HELP_TAG.test(t)) || a.isMacro === true
+  if (!allow) return { ok: false, reason: 'not_ops_or_public' }
 
   const content = [`Help: ${a.title}`, `tags=${a.tags.join(',')}`, '', a.body].join('\n')
   const r = await upsertKnowledgeChunk({
@@ -238,7 +299,7 @@ export async function ingestHelpArticleChunk(
     sourceRef: a.id,
     content,
     shareScope: 'GLOBAL',
-    metadata: { slug: a.slug, tags: a.tags },
+    metadata: { slug: a.slug, tags: a.tags, public: a.public },
   })
   if ('rejected' in r) return { ok: false, reason: r.reason }
   return { ok: true }
@@ -320,17 +381,31 @@ export async function retrieveKnowledgeChunks(input: {
 export async function learningPlaneStats(): Promise<{
   chunks: number
   bySection: { section: string; count: number }[]
+  lastIngestAt: string | null
+  lastSignalAt: string | null
   piiScrubActive: true
   embeddingsEnabled: false
 }> {
-  const chunks = await db.echoKnowledgeChunk.count()
-  const grouped = await db.echoKnowledgeChunk.groupBy({
-    by: ['section'],
-    _count: { _all: true },
-  })
+  const [chunks, grouped, latestChunk, latestSignal] = await Promise.all([
+    db.echoKnowledgeChunk.count(),
+    db.echoKnowledgeChunk.groupBy({
+      by: ['section'],
+      _count: { _all: true },
+    }),
+    db.echoKnowledgeChunk.findFirst({
+      orderBy: { updatedAt: 'desc' },
+      select: { updatedAt: true },
+    }),
+    db.knowledgeSignal.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
+  ])
   return {
     chunks,
     bySection: grouped.map((g) => ({ section: g.section, count: g._count._all })),
+    lastIngestAt: latestChunk?.updatedAt.toISOString() ?? null,
+    lastSignalAt: latestSignal?.createdAt.toISOString() ?? null,
     piiScrubActive: true,
     embeddingsEnabled: false,
   }
@@ -351,4 +426,103 @@ export async function queueLearnFromPattern(patternId: string): Promise<void> {
     payload: { patternId },
     dedupeKey: `learn:pattern:${patternId}`,
   })
+}
+
+export async function queueLearnFromHelp(articleId: string): Promise<void> {
+  await enqueueIngestJob({
+    kind: 'echo_learn_from_help',
+    payload: { articleId },
+    dedupeKey: `learn:help:${articleId}`,
+  })
+}
+
+/** Drain a small batch of pending ingest jobs (learning + agent). Call after resolve. */
+export async function drainLearningQueue(limit = 8): Promise<{
+  processed: number
+  done: number
+  failed: number
+}> {
+  return processIngestJobs(limit)
+}
+
+/**
+ * One-shot / admin backfill from existing PROMOTED runbooks, GLOBAL/COHORT
+ * patterns, and ops/public Help Files. Sync ingest so UI fills without waiting
+ * for cron. Idempotent via sourceRef upserts.
+ */
+export async function backfillLearningPlane(opts?: {
+  limit?: number
+}): Promise<{
+  runbooks: { ok: number; skipped: number }
+  patterns: { ok: number; skipped: number }
+  help: { ok: number; skipped: number }
+  chunksAfter: number
+  signalsAfter: number
+}> {
+  const limit = Math.min(opts?.limit ?? 200, 500)
+
+  const runbooks = await db.knightRunbook.findMany({
+    where: { status: 'PROMOTED' },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { id: true },
+  })
+  let rbOk = 0
+  let rbSkip = 0
+  for (const rb of runbooks) {
+    const r = await ingestRunbookChunk(rb.id)
+    if (r.ok) rbOk += 1
+    else rbSkip += 1
+  }
+
+  const patterns = await db.errorPattern.findMany({
+    where: { errorScope: { in: ['GLOBAL', 'COHORT'] } },
+    orderBy: { lastSeenAt: 'desc' },
+    take: limit,
+    select: { id: true },
+  })
+  let patOk = 0
+  let patSkip = 0
+  for (const p of patterns) {
+    const r = await ingestErrorPatternChunk(p.id)
+    if (r.ok) patOk += 1
+    else patSkip += 1
+  }
+
+  const help = await db.helpArticle.findMany({
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: { id: true },
+  })
+  let helpOk = 0
+  let helpSkip = 0
+  for (const h of help) {
+    const r = await ingestHelpArticleChunk(h.id)
+    if (r.ok) helpOk += 1
+    else helpSkip += 1
+  }
+
+  // Clear any leftover embed placeholder jobs from upserts.
+  await processIngestJobs(15).catch(() => {})
+
+  const [chunksAfter, signalsAfter] = await Promise.all([
+    db.echoKnowledgeChunk.count(),
+    db.knowledgeSignal.count(),
+  ])
+
+  await audit('computer_agent', 'echo.knowledge.backfill', undefined, {
+    runbooks: { ok: rbOk, skipped: rbSkip },
+    patterns: { ok: patOk, skipped: patSkip },
+    help: { ok: helpOk, skipped: helpSkip },
+    chunksAfter,
+    signalsAfter,
+  })
+
+  return {
+    runbooks: { ok: rbOk, skipped: rbSkip },
+    patterns: { ok: patOk, skipped: patSkip },
+    help: { ok: helpOk, skipped: helpSkip },
+    chunksAfter,
+    signalsAfter,
+  }
 }

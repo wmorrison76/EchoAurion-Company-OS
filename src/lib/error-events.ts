@@ -66,7 +66,7 @@ async function upsertErrorPattern(input: {
   clientKey: string
   ticketId: string
   isNewClient: boolean
-}): Promise<void> {
+}): Promise<{ id: string; errorScope: ErrorBlastScope }> {
   const existing = await db.errorPattern.findUnique({
     where: {
       fingerprint_productLine: {
@@ -77,7 +77,7 @@ async function upsertErrorPattern(input: {
   })
 
   if (existing) {
-    await db.errorPattern.update({
+    const updated = await db.errorPattern.update({
       where: { id: existing.id },
       data: {
         hitCount: { increment: 1 },
@@ -93,10 +93,10 @@ async function upsertErrorPattern(input: {
         sampleMessage: input.sampleMessage,
       },
     })
-    return
+    return { id: updated.id, errorScope: updated.errorScope }
   }
 
-  await db.errorPattern.create({
+  const created = await db.errorPattern.create({
     data: {
       fingerprint: input.fingerprint,
       errorCategory: input.errorCategory,
@@ -110,6 +110,18 @@ async function upsertErrorPattern(input: {
       lastTicketId: input.ticketId,
     },
   })
+  return { id: created.id, errorScope: created.errorScope }
+}
+
+/** Queue fleet learning for GLOBAL/COHORT patterns only — ACCOUNT never auto-learns. */
+function queuePatternLearning(pattern: {
+  id: string
+  errorScope: ErrorBlastScope
+}): void {
+  if (pattern.errorScope !== 'GLOBAL' && pattern.errorScope !== 'COHORT') return
+  void import('@/lib/echo-learning')
+    .then(({ queueLearnFromPattern }) => queueLearnFromPattern(pattern.id))
+    .catch((err) => console.error('[error-events] pattern learn queue failed', err))
 }
 
 function mergeScope(
@@ -269,7 +281,7 @@ export async function ingestErrorEvent(
       },
     })
 
-    await upsertErrorPattern({
+    const pattern = await upsertErrorPattern({
       fingerprint,
       errorCategory,
       errorScope: scope,
@@ -281,6 +293,7 @@ export async function ingestErrorEvent(
       ticketId: existing.id,
       isNewClient: Boolean(isNewClient),
     })
+    queuePatternLearning(pattern)
 
     if (promoted) {
       await db.helpMessage.create({
@@ -401,7 +414,7 @@ export async function ingestErrorEvent(
     },
   })
 
-  await upsertErrorPattern({
+  const pattern = await upsertErrorPattern({
     fingerprint,
     errorCategory,
     errorScope: scope,
@@ -413,6 +426,7 @@ export async function ingestErrorEvent(
     ticketId: ticket.id,
     isNewClient: true,
   })
+  queuePatternLearning(pattern)
 
   await recordTimelineEvent({
     ticketId: ticket.id,

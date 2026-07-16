@@ -84,6 +84,16 @@ export async function POST(req: Request): Promise<Response> {
 
     await audit('william_morrison', 'help_files.article.create', created.id, { slug })
 
+    // Ops/public Help Files → Echo learning plane (PII-scrubbed).
+    if (
+      created.public === true ||
+      created.isMacro === true ||
+      tags.some((t) => /^(ops|public|procedure|runbook|macro|help)$/i.test(t))
+    ) {
+      const { queueLearnFromHelp } = await import('@/lib/echo-learning')
+      void queueLearnFromHelp(created.id).catch(() => {})
+    }
+
     return Response.json({
       success: true,
       data: toArticleView(created),
@@ -152,6 +162,15 @@ export async function PATCH(req: Request): Promise<Response> {
     })
 
     await audit('william_morrison', 'help_files.article.update', updated.id)
+
+    if (
+      updated.public === true ||
+      updated.isMacro === true ||
+      updated.tags.some((t) => /^(ops|public|procedure|runbook|macro|help)$/i.test(t))
+    ) {
+      const { queueLearnFromHelp } = await import('@/lib/echo-learning')
+      void queueLearnFromHelp(updated.id).catch(() => {})
+    }
 
     return Response.json({
       success: true,

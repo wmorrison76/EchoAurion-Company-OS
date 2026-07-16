@@ -153,8 +153,11 @@ export async function learnFromResolution(input: {
       status: updated.status,
       fingerprint: input.fingerprint,
     })
-    const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
-    void queueLearnFromRunbook(updated.id).catch(() => {})
+    // Fleet learning only after PROMOTED (confirmed / eval-passed).
+    if (updated.status === 'PROMOTED') {
+      const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
+      void queueLearnFromRunbook(updated.id).catch(() => {})
+    }
     return { runbookId: updated.id, status: updated.status, blocked: false }
   }
 
@@ -179,8 +182,10 @@ export async function learnFromResolution(input: {
     status: created.status,
     fingerprint: input.fingerprint,
   })
-  const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
-  void queueLearnFromRunbook(created.id).catch(() => {})
+  if (created.status === 'PROMOTED') {
+    const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
+    void queueLearnFromRunbook(created.id).catch(() => {})
+  }
   return { runbookId: created.id, status: created.status, blocked: false }
 }
 
@@ -211,8 +216,10 @@ export async function promoteRunbook(
     fingerprint: row.fingerprint,
     productLine: row.productLine,
   })
-  const { queueLearnFromRunbook } = await import('@/lib/echo-learning')
-  void queueLearnFromRunbook(runbookId).catch(() => {})
+  const { queueLearnFromRunbook, drainLearningQueue } = await import('@/lib/echo-learning')
+  void queueLearnFromRunbook(runbookId)
+    .then(() => drainLearningQueue(5))
+    .catch(() => {})
   return { ok: true }
 }
 

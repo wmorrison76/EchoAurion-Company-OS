@@ -19,6 +19,8 @@ These exist under `prisma/migrations/` and must be applied on Neon after each Co
 
 **Deploy note:** Render startCommand already runs `npx prisma migrate deploy`. If a migration fails, check `DATABASE_URL_UNPOOLED` (direct) vs pooled `DATABASE_URL`.
 
+**Knowledge Plane after deploy:** Open `/knowledge-plane` → **Backfill learning** (or `POST /api/knowledge/backfill`). Expect non-zero chunks/signals if PROMOTED runbooks or ops Help Files exist. Ops-poll cron drains the learning queue (`CRON_SECRET`). See `docs/ECHO_LEARNING_PLANE.md`.
+
 ---
 
 ## 1b. Support P0 env (after migrate)
