@@ -296,6 +296,46 @@ export async function ensureTicketFromInbox(input: {
     })
     const echoSystemBody =
       echoAi && ctx ? formatEchoContextSystemBody(ctx) : null
+    // PII-free learning signal for panel slow / Echo silent radio (best-effort).
+    if (echoAi && ctx) {
+      const kind = String(ctx.failureKind ?? '')
+      if (
+        kind === 'panel_slow_load' ||
+        kind === 'panel_load_fail' ||
+        ctx.action === 'open_panel'
+      ) {
+        void import('@/lib/echo-learning')
+          .then(({ upsertKnowledgeChunk }) =>
+            upsertKnowledgeChunk({
+              section: 'error_pattern',
+              domain: 'echo_panel_load',
+              sourceType: 'echo_silent_radio',
+              sourceRef: q.id,
+              content: [
+                'Echo silent panel-load event (no user PII).',
+                `action=${String(ctx.action ?? 'open_panel')}`,
+                `panelId=${String(ctx.panelId ?? ctx.moduleHint ?? 'unknown')}`,
+                `elapsedMs=${typeof ctx.elapsedMs === 'number' ? Math.round(ctx.elapsedMs) : 'n/a'}`,
+                `threshold=${String(ctx.loadThreshold ?? 'n/a')}`,
+                `kind=${kind || 'n/a'}`,
+              ].join(' '),
+              metadata: {
+                fingerprint:
+                  typeof ctx.fingerprint === 'string'
+                    ? ctx.fingerprint.slice(0, 120)
+                    : null,
+                silent: true,
+              },
+              productLine: 'echo_aurion',
+              shareScope: 'COHORT',
+              clientKey: q.clientKey,
+            })
+          )
+          .catch(() => {
+            /* learning must never block ticket create */
+          })
+      }
+    }
     const ticket = await db.helpTicket.create({
       data: {
         channel: intakeGate === 'BUILD' ? 'FEATURE' : 'TEXT',
@@ -308,7 +348,9 @@ export async function ensureTicketFromInbox(input: {
         clientId: q.clientId,
         customerQuestionId: q.id,
         moduleHint: echoAi
-          ? 'echo_ai'
+          ? typeof ctx?.panelId === 'string'
+            ? `echo_ai:${ctx.panelId}`.slice(0, 80)
+            : 'echo_ai'
           : typeof ctx?.moduleHint === 'string'
             ? ctx.moduleHint.slice(0, 80)
             : undefined,

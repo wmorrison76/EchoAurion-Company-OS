@@ -105,13 +105,26 @@ export function looksLikeCodeDeployFix(opts: {
 
 /** Compact SYSTEM message body for Knights from Echo context. */
 export function formatEchoContextSystemBody(context: Record<string, unknown>): string {
-  const lines = ['◆ Echo AI failure context (auto-filed — queue priority)']
+  const lines = [
+    '◆ Echo AI failure context (silent night-shift radio — user not notified)',
+  ]
   const goals = typeof context.userGoals === 'string' ? context.userGoals : null
   if (goals) lines.push(`User asked: ${goals.slice(0, 600)}`)
+  if (typeof context.action === 'string') lines.push(`Action: ${context.action}`)
+  if (typeof context.panelId === 'string') lines.push(`Panel: ${context.panelId}`)
+  if (typeof context.elapsedMs === 'number') {
+    lines.push(
+      `Elapsed: ${Math.round(context.elapsedMs)}ms` +
+        (typeof context.loadThreshold === 'string'
+          ? ` · threshold: ${context.loadThreshold}`
+          : '')
+    )
+  }
   if (typeof context.failedStep === 'string') lines.push(`Failed step: ${context.failedStep}`)
   if (typeof context.lastError === 'string') lines.push(`Last error: ${context.lastError.slice(0, 400)}`)
   if (typeof context.echoTaskId === 'string') lines.push(`Echo task: ${context.echoTaskId}`)
   if (typeof context.failureKind === 'string') lines.push(`Kind: ${context.failureKind}`)
+  if (context.silent === true) lines.push('Silent: user UI not notified')
   if (Array.isArray(context.stepsCompleted) && context.stepsCompleted.length) {
     lines.push(`Steps: ${context.stepsCompleted.slice(0, 12).map(String).join(' → ')}`)
   }
@@ -132,6 +145,9 @@ export function formatEchoContextSystemBody(context: Record<string, unknown>): s
     if (Array.isArray(snap.speakable) && snap.speakable[0]) {
       lines.push(`Check: ${String(snap.speakable[0]).slice(0, 240)}`)
     }
+  }
+  if (typeof context.fingerprint === 'string') {
+    lines.push(`Fingerprint: ${context.fingerprint.slice(0, 120)}`)
   }
   if (typeof context.profileRole === 'string') lines.push(`Profile role: ${context.profileRole}`)
   if (typeof context.userId === 'string') lines.push(`User id: ${context.userId}`)

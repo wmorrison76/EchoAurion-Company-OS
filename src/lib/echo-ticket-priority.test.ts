@@ -40,11 +40,16 @@ describe('echo-ticket-priority', () => {
     expect(isEchoAiTicket({ intakeChannel: 'IN_APP', moduleHint: 'ci' })).toBe(false)
   })
 
-  it('formats SYSTEM body with goals and errors', () => {
+  it('formats SYSTEM body with goals, panel slow context, and errors', () => {
     const body = formatEchoContextSystemBody({
-      userGoals: 'Fill Coq au Vin recipe',
-      failedStep: 'fill_empty_recipes',
-      lastError: 'timeout',
+      userGoals: 'open Culinary',
+      action: 'open_panel',
+      panelId: 'culinary',
+      elapsedMs: 8200,
+      loadThreshold: 'hard',
+      silent: true,
+      failedStep: 'open_panel',
+      lastError: 'panel_not_ready after 8200ms (hard)',
       echoTaskId: 'req_1',
       systemCheck: {
         cannot: [{ label: 'Inventory module' }],
@@ -52,8 +57,10 @@ describe('echo-ticket-priority', () => {
       },
     })
     expect(body).toContain('◆ Echo AI')
-    expect(body).toContain('Coq au Vin')
-    expect(body).toContain('fill_empty_recipes')
+    expect(body).toContain('silent night-shift')
+    expect(body).toContain('culinary')
+    expect(body).toContain('8200')
+    expect(body).toContain('Silent: user UI not notified')
     expect(body).toContain('Inventory module')
   })
 
