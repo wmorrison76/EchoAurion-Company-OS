@@ -7,6 +7,7 @@ import { dispatch } from '@/lib/board-room/connectors'
 import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
 import { isPayrollStandbyBlocked } from '@/lib/payroll-refuse'
 import { envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
+import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings'
 
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
@@ -407,9 +408,6 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     include: { messages: { orderBy: { createdAt: 'asc' } } },
   })
   if (!ticket) return { autoApproved: false, reason: 'Ticket not found' }
-  if (ticket.status !== 'AWAITING_APPROVAL') {
-    return { autoApproved: false, reason: `Ticket status is ${ticket.status}` }
-  }
   if (ticket.channel === 'FEATURE') {
     return {
       autoApproved: false,
@@ -427,6 +425,131 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   const gate = ticket.intakeGate
   const techOtherGate = gate == null || gate === 'TECH' || gate === 'OTHER'
   const envUnlock = techEnvOk && techOtherGate && ticket.channel === 'TEXT'
+
+  const customerBodies = ticket.messages
+    .filter((m) => m.role === 'CUSTOMER')
+    .map((m) => m.body)
+  const greetingText = [ticket.subject, ...customerBodies].find((t) => isSimpleGreeting(t))
+  const isGreeting =
+    ticket.channel === 'TEXT' && techOtherGate && Boolean(greetingText)
+
+  // Normal path requires AWAITING_APPROVAL. Greetings may still be OPEN if Knights skipped.
+  if (ticket.status !== 'AWAITING_APPROVAL') {
+    const greetingOpen =
+      isGreeting && (ticket.status === 'OPEN' || ticket.status === 'WAITING')
+    if (!greetingOpen) {
+      return { autoApproved: false, reason: `Ticket status is ${ticket.status}` }
+    }
+  }
+
+  // Simple greetings (hi / how are you / are you active): auto-send even when
+  // standby/permit locked. BUILD stays locked above. Knights may still have drafted.
+  if (isGreeting) {
+    const knightDraft =
+      ticket.messages
+        .filter((m) => m.role === 'KNIGHT')
+        .map((m) => m.body.trim())
+        .find((b) => b.length > 0) ?? null
+    const answer = (knightDraft || GREETING_AUTO_REPLY).trim()
+
+    const autoCount = await countAutoThisHour()
+    if (autoCount >= config.maxAutoPerHour) {
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body: `Greeting auto-send rate-limited (${config.maxAutoPerHour}/hour). Left AWAITING_APPROVAL.`,
+        },
+      })
+      return {
+        autoApproved: false,
+        reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+      }
+    }
+
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'ADMIN',
+        body: answer,
+        seat: 'standby',
+      },
+    })
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: knightDraft
+          ? 'Greeting auto-sent (draft present) — Knights watching. BUILD stays locked.'
+          : 'Greeting auto-sent (generated friendly reply) — Knights watching. BUILD stays locked.',
+      },
+    })
+
+    let questionId = ticket.customerQuestionId
+    if (questionId) {
+      const q = await db.customerQuestion.update({
+        where: { id: questionId },
+        data: {
+          answer,
+          status: 'ANSWERED',
+          answeredAt: new Date(),
+          standbyApproved: true,
+          actor: 'computer_agent',
+        },
+      })
+      await publishAnswerReady({
+        clientKey: q.clientKey,
+        questionId: q.id,
+        question: q.question,
+        answer,
+        directive: q.directive,
+        standbyApproved: true,
+      })
+    } else if (ticket.clientKey) {
+      const created = await db.customerQuestion.create({
+        data: {
+          clientKey: ticket.clientKey,
+          question: ticket.subject,
+          answer,
+          status: 'ANSWERED',
+          answeredAt: new Date(),
+          standbyApproved: true,
+          actor: 'computer_agent',
+          draftAnswer: answer,
+          draftSeat: 'standby',
+        },
+      })
+      await db.helpTicket.update({
+        where: { id: ticketId },
+        data: { customerQuestionId: created.id },
+      })
+      await publishAnswerReady({
+        clientKey: created.clientKey,
+        questionId: created.id,
+        question: created.question,
+        answer,
+        standbyApproved: true,
+      })
+    }
+
+    await db.helpTicket.update({
+      where: { id: ticketId },
+      data: { status: 'RESOLVED', resolvedAt: new Date() },
+    })
+
+    await audit('computer_agent', 'standby.greeting.auto_answer', ticketId, {
+      subject: ticket.subject,
+      usedDraft: Boolean(knightDraft),
+      intakeGate: ticket.intakeGate,
+    })
+
+    return {
+      autoApproved: true,
+      reason: knightDraft
+        ? 'Greeting auto-sent from existing draft'
+        : 'Greeting auto-sent with generated friendly reply',
+    }
+  }
 
   if (!modeOk && !permitOk && !envUnlock) {
     return {

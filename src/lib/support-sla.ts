@@ -114,6 +114,14 @@ function badge(level: SlaStatusLevel): { shape: SlaClockView['shape']; label: st
   }
 }
 
+/**
+ * Operator-queue pause: when William must Approve, SLA must not paint false red.
+ * Clock resumes once status leaves AWAITING_APPROVAL.
+ */
+export function isSlaPausedForOperatorQueue(status?: string | null): boolean {
+  return status === 'AWAITING_APPROVAL'
+}
+
 export function evaluateSla(input: {
   createdAt: Date
   intakeGate?: IntakeGate | null
@@ -135,6 +143,24 @@ export function evaluateSla(input: {
     input.resolveDueAt ?? computeSlaDueDates(input.createdAt, input.intakeGate).resolveDueAt
   const terminal =
     input.status === 'RESOLVED' || input.status === 'CLOSED'
+  const paused = isSlaPausedForOperatorQueue(input.status)
+
+  if (paused) {
+    return {
+      firstResponseDueAt: firstDue.toISOString(),
+      resolveDueAt: resolveDue.toISOString(),
+      firstResponseAt: input.firstResponseAt?.toISOString() ?? null,
+      slaBreachedAt: null,
+      slaEscalatedAt: input.slaEscalatedAt?.toISOString() ?? null,
+      status: 'warn',
+      shape: '▲',
+      label: 'Awaiting Approve',
+      firstResponseStatus: input.firstResponseAt ? 'ok' : 'warn',
+      resolveStatus: 'warn',
+      minutesToFirstResponseDue: null,
+      minutesToResolveDue: null,
+    }
+  }
 
   const firstResponseStatus = clockStatus({
     due: firstDue,
@@ -182,6 +208,9 @@ export function isSlaBreached(input: {
   status?: string | null
   now?: Date
 }): boolean {
+  // William is the bottleneck — do not stamp or escalate breach on operator queue.
+  if (isSlaPausedForOperatorQueue(input.status)) return false
+
   const now = input.now ?? new Date()
   const terminal = input.status === 'RESOLVED' || input.status === 'CLOSED'
   if (!input.firstResponseAt && input.firstResponseDueAt && input.firstResponseDueAt < now) {

@@ -20,6 +20,7 @@ import {
   attachmentPromptBlock,
   loadAttachmentsForTicket,
 } from '@/lib/help-desk-attachments'
+import { isSimpleGreeting } from '@/lib/help-desk-greetings'
 import { shouldAutoKnightsOnQuestion } from '@/lib/help-desk-auto-flags'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -485,6 +486,13 @@ export async function processInboundQuestion(
         body: 'Auto-Knights skipped — no AI seat configured. William can Ask Knights from Help Desk.',
       },
     })
+    // Still auto-send simple greetings (TECH/OTHER) so presence pings don't sit forever.
+    if (techOtherOk && isSimpleGreeting(detail.subject)) {
+      const greeting = await maybeStandbyAutoApprove(ticketId)
+      if (greeting.autoApproved) {
+        return { ticketId, knightsRan: false, autoApproved: true }
+      }
+    }
     return { ticketId, knightsRan: false, autoApproved: false }
   }
 

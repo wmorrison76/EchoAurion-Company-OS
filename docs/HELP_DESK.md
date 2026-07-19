@@ -28,7 +28,7 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 | Multilingual (14 pilot locales → Knights reply in user language) | Live — see `OPS_TRAINING_MANUAL.md` |
 | Pilot Help Desk **thread history** (15 days, `GET /api/relay/questions`) | Live — pull still one-shot; history does not mark delivered |
 | **Payroll / compensation hard refuse** | Live — Knights skipped; safe refuse draft + operator note; never standby auto-send |
-| **Screenshot attachments** (max 2 × ~1.5MB, DB bytes, ~90d retention) | Live — prefer Help Desk + screenshots over Cursor Bugbot Autofix for cost; optional: turn Autofix off for this repo in Cursor settings |
+| **Screenshot attachments** (max 2 × ~1.5MB, DB bytes, ~90d retention) | Live on **pilot** Help Desk: browse / drag-drop / paste (Ctrl/⌘V); compress + EXIF strip client-side. Company OS shows thumbnails for Approve — no customer-facing Approve copy on pilot |
 
 ---
 
@@ -102,6 +102,14 @@ Help Desk UI: **Permit / Unlock auto-send** with day+time expiry. While `now < u
 ### Env unlock — `HELP_DESK_AUTO_SEND_TECH`
 
 Set `HELP_DESK_AUTO_SEND_TECH=true` on the **web** service to allow low-risk TEXT **Tech / Other** auto-send after Knights draft (same safeguards: Maestro, no code-change signal, rate limit, core-path block). **BUILD stays locked** (no auto-Knights, no auto-send). Default unset/false — use timed permit or standby mode instead.
+
+### SLA while AWAITING_APPROVAL
+
+SLA clocks **pause** when status is `AWAITING_APPROVAL` (William is the bottleneck). UI shows **▲ Awaiting Approve** — not ✕ Breached. Breach stamps and the Breached filter exclude this queue state.
+
+### Greeting auto-send (TECH / OTHER TEXT)
+
+Simple presence pings (`hi`, `how are you`, `are you active`, …) auto-send a short friendly reply when a Knights draft exists, or generate one if not. **BUILD / BILLING stay locked.** Knights watching continues for real support asks.
 
 ### Knights watching chip
 

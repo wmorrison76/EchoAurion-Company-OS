@@ -39,7 +39,10 @@ export async function GET(req: Request): Promise<Response> {
             ? { status: 'AWAITING_APPROVAL' as const }
             : filter === 'breached'
               ? {
-                  status: { in: openStatuses },
+                  // Exclude AWAITING_APPROVAL — SLA clock pauses while William is bottleneck
+                  status: {
+                    in: openStatuses.filter((s) => s !== 'AWAITING_APPROVAL'),
+                  },
                   OR: [
                     { slaBreachedAt: { not: null } },
                     {
