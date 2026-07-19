@@ -53,6 +53,10 @@ Region rule (unchanged): Company OS **web + all its crons + Neon** stay same-reg
 
 ---
 
+## Fix digest cron
+
+`echoaurion-company-os-fix-digest` — every 4h (`0 */4 * * *`) → `POST /api/ops/fix-digest`. Same `CRON_SECRET` as other crons. Email uses web `EMAIL_FROM` + Resend; `FIX_DIGEST_TO` or `ADMIN_EMAIL`. Skips send when email unset or no fixes in the window.
+
 ## Optional later crons (same Super_Admin folder)
 
 | Service name | Schedule | Path |

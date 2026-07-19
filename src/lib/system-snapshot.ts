@@ -9,7 +9,6 @@
 
 import { db } from '@/lib/db'
 import { isEmailConfigured } from '@/lib/email'
-import { knightConfigured, ROSTER } from '@/lib/board-room/knights'
 import { getRenderDeployHealth } from '@/lib/render'
 import { checkNeon } from '@/lib/status'
 import { getStandbyConfig } from '@/lib/standby'
@@ -180,7 +179,8 @@ export async function buildAnonymizedSnapshot(): Promise<AnonymizedSystemSnapsho
 
   const supportIngestSecretConfigured = Boolean(process.env.SUPPORT_INGEST_SECRET?.trim())
   const echoAiConfigured = Boolean(process.env.ECHO_AI_URL?.trim())
-  const chefsBrainConfigured = knightConfigured(ROSTER.chefs_brain)
+  // Snapshot stays config-only (no live probe) — Connection Health probes separately.
+  const chefsBrainConfigured = echoAiConfigured
 
   const base = {
     version: 1 as const,

@@ -7,6 +7,10 @@ import { SkeletonCard } from '@/components/ui/SkeletonCard'
 import type { PilotConnectionHealth } from '@/types/dr-os'
 import type { APIResponse } from '@/types'
 
+/** Fallback when API omits suggestedEchoAiUrl — keep in sync with src/lib/echo-brain.ts */
+const FALLBACK_ECHO_AI_URL =
+  'https://luccca-web.onrender.com/api/company-os/echo-brain'
+
 function formatAgeMs(ms: number | null): string {
   if (ms == null) return 'never'
   if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`
@@ -23,23 +27,45 @@ type SnapshotResponse = {
 function BoolRow({
   ok,
   label,
+  detail,
 }: {
   ok: boolean
   label: string
+  detail?: string
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-[#a0a0b8]">{label}</span>
-      <StatusBadge level={ok ? 'ok' : 'error'} label={ok ? 'Yes' : 'No'} />
+    <div className="flex flex-col gap-0.5 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[#a0a0b8]">{label}</span>
+        <StatusBadge level={ok ? 'ok' : 'error'} label={ok ? 'Yes' : 'No'} />
+      </div>
+      {detail && !ok ? (
+        <p className="text-[10px] text-[#5a5a78]" role="status">
+          {detail}
+        </p>
+      ) : null}
     </div>
   )
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth }) {
   const [snapBusy, setSnapBusy] = useState(false)
   const [snapMsg, setSnapMsg] = useState<string | null>(null)
+  const [copyMsg, setCopyMsg] = useState<string | null>(null)
 
   if (!data) return <SkeletonCard />
+
+  const suggestedUrl = data.suggestedEchoAiUrl ?? FALLBACK_ECHO_AI_URL
+  const showEchoHelp = !data.echoAiConfigured || !data.chefsBrainConfigured
 
   async function captureSnapshot(sendToKnights: boolean) {
     setSnapBusy(true)
@@ -62,6 +88,22 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
     } finally {
       setSnapBusy(false)
     }
+  }
+
+  async function onCopyUrl() {
+    const ok = await copyText(suggestedUrl)
+    setCopyMsg(ok ? '✓ URL copied — paste into Render ECHO_AI_URL' : 'Copy failed — select the URL manually')
+    window.setTimeout(() => setCopyMsg(null), 4000)
+  }
+
+  async function onCopyEnvBlock() {
+    const block = [
+      `ECHO_AI_URL=${suggestedUrl}`,
+      'ECHO_AI_KEY=<same as luccca-web ECHO_BRAIN_SECRET or COMPANY_OS_INGEST_SECRET>',
+    ].join('\n')
+    const ok = await copyText(block)
+    setCopyMsg(ok ? '✓ Env lines copied — paste into Render Environment' : 'Copy failed')
+    window.setTimeout(() => setCopyMsg(null), 4000)
   }
 
   return (
@@ -92,9 +134,89 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
             label="SUPPORT_INGEST_SECRET"
           />
           <BoolRow ok={data.emailConfigured} label="emailConfigured" />
-          <BoolRow ok={data.echoAiConfigured} label="ECHO_AI_URL" />
-          <BoolRow ok={data.chefsBrainConfigured} label="Chef's Brain" />
+          <BoolRow
+            ok={data.echoAiConfigured}
+            label="ECHO_AI_URL"
+            detail={
+              data.echoAiConfigured
+                ? undefined
+                : 'Unset on Render — copy URL below to turn green'
+            }
+          />
+          <BoolRow
+            ok={data.chefsBrainConfigured}
+            label="Chef's Brain"
+            detail={
+              data.chefsBrainConfigured
+                ? undefined
+                : data.chefsBrainDetail ?? 'Probe failed — check URL path on luccca-web'
+            }
+          />
         </div>
+
+        {showEchoHelp ? (
+          <div
+            className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-2.5"
+            role="region"
+            aria-label="How to turn Chef's Brain green"
+          >
+            <p className="text-[11px] font-medium text-[#D4AF37]">
+              How to turn green
+            </p>
+            <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-[11px] text-[#a0a0b8]">
+              <li>
+                Render → <span className="text-white">echoaurion-company-os</span> →
+                Environment
+              </li>
+              <li>
+                Set <code className="text-white">ECHO_AI_URL</code> to the URL below
+                (click to copy)
+              </li>
+              <li>
+                Set <code className="text-white">ECHO_AI_KEY</code> to luccca-web{' '}
+                <code className="text-white">ECHO_BRAIN_SECRET</code> (or ingest
+                secret)
+                {data.echoAiKeyConfigured === false ? (
+                  <span className="text-[#f59e0b]"> · ⚠ key not set yet</span>
+                ) : null}
+              </li>
+              <li>Save → wait for redeploy → refresh Dr. OS</li>
+            </ol>
+            <div className="mt-2 flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => void onCopyUrl()}
+                aria-label="Copy suggested ECHO_AI_URL"
+                className="break-all rounded border border-[#2a2a3f] bg-[#12121a] px-2 py-1.5 text-left font-mono text-[10px] text-[#D4AF37] hover:border-[#D4AF37]"
+              >
+                {suggestedUrl}
+              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void onCopyUrl()}
+                  aria-label="Copy ECHO_AI_URL only"
+                  className="rounded-lg border border-[#D4AF37] px-2.5 py-1 text-[11px] text-[#D4AF37]"
+                >
+                  Copy URL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onCopyEnvBlock()}
+                  aria-label="Copy ECHO_AI_URL and ECHO_AI_KEY template"
+                  className="rounded-lg border border-[#2a2a3f] px-2.5 py-1 text-[11px] text-[#a0a0b8] hover:border-[#D4AF37] hover:text-[#D4AF37]"
+                >
+                  Copy env lines
+                </button>
+              </div>
+              {copyMsg ? (
+                <p className="text-[10px] text-[#a0a0b8]" role="status">
+                  {copyMsg}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {!data.supportIngestSecretConfigured ? (
           <p className="text-xs text-[#f59e0b]" role="status">
@@ -147,8 +269,9 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
               (identical)
             </li>
             <li>
-              Optional: <code className="text-white">ECHO_AI_URL</code> → luccca-web
-              /api/company-os/echo-brain
+              Chef&apos;s Brain:{' '}
+              <code className="text-white">ECHO_AI_URL</code> →{' '}
+              <code className="text-white">{suggestedUrl}</code>
             </li>
           </ol>
           <a

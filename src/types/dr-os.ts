@@ -81,8 +81,16 @@ export interface PilotConnectionHealth {
   /** Boolean only — never the secret value. */
   supportIngestSecretConfigured: boolean
   emailConfigured: boolean
+  /** ECHO_AI_URL env present (not a live probe). */
   echoAiConfigured: boolean
+  /** Live GET probe of ECHO_AI_URL (Chef's Brain / echo-brain). */
   chefsBrainConfigured: boolean
+  /** Operator hint for Chef's Brain probe (never secrets). */
+  chefsBrainDetail?: string
+  /** ECHO_AI_KEY present — needed when luccca-web requires Bearer. */
+  echoAiKeyConfigured?: boolean
+  /** Canonical paste value for Render. */
+  suggestedEchoAiUrl?: string
   lastHeartbeatAgeMs: number | null
   lastQuestionAgeMs: number | null
   pendingOutbox: number
@@ -110,4 +118,6 @@ export interface AuditEntry {
   action: string
   entityId: string | null
   createdAt: string
+  /** Redacted JSON payload (null when empty). */
+  payload?: unknown
 }

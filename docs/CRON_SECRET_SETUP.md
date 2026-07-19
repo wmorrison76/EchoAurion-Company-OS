@@ -56,6 +56,7 @@ Repeat for each cron: open the service → **Environment** → `CRON_SECRET` →
 | `echoaurion-company-os-briefing` | cron | Daily board briefing |
 | `echoaurion-company-os-help-eval-friday` | cron | Thu HelpEval simulation |
 | `echoaurion-company-os-cost-anomaly` | cron | Daily cost anomaly alerts |
+| `echoaurion-company-os-fix-digest` | cron | Every 4h fix digest email |
 
 Blueprint already declares `CRON_SECRET` with `sync: false` on web + all crons. You still must type the value in the dashboard.
 
@@ -89,5 +90,5 @@ After saving env vars on all cron services:
 - [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-ops-poll** (create if missing)
 - [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-sync**
 - [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-briefing**
-- [ ] Set the **same** `CRON_SECRET` on **help-eval-friday** + **cost-anomaly** if those crons exist
+- [ ] Set the **same** `CRON_SECRET` on **help-eval-friday** + **cost-anomaly** + **fix-digest** if those crons exist
 - [ ] Triggered maintenance + ops-poll — logs show success, not `CRON_SECRET:false`

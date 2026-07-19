@@ -46,9 +46,15 @@ services:
       - key: SUPPORT_INGEST_SECRET
         sync: false
       # Chef's Brain — full URL to luccca-web echo-brain proxy
+      # Exact: https://luccca-web.onrender.com/api/company-os/echo-brain
       - key: ECHO_AI_URL
         sync: false
       - key: ECHO_AI_KEY
+        sync: false
+      # Fix digest email (cron echoaurion-company-os-fix-digest)
+      - key: FIX_DIGEST_HOURS
+        value: "4"
+      - key: FIX_DIGEST_TO
         sync: false
       # Auto-draft inbound tech questions with Knights (default true)
       - key: AUTO_KNIGHTS_ON_QUESTION
@@ -149,6 +155,23 @@ services:
     schedule: "30 8 * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-http-post.mjs /api/ops/cost-anomaly
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Every 4 hours — email William a digest of Help Desk / Echo / SYSTEM fixes.
+  # Needs RESEND_API_KEY + EMAIL_FROM on web; FIX_DIGEST_TO falls back to ADMIN_EMAIL.
+  - type: cron
+    name: echoaurion-company-os-fix-digest
+    runtime: node
+    schedule: "0 */4 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/fix-digest
     envVars:
       - key: WEB_SERVICE_URL
         fromService:

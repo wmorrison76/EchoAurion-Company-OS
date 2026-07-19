@@ -4,7 +4,12 @@ import { getAllRepoHealth } from '@/lib/github'
 import { getRenderDeployHealth } from '@/lib/render'
 import { getStripeMRRHealth } from '@/lib/stripe'
 import { isEmailConfigured } from '@/lib/email'
-import { knightConfigured, ROSTER } from '@/lib/board-room/knights'
+import {
+  SUGGESTED_ECHO_AI_URL,
+  echoAiKeyConfigured,
+  echoAiUrlConfigured,
+  probeChefsBrain,
+} from '@/lib/echo-brain'
 import {
   getCostAnomalyChip,
   getDrainHealth,
@@ -199,8 +204,9 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       process.env.SUPPORT_INGEST_SECRET?.trim()
     )
     const emailConfigured = isEmailConfigured()
-    const echoAiConfigured = Boolean(process.env.ECHO_AI_URL?.trim())
-    const chefsBrainConfigured = knightConfigured(ROSTER.chefs_brain)
+    const echoAiConfigured = echoAiUrlConfigured()
+    const chefsProbe = await probeChefsBrain()
+    const chefsBrainConfigured = chefsProbe.ok
 
     let level: PilotConnectionHealth['level'] = 'unknown'
     let label = 'Unknown'
@@ -223,6 +229,14 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
     if (supportIngestSecretConfigured && !echoAiConfigured && level === 'ok') {
       level = 'warn'
       label = 'Echo AI unset'
+    } else if (
+      supportIngestSecretConfigured &&
+      echoAiConfigured &&
+      !chefsBrainConfigured &&
+      level === 'ok'
+    ) {
+      level = 'warn'
+      label = "Chef's Brain down"
     }
 
     return {
@@ -237,6 +251,9 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       emailConfigured,
       echoAiConfigured,
       chefsBrainConfigured,
+      chefsBrainDetail: chefsProbe.detail,
+      echoAiKeyConfigured: echoAiKeyConfigured(),
+      suggestedEchoAiUrl: SUGGESTED_ECHO_AI_URL,
       lastHeartbeatAgeMs,
       lastQuestionAgeMs: lastQuestion
         ? now - lastQuestion.createdAt.getTime()
@@ -244,6 +261,11 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       pendingOutbox,
     }
   } catch (error) {
+    const chefsProbe = await probeChefsBrain().catch(() => ({
+      ok: false,
+      httpStatus: null,
+      detail: 'probe skipped',
+    }))
     return {
       level: 'unknown',
       label: 'Unknown',
@@ -256,8 +278,11 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
         process.env.SUPPORT_INGEST_SECRET?.trim()
       ),
       emailConfigured: isEmailConfigured(),
-      echoAiConfigured: Boolean(process.env.ECHO_AI_URL?.trim()),
-      chefsBrainConfigured: knightConfigured(ROSTER.chefs_brain),
+      echoAiConfigured: echoAiUrlConfigured(),
+      chefsBrainConfigured: chefsProbe.ok,
+      chefsBrainDetail: chefsProbe.detail,
+      echoAiKeyConfigured: echoAiKeyConfigured(),
+      suggestedEchoAiUrl: SUGGESTED_ECHO_AI_URL,
       lastHeartbeatAgeMs: null,
       lastQuestionAgeMs: null,
       pendingOutbox: 0,

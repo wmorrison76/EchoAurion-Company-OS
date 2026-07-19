@@ -2,16 +2,32 @@
 
 One shared secret, two Render services. No bootstrap open door — paste the same value into both dashboards.
 
-## Exact `ECHO_AI_URL` (Chef's Brain)
+## Exact `ECHO_AI_URL` (Chef's Brain) — paste to clear the 2 reds
 
-After luccca-web deploys with `/api/company-os/echo-brain`:
+Dr. OS **Connection health** shows ✕ No on `ECHO_AI_URL` and **Chef's Brain** until these are set on **echoaurion-company-os** (not on luccca-web).
+
+**Render → echoaurion-company-os → Environment — paste:**
 
 ```text
 ECHO_AI_URL=https://luccca-web.onrender.com/api/company-os/echo-brain
 ECHO_AI_KEY=<same value as ECHO_BRAIN_SECRET or COMPANY_OS_INGEST_SECRET on luccca-web>
 ```
 
-Set both on **echoaurion-company-os** (Render → Environment). Scout stays Active from `GOOGLE_AI_API_KEY` / `GEMINI_API_KEY`; Chef's Brain flips Active once `ECHO_AI_URL` is set.
+| Company OS env | Exact value |
+|---|---|
+| `ECHO_AI_URL` | `https://luccca-web.onrender.com/api/company-os/echo-brain` |
+| `ECHO_AI_KEY` | Same secret as luccca-web `ECHO_BRAIN_SECRET` (or `COMPANY_OS_INGEST_SECRET`) |
+
+**How the two booleans turn green:**
+
+| Row | Green when |
+|---|---|
+| `ECHO_AI_URL` | Env var is present on Company OS after redeploy |
+| Chef's Brain | Live GET probe to that URL succeeds (2xx / 401 / 403 / 405). 404 = wrong path on luccca-web |
+
+luccca-web must expose `GET/POST /api/company-os/echo-brain`. Company OS UI has **Copy URL** / **Copy env lines** on the Connection health card.
+
+Scout stays Active from `GOOGLE_AI_API_KEY` / `GEMINI_API_KEY`; Chef's Brain flips Active once `ECHO_AI_URL` is set **and** the probe reaches luccca-web.
 
 Local:
 
@@ -114,10 +130,15 @@ Dr. OS **Connection health** card shows (booleans / ages only — never secret v
 
 - `SUPPORT_INGEST_SECRET` configured?
 - Last pilot heartbeat age, last question age, outbox pending
-- `emailConfigured`, `ECHO_AI_URL` / Chef's Brain configured?
+- `emailConfigured`, `ECHO_AI_URL` (env present), Chef's Brain (live probe)
+- When red: **How to turn green** + click-to-copy suggested URL
 - **Capture system snapshot** → `POST /api/support/snapshot` (anonymized; optional Knights sandbox)
 
 See `docs/SECURITY_RELAY.md` for allowed vs forbidden snapshot fields.
+
+## Audit Trail (read Knights / computer sends)
+
+On `/dr-os` → **Audit Trail**: click any row to expand full action, actor, entityId, and **redacted** payload JSON. Filters: All · Knights · Computer · Relay.
 
 ## Free support test
 

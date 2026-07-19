@@ -106,7 +106,8 @@ service is live (see **Cron jobs** below).
 | `OPENAI_API_KEY` | Analyst |
 | `ANTHROPIC_API_KEY` | Strategist + Architect |
 | `GOOGLE_AI_API_KEY` | Scout (preferred). Also accepts `GEMINI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` |
-| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain — set URL to `https://luccca-web.onrender.com/api/company-os/echo-brain` and KEY to luccca-web `ECHO_BRAIN_SECRET` (or ingest secret). See `docs/CONNECT_PILOT_TO_COMPANY_OS.md` |
+| `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain — **exact URL:** `https://luccca-web.onrender.com/api/company-os/echo-brain`; KEY = luccca-web `ECHO_BRAIN_SECRET` (or ingest secret). Clears Connection health reds. See `docs/CONNECT_PILOT_TO_COMPANY_OS.md` |
+| `FIX_DIGEST_HOURS` / `FIX_DIGEST_TO` | Optional — 4h fix digest cron (`echoaurion-company-os-fix-digest`). Defaults: `4` / `ADMIN_EMAIL`. Needs `EMAIL_FROM` + Resend/SMTP |
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/diagnostics` and `/api/relay/*` (whoami, heartbeat, stream, questions, work) |
 | `AUTO_KNIGHTS_ON_QUESTION` | Default `true` — inbound relay questions auto-run Knights + HelpTicket TEXT |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
@@ -206,6 +207,9 @@ Blueprint includes optional cron services that run small Node scripts under
 | `echoaurion-company-os-sync` | `0 8 * * *` | `node scripts/cron-financial-sync.mjs` |
 | `echoaurion-company-os-briefing` | `0 11 * * *` | `node scripts/cron-briefing.mjs` |
 | `echoaurion-company-os-maintenance` | `0 * * * *` | `node scripts/cron-maintenance-dispatch.mjs` |
+| `echoaurion-company-os-fix-digest` | `0 */4 * * *` | `node scripts/cron-http-post.mjs /api/ops/fix-digest` |
+
+**Fix digest:** emails William a summary of Help Desk resolves, SYSTEM fixes, `echo_repair_ready`, and approved sends. Set `CRON_SECRET` on the cron; email uses web `RESEND_API_KEY` + `EMAIL_FROM`. If email is unset, the route logs a skip and still returns 200.
 
 **Env on each cron (required):**
 
