@@ -33,7 +33,18 @@ export async function draftAnswer(
   if (!seat) return { seat: null, answer: null, error: 'No AI seat is configured' }
 
   const config = ROSTER[seat]
-  const ctx = context ? `\n\nDeployment context:\n${JSON.stringify(context).slice(0, 2000)}` : ''
+  // Echo AI failure tickets carry systemCheck + steps — allow a larger slice.
+  const ctxLimit =
+    context &&
+    typeof context === 'object' &&
+    !Array.isArray(context) &&
+    ((context as Record<string, unknown>).source === 'echo_ai' ||
+      (context as Record<string, unknown>).echoPriority === true)
+      ? 6000
+      : 2000
+  const ctx = context
+    ? `\n\nDeployment context:\n${JSON.stringify(context).slice(0, ctxLimit)}`
+    : ''
   const result = await dispatch(config, {
     system: answerDraftSystemPrompt({ replyLanguageLabel: opts?.replyLanguageLabel }),
     user: `Customer question:\n${question}${ctx}`,

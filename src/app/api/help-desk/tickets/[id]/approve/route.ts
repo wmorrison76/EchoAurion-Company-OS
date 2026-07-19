@@ -4,6 +4,8 @@ import { audit } from '@/lib/audit'
 import { toDetail } from '@/lib/help-desk'
 import { onErrorTicketResolved } from '@/lib/error-resolve'
 import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
+import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
+import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -97,6 +99,34 @@ export async function POST(
           answer,
           directive: q.directive,
         })
+        const echoAi = isEchoAiTicket({
+          intakeChannel: ticket.intakeChannel,
+          moduleHint: ticket.moduleHint,
+        })
+        const live = await afterApproveDeliverLive({
+          clientKey: q.clientKey,
+          ticketId: id,
+          questionId: q.id,
+          question: q.question,
+          answer,
+          directive: q.directive,
+          moduleHint: ticket.moduleHint,
+          intakeChannel: ticket.intakeChannel,
+          echoAi,
+          context: q.context,
+          answerReadyPublished: true,
+        })
+        if (live.codeDeployNotice || live.softDirective) {
+          await db.helpMessage.create({
+            data: {
+              ticketId: id,
+              role: 'SYSTEM',
+              body: live.codeDeployNotice
+                ? 'Live repair: update_available + soft_reload pushed to pilot SSE (banner — no silent wipe).'
+                : 'Live repair: soft directive pushed to pilot SSE (no refresh required).',
+            },
+          })
+        }
       } else if (ticket.clientKey) {
         await publishAnswerReady({
           clientKey: ticket.clientKey,
@@ -104,6 +134,32 @@ export async function POST(
           question: ticket.subject,
           answer,
         })
+        const echoAi = isEchoAiTicket({
+          intakeChannel: ticket.intakeChannel,
+          moduleHint: ticket.moduleHint,
+        })
+        const live = await afterApproveDeliverLive({
+          clientKey: ticket.clientKey,
+          ticketId: id,
+          questionId: ticket.id,
+          question: ticket.subject,
+          answer,
+          moduleHint: ticket.moduleHint,
+          intakeChannel: ticket.intakeChannel,
+          echoAi,
+          answerReadyPublished: true,
+        })
+        if (live.codeDeployNotice || live.softDirective) {
+          await db.helpMessage.create({
+            data: {
+              ticketId: id,
+              role: 'SYSTEM',
+              body: live.codeDeployNotice
+                ? 'Live repair: update_available + soft_reload pushed to pilot SSE (banner — no silent wipe).'
+                : 'Live repair: soft directive pushed to pilot SSE (no refresh required).',
+            },
+          })
+        }
       }
 
       const updated = await db.helpTicket.update({

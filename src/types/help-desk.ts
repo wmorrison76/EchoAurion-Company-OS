@@ -1,6 +1,6 @@
 export type HelpTicketChannel = 'TEXT' | 'VOICE' | 'FEATURE' | 'SYSTEM'
 export type IntakeGate = 'TECH' | 'BILLING' | 'BUILD' | 'OTHER'
-export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR' | 'EMAIL' | 'SMS'
+export type IntakeChannel = 'IN_APP' | 'VOICE' | 'PHONE_IVR' | 'EMAIL' | 'SMS' | 'ECHO'
 export type HelpTicketStatus =
   | 'OPEN'
   | 'WAITING'
@@ -83,6 +83,8 @@ export interface HelpTicketListItem {
   moduleHint: string | null
   /** Meal-period-critical module — priority escalated; floor gets no stacks. */
   guestImpact: boolean
+  /** Auto-filed from product Echo AI — sorts above normal TEXT; badge ◆ Echo AI. */
+  echoAi: boolean
   /** SLA clocks — shape+label in UI. */
   firstResponseAt: string | null
   firstResponseDueAt: string | null

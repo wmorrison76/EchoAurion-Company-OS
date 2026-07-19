@@ -2,6 +2,13 @@ import { db } from '@/lib/db'
 import { classifySupportRequest } from '@/lib/support-policy'
 import { computeSlaDueDates, evaluateSla } from '@/lib/support-sla'
 import { isGuestImpactModule } from '@/lib/guest-impact'
+import {
+  ECHO_INTAKE_CHANNEL,
+  ECHO_PRIORITY,
+  formatEchoContextSystemBody,
+  isEchoAiContext,
+  isEchoAiTicket,
+} from '@/lib/echo-ticket-priority'
 import type { IntakeGate } from '@/lib/intake-gate'
 import type {
   HelpAttachmentView,
@@ -116,6 +123,11 @@ export function toVoiceView(v: {
 
 export function toListItem(t: TicketRow): HelpTicketListItem {
   const gate = (t.intakeGate as IntakeGate | null) ?? null
+  const echoAi = isEchoAiTicket({
+    intakeChannel: t.intakeChannel,
+    priority: t.priority,
+    moduleHint: t.moduleHint,
+  })
   const sla = evaluateSla({
     createdAt: t.createdAt,
     intakeGate: gate,
@@ -126,6 +138,7 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     slaBreachedAt: t.slaBreachedAt,
     slaEscalatedAt: t.slaEscalatedAt,
     status: t.status,
+    echoAi,
   })
 
   return {
@@ -156,6 +169,7 @@ export function toListItem(t: TicketRow): HelpTicketListItem {
     canaryClientKeys: t.canaryClientKeys ?? [],
     moduleHint: t.moduleHint ?? null,
     guestImpact: isGuestImpactModule(t.moduleHint),
+    echoAi,
     firstResponseAt: t.firstResponseAt?.toISOString() ?? null,
     firstResponseDueAt: t.firstResponseDueAt?.toISOString() ?? sla.firstResponseDueAt,
     resolveDueAt: t.resolveDueAt?.toISOString() ?? sla.resolveDueAt,
@@ -225,9 +239,10 @@ export function toDetail(t: TicketRow): HelpTicketDetail {
 /** SLA due dates to set on ticket create. */
 export function slaDueFieldsForCreate(
   createdAt: Date,
-  gate: IntakeGate | null | undefined
+  gate: IntakeGate | null | undefined,
+  opts?: { echoAi?: boolean }
 ): { firstResponseDueAt: Date; resolveDueAt: Date } {
-  return computeSlaDueDates(createdAt, gate)
+  return computeSlaDueDates(createdAt, gate, opts)
 }
 
 /** Find or create a Help Desk ticket linked to a Support inbox question/work item. */
@@ -270,18 +285,33 @@ export async function ensureTicketFromInbox(input: {
     if (!q) throw new Error('Question not found')
 
     const intakeGate = q.intakeGate ?? null
+    const ctx =
+      q.context && typeof q.context === 'object' && !Array.isArray(q.context)
+        ? (q.context as Record<string, unknown>)
+        : null
+    const echoAi = isEchoAiContext(ctx)
     const now = new Date()
-    const dues = slaDueFieldsForCreate(now, intakeGate as IntakeGate | null)
+    const dues = slaDueFieldsForCreate(now, intakeGate as IntakeGate | null, {
+      echoAi,
+    })
+    const echoSystemBody =
+      echoAi && ctx ? formatEchoContextSystemBody(ctx) : null
     const ticket = await db.helpTicket.create({
       data: {
         channel: intakeGate === 'BUILD' ? 'FEATURE' : 'TEXT',
         intakeGate: intakeGate ?? undefined,
-        intakeChannel: 'IN_APP',
+        intakeChannel: echoAi ? ECHO_INTAKE_CHANNEL : 'IN_APP',
+        priority: echoAi ? ECHO_PRIORITY : 'NORMAL',
         status: 'OPEN',
         subject: q.question.slice(0, 120),
         clientKey: q.clientKey,
         clientId: q.clientId,
         customerQuestionId: q.id,
+        moduleHint: echoAi
+          ? 'echo_ai'
+          : typeof ctx?.moduleHint === 'string'
+            ? ctx.moduleHint.slice(0, 80)
+            : undefined,
         firstResponseDueAt: dues.firstResponseDueAt,
         resolveDueAt: dues.resolveDueAt,
         messages: {
@@ -290,6 +320,14 @@ export async function ensureTicketFromInbox(input: {
               role: 'CUSTOMER',
               body: q.question,
             },
+            ...(echoSystemBody
+              ? [
+                  {
+                    role: 'SYSTEM' as const,
+                    body: echoSystemBody,
+                  },
+                ]
+              : []),
             ...(q.draftAnswer
               ? [
                   {

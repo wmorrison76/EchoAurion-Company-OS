@@ -92,6 +92,9 @@ Server helper: `createStreamToken(clientKey)` in `src/lib/relay-auth.ts`.
 | `open_panel` | Operator asked the pilot to open a panel (`panelId` + optional `params`) |
 | `navigate` | Operator asked the pilot to navigate to a path |
 | `maintenance_notice` | Scheduled or immediate maintenance / major-update blast (also mirrored as `show_message`) |
+| `feature_available` | GLOBAL/COHORT fix available (also mirrors update banner) |
+| `update_available` | Soft “Update ready” banner after code deploy / product fix |
+| `soft_reload` / `client_update` | Ask pilot to soft-reload (preserve drafts; never silent wipe) |
 | `ping` | Live keep-alive (~25s); not persisted to outbox |
 
 ### Directive payloads
@@ -101,6 +104,8 @@ Server helper: `createStreamToken(clientKey)` in `src/lib/relay-auth.ts`.
 { "type": "open_panel", "panelId": "beo", "params": null }
 { "type": "navigate", "path": "/settings" }
 { "type": "maintenance_notice", "noticeId": "…", "title": "…", "body": "…", "severity": "info"|"warning"|"error", "windowStart": null, "windowEnd": null }
+{ "type": "update_available", "title": "Update ready", "body": "…", "updateDirective": "soft_reload" }
+{ "type": "soft_reload", "reason": "Fix is live — applying without losing your work.", "preserveDrafts": true }
 ```
 
 ### Maintenance notices

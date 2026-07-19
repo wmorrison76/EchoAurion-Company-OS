@@ -212,7 +212,7 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
         fingerprint: ticket.fingerprint,
         scope,
         rolloutStage: stage,
-        updateDirective: 'refresh_recommended',
+        updateDirective: 'soft_reload',
       })
       await publishRelayEvent(clientKey, 'directive', {
         type: 'feature_available',
@@ -222,7 +222,21 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
         fingerprint: ticket.fingerprint,
         scope,
         rolloutStage: stage,
-        updateDirective: 'refresh_recommended',
+        updateDirective: 'soft_reload',
+      })
+      await publishRelayEvent(clientKey, 'update_available', {
+        type: 'update_available',
+        title,
+        body,
+        ticketId: ticket.id,
+        updateDirective: 'soft_reload',
+      })
+      await publishRelayEvent(clientKey, 'soft_reload', {
+        type: 'soft_reload',
+        reason: body,
+        preserveDrafts: true,
+        ticketId: ticket.id,
+        mode: 'soft_reload',
       })
     } else if (scope === 'USER' && ticket.sessionHint) {
       await publishRelayEvent(clientKey, 'directive', {

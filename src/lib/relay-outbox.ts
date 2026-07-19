@@ -11,6 +11,9 @@ export type RelayEventType =
   | 'navigate'
   | 'maintenance_notice'
   | 'feature_available'
+  | 'update_available'
+  | 'soft_reload'
+  | 'client_update'
   | 'ping'
 
 export interface RelayEvent {

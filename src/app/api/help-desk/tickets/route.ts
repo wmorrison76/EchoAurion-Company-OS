@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { toDetail, toListItem, slaDueFieldsForCreate } from '@/lib/help-desk'
+import { compareHelpDeskQueue } from '@/lib/echo-ticket-priority'
 import { ensureReceivedEvent } from '@/lib/help-timeline'
 import { parseIntakeGate } from '@/lib/intake-gate'
 import type { APIResponse } from '@/types'
@@ -64,12 +65,13 @@ export async function GET(req: Request): Promise<Response> {
           ? { intakeGate: gateFilter as 'TECH' | 'BILLING' | 'BUILD' | 'OTHER' }
           : {}),
       },
+      // Fetch a bit more then sort in-app: Echo AI / URGENT above normal TEXT.
       orderBy: { updatedAt: 'desc' },
-      take: 80,
+      take: 120,
       include: { _count: { select: { messages: true } } },
     })
 
-    const data = tickets.map(toListItem)
+    const data = tickets.map(toListItem).sort(compareHelpDeskQueue).slice(0, 80)
     return Response.json({
       success: true,
       data,

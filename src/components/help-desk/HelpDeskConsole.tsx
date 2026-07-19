@@ -776,6 +776,12 @@ export function HelpDeskConsole() {
                   aria-current={selectedId === t.id ? 'true' : undefined}
                 >
                   <div className="flex flex-wrap gap-1.5">
+                    {t.echoAi && (
+                      <StatusBadge
+                        level="error"
+                        label="◆ Echo AI"
+                      />
+                    )}
                     <StatusBadge level={channelLevel(t.channel)} label={t.channel} />
                     {t.sla && (
                       <StatusBadge
@@ -867,6 +873,9 @@ export function HelpDeskConsole() {
             <>
               <header className="border-b border-[#2a2a3f] pb-3">
                 <div className="flex flex-wrap items-center gap-2">
+                  {detail.echoAi && (
+                    <StatusBadge level="error" label="◆ Echo AI" />
+                  )}
                   <StatusBadge
                     level={channelLevel(detail.channel)}
                     label={detail.channel}

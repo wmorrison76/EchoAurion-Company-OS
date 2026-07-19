@@ -806,6 +806,8 @@ enum IntakeChannel {
   PHONE_IVR
   EMAIL
   SMS
+  /// Auto-filed from product Echo AI failure / timeout / cannot-complete.
+  ECHO
 }
 
 /// Blast radius for auto-captured runtime errors.
@@ -937,7 +939,7 @@ model HelpArticle {
 model RelayOutbox {
   id          String    @id @default(cuid())
   clientKey   String
-  type        String // answer_ready | work_status | directive | show_message | open_panel | navigate | maintenance_notice | ping
+  type        String // answer_ready | work_status | directive | show_message | open_panel | navigate | maintenance_notice | feature_available | update_available | soft_reload | client_update | ping
   payload     Json
   createdAt   DateTime  @default(now())
   deliveredAt DateTime?

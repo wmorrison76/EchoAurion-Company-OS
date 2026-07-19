@@ -5,6 +5,10 @@
  */
 
 import type { IntakeGate } from '@/lib/intake-gate'
+import {
+  ECHO_SLA_FIRST_RESPONSE_MINUTES,
+  ECHO_SLA_RESOLVE_MINUTES,
+} from '@/lib/echo-ticket-priority'
 
 export type SlaStatusLevel = 'ok' | 'warn' | 'error' | 'unknown'
 
@@ -45,10 +49,19 @@ export const SLA_RESOLVE_MINUTES: Record<IntakeGate | 'DEFAULT', number> = {
 /** Warn when this fraction of the clock remains (e.g. 0.2 = last 20%). */
 const WARN_REMAINING_FRACTION = 0.2
 
-export function slaTargetsForGate(gate: IntakeGate | null | undefined): {
+export function slaTargetsForGate(
+  gate: IntakeGate | null | undefined,
+  opts?: { echoAi?: boolean }
+): {
   firstResponseMinutes: number
   resolveMinutes: number
 } {
+  if (opts?.echoAi) {
+    return {
+      firstResponseMinutes: ECHO_SLA_FIRST_RESPONSE_MINUTES,
+      resolveMinutes: ECHO_SLA_RESOLVE_MINUTES,
+    }
+  }
   const key = gate && gate in SLA_FIRST_RESPONSE_MINUTES ? gate : 'DEFAULT'
   return {
     firstResponseMinutes: SLA_FIRST_RESPONSE_MINUTES[key as IntakeGate | 'DEFAULT'],
@@ -58,9 +71,10 @@ export function slaTargetsForGate(gate: IntakeGate | null | undefined): {
 
 export function computeSlaDueDates(
   createdAt: Date,
-  gate: IntakeGate | null | undefined
+  gate: IntakeGate | null | undefined,
+  opts?: { echoAi?: boolean }
 ): { firstResponseDueAt: Date; resolveDueAt: Date } {
-  const { firstResponseMinutes, resolveMinutes } = slaTargetsForGate(gate)
+  const { firstResponseMinutes, resolveMinutes } = slaTargetsForGate(gate, opts)
   return {
     firstResponseDueAt: new Date(createdAt.getTime() + firstResponseMinutes * 60_000),
     resolveDueAt: new Date(createdAt.getTime() + resolveMinutes * 60_000),
@@ -133,14 +147,19 @@ export function evaluateSla(input: {
   slaEscalatedAt?: Date | null
   status?: string | null
   now?: Date
+  /** Echo AI tickets use a tighter clock when dues were not pre-stamped. */
+  echoAi?: boolean
 }): SlaClockView {
   const now = input.now ?? new Date()
-  const targets = slaTargetsForGate(input.intakeGate)
+  const targets = slaTargetsForGate(input.intakeGate, { echoAi: input.echoAi })
   const firstDue =
     input.firstResponseDueAt ??
-    computeSlaDueDates(input.createdAt, input.intakeGate).firstResponseDueAt
+    computeSlaDueDates(input.createdAt, input.intakeGate, { echoAi: input.echoAi })
+      .firstResponseDueAt
   const resolveDue =
-    input.resolveDueAt ?? computeSlaDueDates(input.createdAt, input.intakeGate).resolveDueAt
+    input.resolveDueAt ??
+    computeSlaDueDates(input.createdAt, input.intakeGate, { echoAi: input.echoAi })
+      .resolveDueAt
   const terminal =
     input.status === 'RESOLVED' || input.status === 'CLOSED'
   const paused = isSlaPausedForOperatorQueue(input.status)
