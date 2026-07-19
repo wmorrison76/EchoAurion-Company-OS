@@ -6,6 +6,7 @@
 import { db } from '@/lib/db'
 import { KNIGHT_SEATS, MAESTRO, ROSTER, knightConfigured } from '@/lib/board-room/knights'
 import {
+  envEchoAutoApprove,
   envHelpDeskAutoSendTech,
   shouldAutoKnightsOnQuestion,
 } from '@/lib/help-desk-auto-flags'
@@ -14,7 +15,10 @@ import { pickDraftSeat } from '@/lib/support-relay'
 import type { StatusLevel } from '@/types'
 import type { KnightsWatchSnapshot } from '@/types/knights-watch'
 
-export { envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
+export {
+  envEchoAutoApprove,
+  envHelpDeskAutoSendTech,
+} from '@/lib/help-desk-auto-flags'
 
 export async function getKnightsWatchSnapshot(): Promise<KnightsWatchSnapshot> {
   const seatsLive = [MAESTRO, ...KNIGHT_SEATS.map((s) => ROSTER[s])]
@@ -48,6 +52,7 @@ export async function getKnightsWatchSnapshot(): Promise<KnightsWatchSnapshot> {
   const cronStale = minutesSinceLastDrain == null || minutesSinceLastDrain > 20
   const autoKnightsOn = shouldAutoKnightsOnQuestion()
   const techAutoSendEnv = envHelpDeskAutoSendTech()
+  const echoAutoApprove = envEchoAutoApprove()
   const hasSeat = Boolean(pickDraftSeat())
 
   let level: StatusLevel = 'ok'
@@ -77,6 +82,7 @@ export async function getKnightsWatchSnapshot(): Promise<KnightsWatchSnapshot> {
     seatsLive,
     autoKnightsOn,
     techAutoSendEnv,
+    echoAutoApprove,
     autoSendPermitActive: standby.autoSendActive,
     lastConveneAt: lastConveneAt?.toISOString() ?? null,
     minutesSinceLastConvene,

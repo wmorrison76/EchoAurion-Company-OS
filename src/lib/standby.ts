@@ -6,10 +6,18 @@ import { raiseAlert } from '@/lib/alerts'
 import { dispatch } from '@/lib/board-room/connectors'
 import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
 import { isPayrollStandbyBlocked } from '@/lib/payroll-refuse'
-import { envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
+import { envEchoAutoApprove, envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
 import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
+
+/** Customer-facing ack when Echo TECH needs a code change (BUILD stays locked). */
+const ECHO_CODE_CHANGE_ACK =
+  'Repair in progress — try again when the fix is live. A code change was flagged (draft only; nothing merges automatically).'
+
+/** Soft ack when core-path dual-control blocks sending the draft body. */
+const ECHO_CORE_REVIEW_ACK =
+  'Repair in progress — try again when live. This ticket needs human core review (dual control); Echo was notified silently.'
 
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
@@ -393,8 +401,176 @@ async function countAutoThisHour(): Promise<number> {
 }
 
 /**
+ * Echo AI silent-radio delivery: ADMIN note + answer_ready (silent) + echo_repair_ready.
+ * When resolveTicket=false (code-change / core review), leave AWAITING_APPROVAL for William.
+ */
+async function deliverEchoAiAutoProgress(input: {
+  ticketId: string
+  ticket: {
+    subject: string
+    clientKey: string | null
+    customerQuestionId: string | null
+    moduleHint: string | null
+    intakeChannel: string | null
+  }
+  answer: string
+  systemNote: string
+  resolveTicket: boolean
+  auditAction: string
+  auditExtra?: Record<string, unknown>
+}): Promise<{ autoApproved: true; reason: string }> {
+  const { ticketId, ticket, answer, systemNote, resolveTicket, auditAction, auditExtra } =
+    input
+
+  await db.helpMessage.create({
+    data: {
+      ticketId,
+      role: 'ADMIN',
+      body: answer,
+      seat: 'standby',
+    },
+  })
+  await db.helpMessage.create({
+    data: {
+      ticketId,
+      role: 'SYSTEM',
+      body: systemNote,
+    },
+  })
+
+  let questionId = ticket.customerQuestionId
+  let deliveredClientKey: string | null = ticket.clientKey
+  let deliveredQuestion = ticket.subject
+  let deliveredDirective: unknown = null
+  let deliveredContext: unknown = null
+  let deliveredUserId: string | null = null
+
+  if (questionId) {
+    const q = await db.customerQuestion.update({
+      where: { id: questionId },
+      data: {
+        answer,
+        status: 'ANSWERED',
+        answeredAt: new Date(),
+        standbyApproved: true,
+        actor: 'computer_agent',
+      },
+    })
+    const ctx =
+      q.context && typeof q.context === 'object' && !Array.isArray(q.context)
+        ? (q.context as Record<string, unknown>)
+        : null
+    deliveredUserId = typeof ctx?.userId === 'string' ? ctx.userId : null
+    deliveredClientKey = q.clientKey
+    deliveredQuestion = q.question
+    deliveredDirective = q.directive
+    deliveredContext = q.context
+    await publishAnswerReady({
+      clientKey: q.clientKey,
+      questionId: q.id,
+      question: q.question,
+      answer,
+      directive: undefined,
+      standbyApproved: true,
+      echoSilent: true,
+      ticketId,
+      userId: deliveredUserId,
+      panelId:
+        typeof ctx?.panelId === 'string'
+          ? ctx.panelId
+          : typeof ctx?.moduleHint === 'string'
+            ? ctx.moduleHint
+            : null,
+      failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
+    })
+  } else if (ticket.clientKey) {
+    const created = await db.customerQuestion.create({
+      data: {
+        clientKey: ticket.clientKey,
+        question: ticket.subject,
+        answer,
+        status: 'ANSWERED',
+        answeredAt: new Date(),
+        standbyApproved: true,
+        actor: 'computer_agent',
+        draftAnswer: answer,
+        draftSeat: 'standby',
+      },
+    })
+    questionId = created.id
+    deliveredClientKey = created.clientKey
+    deliveredQuestion = created.question
+    await db.helpTicket.update({
+      where: { id: ticketId },
+      data: { customerQuestionId: created.id },
+    })
+    await publishAnswerReady({
+      clientKey: created.clientKey,
+      questionId: created.id,
+      question: created.question,
+      answer,
+      standbyApproved: true,
+      echoSilent: true,
+      ticketId,
+    })
+  }
+
+  if (deliveredClientKey && questionId) {
+    const live = await afterApproveDeliverLive({
+      clientKey: deliveredClientKey,
+      ticketId,
+      questionId,
+      question: deliveredQuestion,
+      answer,
+      directive: deliveredDirective,
+      moduleHint: ticket.moduleHint,
+      intakeChannel: ticket.intakeChannel,
+      echoAi: true,
+      context: deliveredContext,
+      answerReadyPublished: true,
+    })
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: live.echoRepairReady
+          ? 'Silent radio: echo_repair_ready pushed to Echo only (ECHO_AUTO_APPROVE).'
+          : 'Echo ECHO_AUTO_APPROVE progress complete.',
+      },
+    })
+  }
+
+  if (resolveTicket) {
+    await db.helpTicket.update({
+      where: { id: ticketId },
+      data: { status: 'RESOLVED', resolvedAt: new Date() },
+    })
+  } else {
+    await db.helpTicket.update({
+      where: { id: ticketId },
+      data: { status: 'AWAITING_APPROVAL' },
+    })
+  }
+
+  await audit('computer_agent', auditAction, ticketId, {
+    subject: ticket.subject,
+    resolveTicket,
+    ...auditExtra,
+  })
+
+  return {
+    autoApproved: true,
+    reason: resolveTicket
+      ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
+      : 'Echo AI auto-acked (code/core path left for William; echo_repair_ready sent)',
+  }
+}
+
+/**
  * After Knights draft a TEXT ticket, optionally auto-approve a low-risk answer.
  * Work / FEATURE / execute paths are never touched here.
+ * Echo AI tickets: when ECHO_AUTO_APPROVE (default true), auto-send after draft
+ * and always emit echo_repair_ready. BUILD / payroll disclose / core merge stay locked.
  */
 export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   autoApproved: boolean
@@ -404,6 +580,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   const modeOk = modeAllowsAutoAnswer(config.mode)
   const permitOk = config.autoSendActive
   const techEnvOk = envHelpDeskAutoSendTech()
+  const echoAutoEnv = envEchoAutoApprove()
 
   const ticket = await db.helpTicket.findUnique({
     where: { id: ticketId },
@@ -487,7 +664,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       },
     })
 
+    const greetingEcho = isEchoAiTicket({
+      intakeChannel: ticket.intakeChannel,
+      moduleHint: ticket.moduleHint,
+      priority: ticket.priority,
+    })
+
     let questionId = ticket.customerQuestionId
+    let greetingClientKey: string | null = ticket.clientKey
     if (questionId) {
       const q = await db.customerQuestion.update({
         where: { id: questionId },
@@ -499,13 +683,16 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
           actor: 'computer_agent',
         },
       })
+      greetingClientKey = q.clientKey
       await publishAnswerReady({
         clientKey: q.clientKey,
         questionId: q.id,
         question: q.question,
         answer,
-        directive: q.directive,
+        directive: greetingEcho ? undefined : q.directive,
         standbyApproved: true,
+        echoSilent: greetingEcho,
+        ticketId,
       })
     } else if (ticket.clientKey) {
       const created = await db.customerQuestion.create({
@@ -521,6 +708,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
           draftSeat: 'standby',
         },
       })
+      questionId = created.id
+      greetingClientKey = created.clientKey
       await db.helpTicket.update({
         where: { id: ticketId },
         data: { customerQuestionId: created.id },
@@ -531,6 +720,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         question: created.question,
         answer,
         standbyApproved: true,
+        echoSilent: greetingEcho,
+        ticketId,
       })
     }
 
@@ -539,10 +730,35 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       data: { status: 'RESOLVED', resolvedAt: new Date() },
     })
 
+    // Echo silent radio: greetings still push echo_repair_ready when Echo-captured.
+    if (greetingEcho && greetingClientKey && questionId) {
+      const live = await afterApproveDeliverLive({
+        clientKey: greetingClientKey,
+        ticketId,
+        questionId,
+        question: ticket.subject,
+        answer,
+        moduleHint: ticket.moduleHint,
+        intakeChannel: ticket.intakeChannel,
+        echoAi: true,
+        answerReadyPublished: true,
+      })
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body: live.echoRepairReady
+            ? 'Silent radio: echo_repair_ready pushed to Echo only (greeting auto-send).'
+            : 'Echo greeting auto-send complete.',
+        },
+      })
+    }
+
     await audit('computer_agent', 'standby.greeting.auto_answer', ticketId, {
       subject: ticket.subject,
       usedDraft: Boolean(knightDraft),
       intakeGate: ticket.intakeGate,
+      echoAi: greetingEcho,
     })
 
     return {
@@ -558,17 +774,36 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     moduleHint: ticket.moduleHint,
     priority: ticket.priority,
   })
-  /** Echo TECH may progress under the same unlock levers as low-risk TEXT. */
+  /** Testing default: ECHO_AUTO_APPROVE unlocks Echo silent-radio without standby permit. */
+  const echoAuto = echoAi && echoAutoEnv && techOtherGate && ticket.channel === 'TEXT'
+  /** Echo TECH may progress under standby unlock levers OR ECHO_AUTO_APPROVE. */
   const echoUnlock =
-    echoAi && techOtherGate && ticket.channel === 'TEXT' && (modeOk || permitOk || envUnlock)
+    echoAi &&
+    techOtherGate &&
+    ticket.channel === 'TEXT' &&
+    (modeOk || permitOk || envUnlock || echoAuto)
 
-  if (!modeOk && !permitOk && !envUnlock) {
+  if (!modeOk && !permitOk && !envUnlock && !echoAuto) {
     return {
       autoApproved: false,
       reason: config.helpDeskAutoSendEnabled
         ? `Standby mode is ${config.mode} and auto-send permit expired`
-        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required; set HELP_DESK_AUTO_SEND_TECH=true or unlock permit for TECH/OTHER)`,
+        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required; set HELP_DESK_AUTO_SEND_TECH=true, ECHO_AUTO_APPROVE=true for Echo, or unlock permit for TECH/OTHER)`,
     }
+  }
+
+  // Core-path dual-control: never send the draft body; Echo still gets silent ack.
+  if (echoAuto && ticket.needsHumanCoreReview) {
+    return deliverEchoAiAutoProgress({
+      ticketId,
+      ticket,
+      answer: ECHO_CORE_REVIEW_ACK,
+      systemNote:
+        'ECHO_AUTO_APPROVE — NEEDS_HUMAN_CORE_REVIEW. Draft body not sent. echo_repair_ready pushed; William dual-control required before any merge.',
+      resolveTicket: false,
+      auditAction: 'standby.echo.auto_ack_core_review',
+      auditExtra: { needsHumanCoreReview: true },
+    })
   }
 
   // Timed unlock / env unlock are TECH/OTHER only (null gate = OTHER-adjacent triage).
@@ -632,6 +867,19 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   })
 
   if (maestroBody && /NEEDS_CODE_CHANGE/i.test(maestroBody)) {
+    if (echoAuto) {
+      // Auto-ack Echo; leave ticket for William / Architect draft PR path. No BUILD merge.
+      return deliverEchoAiAutoProgress({
+        ticketId,
+        ticket,
+        answer: ECHO_CODE_CHANGE_ACK,
+        systemNote:
+          'ECHO_AUTO_APPROVE — Maestro NEEDS_CODE_CHANGE. Echo auto-acked (echo_repair_ready). BUILD locked; draft PR / Approve after fix ships. No auto-merge.',
+        resolveTicket: false,
+        auditAction: 'standby.echo.auto_ack_code_change',
+        auditExtra: { needsCodeChange: true },
+      })
+    }
     await db.helpMessage.create({
       data: {
         ticketId,
@@ -648,13 +896,39 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   }
 
   const combinedDrafts = knightBodies.map((k) => k.body).join('\n')
+  const hasCodeSignal =
+    CODE_CHANGE_SIGNAL.test(combinedDrafts) || CODE_CHANGE_SIGNAL.test(ticket.subject)
+  if (echoAuto && hasCodeSignal) {
+    return deliverEchoAiAutoProgress({
+      ticketId,
+      ticket,
+      answer: ECHO_CODE_CHANGE_ACK,
+      systemNote:
+        'ECHO_AUTO_APPROVE — code-change signal in drafts. Echo auto-acked (echo_repair_ready). BUILD locked; no auto-merge.',
+      resolveTicket: false,
+      auditAction: 'standby.echo.auto_ack_code_change',
+      auditExtra: { needsCodeChange: true, viaSignal: true },
+    })
+  }
+
   const echoSoftOk =
     echoUnlock &&
     knightBodies.length > 0 &&
-    !CODE_CHANGE_SIGNAL.test(combinedDrafts) &&
-    !CODE_CHANGE_SIGNAL.test(ticket.subject)
+    !hasCodeSignal
 
-  if (!eligibility.eligible && !echoSoftOk) {
+  /** Policy-seat payroll refuse is safe to auto-send (refuse text, not figures). */
+  const policyRefuseOnly =
+    knightBodies.length > 0 &&
+    knightBodies.every((k) => (k.seat ?? '').toLowerCase() === 'policy')
+
+  /** ECHO_AUTO_APPROVE: send any soft TEXT / refuse draft (not code/core/BUILD). */
+  const echoForceSend =
+    echoAuto &&
+    knightBodies.length > 0 &&
+    !hasCodeSignal &&
+    (!isPayrollStandbyBlocked(ticket.subject, [combinedDrafts]) || policyRefuseOnly)
+
+  if (!eligibility.eligible && !echoSoftOk && !echoForceSend) {
     if (eligibility.forceAwaitingHuman) {
       await db.helpMessage.create({
         data: {
@@ -667,12 +941,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     return { autoApproved: false, reason: eligibility.reason }
   }
 
-  if (!eligibility.eligible && echoSoftOk) {
+  if (!eligibility.eligible && (echoSoftOk || echoForceSend)) {
     await db.helpMessage.create({
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: 'Echo-priority TECH — soft progress under auto-send unlock (no code-change signal). BUILD stays locked.',
+        body: echoForceSend
+          ? 'ECHO_AUTO_APPROVE — Echo AI ticket auto-send (soft/TEXT/refuse). BUILD stays locked.'
+          : 'Echo-priority TECH — soft progress under auto-send unlock (no code-change signal). BUILD stays locked.',
       },
     })
   }
@@ -721,11 +997,13 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     },
   })
   const unlockNote =
-    envUnlock && !modeOk && !permitOk
-      ? 'HELP_DESK_AUTO_SEND_TECH approved low-risk TECH/OTHER TEXT — review queue. BUILD stays locked. William should audit later.'
-      : permitOk && !modeOk
-        ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
-        : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.'
+    echoAuto && !modeOk && !permitOk && !envUnlock
+      ? 'ECHO_AUTO_APPROVE — Echo AI ticket auto-sent. echo_repair_ready will follow. BUILD stays locked. Set ECHO_AUTO_APPROVE=false for dual-control.'
+      : envUnlock && !modeOk && !permitOk
+        ? 'HELP_DESK_AUTO_SEND_TECH approved low-risk TECH/OTHER TEXT — review queue. BUILD stays locked. William should audit later.'
+        : permitOk && !modeOk
+          ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
+          : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.'
   await db.helpMessage.create({
     data: {
       ticketId,
@@ -846,14 +1124,17 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   await audit('computer_agent', 'standby.question.auto_answer', ticketId, {
     ...draftSnapshot,
     echoAi,
-    echoSoftProgress: echoSoftOk && !eligibility.eligible,
+    echoAuto,
+    echoSoftProgress: (echoSoftOk || echoForceSend) && !eligibility.eligible,
   })
 
   await raiseAlert({
     kind: 'question',
     severity: 'INFO',
     title: echoAi
-      ? 'Echo TECH auto-progressed — review queue'
+      ? echoAuto
+        ? 'Echo AI auto-sent (ECHO_AUTO_APPROVE) — review queue'
+        : 'Echo TECH auto-progressed — review queue'
       : 'Standby approved — review queue',
     body: ticket.subject.slice(0, 140),
     entityRef: ticketId,
@@ -862,9 +1143,11 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
 
   return {
     autoApproved: true,
-    reason: echoAi
-      ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
-      : 'Auto-answered under standby safeguards',
+    reason: echoAuto
+      ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
+      : echoAi
+        ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
+        : 'Auto-answered under standby safeguards',
   }
 }
 

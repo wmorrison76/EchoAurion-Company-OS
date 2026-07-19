@@ -36,3 +36,21 @@ export function envHelpDeskAutoSendTech(): boolean {
   const v = (process.env.HELP_DESK_AUTO_SEND_TECH ?? '').trim().toLowerCase()
   return v === 'true' || v === '1' || v === 'yes'
 }
+
+/**
+ * Echo AI–captured tickets (source echo_ai / channel ECHO / echoPriority):
+ * after Knights draft (or soft refuse/greeting), auto-approve & send and always
+ * emit `echo_repair_ready`. Never auto BUILD / core merge / payroll disclose.
+ *
+ * Default **true** (testing). Set `ECHO_AUTO_APPROVE=false` (or
+ * `HELP_DESK_ECHO_AUTO_APPROVE=false`) for production dual-control.
+ */
+export function envEchoAutoApprove(): boolean {
+  const raw =
+    process.env.ECHO_AUTO_APPROVE ?? process.env.HELP_DESK_ECHO_AUTO_APPROVE ?? ''
+  const v = raw.trim().toLowerCase()
+  if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false
+  if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true
+  // Unset → true (William: testing now; set false for prod dual-control).
+  return true
+}

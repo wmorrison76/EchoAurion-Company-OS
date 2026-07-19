@@ -76,14 +76,18 @@ export function KnightsWatchingChip() {
           />
           <StatusBadge
             level={
-              data.autoSendPermitActive || data.techAutoSendEnv ? 'ok' : 'unknown'
+              data.autoSendPermitActive || data.techAutoSendEnv || data.echoAutoApprove
+                ? 'ok'
+                : 'unknown'
             }
             label={
               data.autoSendPermitActive
                 ? 'Auto-send: permit'
                 : data.techAutoSendEnv
                   ? 'Auto-send: TECH env'
-                  : 'Auto-send: locked'
+                  : data.echoAutoApprove
+                    ? 'Echo auto-approve ON'
+                    : 'Auto-send: locked'
             }
           />
           <StatusBadge

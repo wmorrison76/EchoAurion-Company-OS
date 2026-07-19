@@ -115,8 +115,8 @@ When pilot posts via `POST /api/company-os-relay/questions` → Company OS `POST
 1. Stores `CustomerQuestion`
 2. Creates/links Help Desk **TEXT** ticket
 3. **Gate policy:** `TECH` + `OTHER` auto-run Knights when `AUTO_KNIGHTS_ON_QUESTION` is true (default ON if unset). `BILLING` + `BUILD` skip auto-Knights (human / paid path). Optional `HELP_DESK_AUTO_SEND_TECH=true` auto-sends low-risk TEXT Tech/Other only — never BUILD.
-4. Standby may auto-approve **low-risk TEXT only**; simple greetings (`hi` / `are you active`) auto-send on TECH/OTHER. Otherwise status stays **AWAITING_APPROVAL** for William
-5. **Pilot does not see a reply until** Approve & send (or auto-approve / greeting auto-send) publishes relay outbox `answer_ready`
+4. Standby may auto-approve **low-risk TEXT only**; simple greetings (`hi` / `are you active`) auto-send on TECH/OTHER. **Echo AI tickets:** when `ECHO_AUTO_APPROVE` is true (default), auto-approve & send after Knights + always `echo_repair_ready` — set `false` for dual-control. Otherwise status stays **AWAITING_APPROVAL** for William
+5. **Pilot does not see a reply until** Approve & send (or auto-approve / greeting auto-send / Echo auto-approve) publishes relay outbox `answer_ready`
 6. Pilot UI waiting copy is gate-honest: TECH/OTHER say drafting + needs approval; BILLING/BUILD say “no auto-reply for this category”
 7. **Talk-to-talk (pilot voice orb):** set `OPENAI_API_KEY` on **luccca-web** — without it `/api/voice/realtime` stays unavailable (not an `ECHO_AI_URL` issue; Chef's Brain is Company OS → luccca-web)
 

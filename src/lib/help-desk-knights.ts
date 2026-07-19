@@ -21,7 +21,10 @@ import {
   loadAttachmentsForTicket,
 } from '@/lib/help-desk-attachments'
 import { isSimpleGreeting } from '@/lib/help-desk-greetings'
-import { shouldAutoKnightsOnQuestion } from '@/lib/help-desk-auto-flags'
+import {
+  envEchoAutoApprove,
+  shouldAutoKnightsOnQuestion,
+} from '@/lib/help-desk-auto-flags'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -125,6 +128,38 @@ export async function dispatchKnightsOnTicket(
       reason: payrollGate.reason,
       matched: payrollGate.matched,
     })
+
+    // Echo AI testing: auto-send the safe refuse text (never invents pay figures).
+    const echoPayroll =
+      isEchoAiTicket({
+        intakeChannel: refused.intakeChannel,
+        moduleHint: refused.moduleHint,
+        priority: refused.priority,
+      }) && envEchoAutoApprove()
+    if (echoPayroll) {
+      const standby = await maybeStandbyAutoApprove(ticketId)
+      if (standby.autoApproved) {
+        const refreshed = await db.helpTicket.findUnique({
+          where: { id: ticketId },
+          include: {
+            messages: { orderBy: { createdAt: 'asc' } },
+            voiceNotes: { orderBy: { createdAt: 'asc' } },
+            _count: { select: { messages: true } },
+          },
+        })
+        if (refreshed) {
+          return {
+            ticket: toDetail(refreshed),
+            knightCount: 0,
+            autoApproved: true,
+            responded: ['policy'],
+            skipped: [{ seat: 'all', reason: `payroll_refuse:${payrollGate.reason}` }],
+            reason: standby.reason,
+          }
+        }
+      }
+    }
+
     return {
       ticket: toDetail(refused),
       knightCount: 0,
@@ -391,7 +426,17 @@ export async function dispatchKnightsOnTicket(
 
   let autoApproved = false
   let reason: string | undefined
-  if (updated.status === 'AWAITING_APPROVAL' && !coreGuard.needsHumanCoreReview) {
+  const echoTicket = isEchoAiTicket({
+    intakeChannel: updated.intakeChannel,
+    moduleHint: updated.moduleHint,
+    priority: updated.priority,
+  })
+  // Normal standby when not core-blocked; Echo + ECHO_AUTO_APPROVE may still
+  // auto-ack (echo_repair_ready) without sending the core-risk draft body.
+  const mayStandby =
+    updated.status === 'AWAITING_APPROVAL' &&
+    (!coreGuard.needsHumanCoreReview || (echoTicket && envEchoAutoApprove()))
+  if (mayStandby) {
     const standby = await maybeStandbyAutoApprove(ticketId)
     autoApproved = standby.autoApproved
     reason = standby.reason

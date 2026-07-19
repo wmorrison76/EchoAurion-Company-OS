@@ -105,6 +105,20 @@ Help Desk UI: **Permit / Unlock auto-send** with day+time expiry. While `now < u
 
 Set `HELP_DESK_AUTO_SEND_TECH=true` on the **web** service to allow low-risk TEXT **Tech / Other** auto-send after Knights draft (same safeguards: Maestro, no code-change signal, rate limit, core-path block). **BUILD stays locked** (no auto-Knights, no auto-send). Default unset/false — use timed permit or standby mode instead.
 
+### Echo AI auto-approve — `ECHO_AUTO_APPROVE`
+
+For tickets with `source: echo_ai` / intake channel `ECHO` / `echoPriority` (silent night-shift radio):
+
+| Setting | Behavior |
+|---|---|
+| **Unset or `true`** (default — testing) | After Knights draft (or soft refuse / greeting), **auto-approve & send** without William Approve. Always emit `echo_repair_ready`. Soft TEXT / triage / policy refuse auto-send. |
+| `ECHO_AUTO_APPROVE=false` | Dual-control back — William Approve & send (same as pre-testing). Alias: `HELP_DESK_ECHO_AUTO_APPROVE`. |
+
+**Still never auto:** BUILD gate, payroll *disclose* (safe refuse text may auto-send), core-path merge, silent production merge.  
+**NEEDS_CODE_CHANGE / core review:** auto-ack Echo with “repair in progress / try again when live” + `echo_repair_ready`; ticket stays `AWAITING_APPROVAL` for William / draft PR — no auto-merge.
+
+**Production:** set `ECHO_AUTO_APPROVE=false` on the Render web service when dual-control is required again.
+
 ### SLA while AWAITING_APPROVAL
 
 SLA clocks **pause** when status is `AWAITING_APPROVAL` (William is the bottleneck). UI shows **▲ Awaiting Approve** — not ✕ Breached. Breach stamps and the Breached filter exclude this queue state.

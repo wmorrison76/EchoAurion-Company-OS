@@ -10,6 +10,8 @@ export type KnightsWatchSnapshot = {
   autoKnightsOn: boolean
   /** HELP_DESK_AUTO_SEND_TECH env unlock for low-risk TECH/OTHER TEXT. */
   techAutoSendEnv: boolean
+  /** ECHO_AUTO_APPROVE — Echo AI tickets auto-send + echo_repair_ready (default true). */
+  echoAutoApprove: boolean
   /** Timed permit currently active. */
   autoSendPermitActive: boolean
   /** Last help_desk.knights.dispatch audit ISO, or null. */
