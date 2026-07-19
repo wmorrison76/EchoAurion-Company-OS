@@ -98,7 +98,7 @@ When pilot posts via `POST /api/company-os-relay/questions` → Company OS `POST
 
 1. Stores `CustomerQuestion`
 2. Creates/links Help Desk **TEXT** ticket
-3. **Gate policy:** `TECH` + `OTHER` auto-run Knights when `AUTO_KNIGHTS_ON_QUESTION` is true (default). `BILLING` + `BUILD` skip auto-Knights (human / paid path).
+3. **Gate policy:** `TECH` + `OTHER` auto-run Knights when `AUTO_KNIGHTS_ON_QUESTION` is true (default ON if unset). `BILLING` + `BUILD` skip auto-Knights (human / paid path). Optional `HELP_DESK_AUTO_SEND_TECH=true` auto-sends low-risk TEXT Tech/Other only — never BUILD.
 4. Standby may auto-approve **low-risk TEXT only**; otherwise status stays **AWAITING_APPROVAL** for William
 5. **Pilot does not see a reply until** Approve & send (or standby auto-approve) publishes relay outbox `answer_ready`
 6. Pilot UI waiting copy is gate-honest: TECH/OTHER say drafting + needs approval; BILLING/BUILD say “no auto-reply for this category”

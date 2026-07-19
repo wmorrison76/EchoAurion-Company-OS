@@ -20,35 +20,13 @@ import {
   attachmentPromptBlock,
   loadAttachmentsForTicket,
 } from '@/lib/help-desk-attachments'
+import { shouldAutoKnightsOnQuestion } from '@/lib/help-desk-auto-flags'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
-const EXTRA_SEATS: Seat[] = ['strategist', 'analyst', 'scout']
+export { shouldAutoKnightsOnQuestion } from '@/lib/help-desk-auto-flags'
 
-/**
- * Auto-run Knights when a new inbound question arrives.
- * Default ON (William's ask). Set AUTO_KNIGHTS_ON_QUESTION=false to disable
- * unless standby/autonomy is draft_only | assist | standby | autopilot | auto_answer_low_risk.
- */
-export function shouldAutoKnightsOnQuestion(): boolean {
-  const flag = (process.env.AUTO_KNIGHTS_ON_QUESTION ?? 'true').trim().toLowerCase()
-  if (flag === 'true' || flag === '1' || flag === 'yes') return true
-  if (flag === 'false' || flag === '0' || flag === 'no') {
-    const autonomy = (process.env.AUTONOMY_DIAL ?? '').trim().toLowerCase()
-    if (autonomy === 'assist' || autonomy === 'standby' || autonomy === 'autopilot') {
-      return true
-    }
-    const standby = (process.env.KNIGHTS_STANDBY_MODE ?? 'off').trim().toLowerCase()
-    return (
-      standby === 'draft_only' ||
-      standby === 'auto_answer_low_risk' ||
-      standby === 'assist' ||
-      standby === 'standby' ||
-      standby === 'autopilot'
-    )
-  }
-  return true
-}
+const EXTRA_SEATS: Seat[] = ['strategist', 'analyst', 'scout']
 
 export interface KnightsDispatchResult {
   ticket: HelpTicketDetail
@@ -459,8 +437,10 @@ export async function processInboundQuestion(
   const detail = await ensureTicketFromInbox({ kind: 'question', id: questionId })
   const ticketId = detail.id
 
-  const gateBlocksKnights =
-    detail.intakeGate === 'BILLING' || detail.intakeGate === 'BUILD'
+  // BUILD / BILLING hard-skip auto-Knights. TECH + OTHER (+ unset) always eligible when flag ON.
+  const gate = detail.intakeGate
+  const gateBlocksKnights = gate === 'BILLING' || gate === 'BUILD'
+  const techOtherOk = gate == null || gate === 'TECH' || gate === 'OTHER'
 
   if (!shouldAutoKnightsOnQuestion() || gateBlocksKnights) {
     if (gateBlocksKnights) {
@@ -469,9 +449,18 @@ export async function processInboundQuestion(
           ticketId,
           role: 'SYSTEM',
           body:
-            detail.intakeGate === 'BUILD'
+            gate === 'BUILD'
               ? 'BUILD gate — paid WorkAgreement path. Auto-Knights skipped; quote / agreement required. Pilot UI: no auto-reply for this category.'
               : 'BILLING gate — billing policy path. Auto-Knights skipped. Pilot UI: no auto-reply for this category.',
+        },
+      })
+    } else if (!techOtherOk) {
+      // Defensive — unknown future gates stay human.
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body: `Gate ${gate} — Auto-Knights skipped.`,
         },
       })
     }

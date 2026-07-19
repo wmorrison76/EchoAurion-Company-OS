@@ -86,7 +86,9 @@ When Company OS **and** luccca-web both ship Layer-3 handshake headers:
 
 ---
 
-## 4. GitHub webhook + ops-poll
+## 4. GitHub webhook + ops-poll + cron secrets
+
+**Flash:** If **all** Company OS crons show Failed run, set `CRON_SECRET` on **each cron service** (not only web). See `docs/CRON_SECRET_SETUP.md`. Cannot set from this repo without Render API key.
 
 | Item | Action |
 |---|---|
@@ -94,6 +96,7 @@ When Company OS **and** luccca-web both ship Layer-3 handshake headers:
 | Events | `workflow_run`, `check_suite`, `pull_request` (Bugbot / CI failures) |
 | Secret | Set `GITHUB_WEBHOOK_SECRET` on Company OS to match GitHub webhook secret |
 | Ops poll cron | `echoaurion-company-os-ops-poll` in `render.yaml` — needs `CRON_SECRET` + `WEB_SERVICE_URL` / `RENDER_SERVICE_URL` |
+| ops-poll missing? | Search Super_Admin + other folders; create from Blueprint if absent — without it agent_loop / failure tickets stall |
 | Manual test | `POST /api/ops/poll-failures` with `Authorization: Bearer $CRON_SECRET` |
 | Railway | **Not live** — scaffold only (`/api/webhooks/railway`, poll returns `skipped`). Prefer retire Railway; Render captures deploys. Optional: set `RAILWAY_WEBHOOK_SECRET` if a Railway service still exists |
 

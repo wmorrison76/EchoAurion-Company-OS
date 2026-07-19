@@ -1,5 +1,18 @@
 # CRON_SECRET setup (Render)
 
+## Flash — all cron runs Failed
+
+If **every** Company OS cron shows **Failed run** (maintenance, sync, briefing, help-eval-friday, cost-anomaly) while the **web** service is Deployed:
+
+1. `CRON_SECRET` on the **web** service alone is **not enough**.
+2. Paste the **same** `CRON_SECRET` on **each cron service** Environment tab.
+3. Blueprint `sync: false` means Render will **not** copy the value from web → cron.
+4. Look for `ops-poll` (`echoaurion-company-os-ops-poll`) — if it is **missing** from the Super_Admin list, search other folders or create it from Blueprint. Without ops-poll, failure ingest + agent_loop drain stay asleep.
+
+This repo **cannot** set Render env vars without a Render API key. William must click in the dashboard.
+
+---
+
 Crons fail with `[cron] Missing CRON_SECRET` when the secret is **unset** on that cron service. The **same** value must exist on the web service and every cron.
 
 ## How to read the failure log
@@ -41,26 +54,29 @@ Repeat for each cron: open the service → **Environment** → `CRON_SECRET` →
 | `echoaurion-company-os-ops-poll` | cron | Every 5 min: failures → tickets + ingest drain |
 | `echoaurion-company-os-sync` | cron | Daily financial sync |
 | `echoaurion-company-os-briefing` | cron | Daily board briefing |
+| `echoaurion-company-os-help-eval-friday` | cron | Thu HelpEval simulation |
+| `echoaurion-company-os-cost-anomaly` | cron | Daily cost anomaly alerts |
 
-Blueprint already declares `CRON_SECRET` with `sync: false` on web + all four crons. You still must type the value in the dashboard.
+Blueprint already declares `CRON_SECRET` with `sync: false` on web + all crons. You still must type the value in the dashboard.
 
 `WEB_SERVICE_URL` is wired via Blueprint `fromService` → web `RENDER_EXTERNAL_URL`. Confirm it is set on each cron if Blueprint sync lagged.
 
-Optional later (same `CRON_SECRET` — now in Blueprint as dedicated crons):
+### ops-poll missing from Super_Admin?
 
-| Service name (exact) | Schedule | Path |
-|---|---|---|
-| `echoaurion-company-os-help-eval-friday` | Thu 22:00 UTC | `POST /api/ops/help-eval-friday` |
-| `echoaurion-company-os-cost-anomaly` | Daily 08:30 UTC | `POST /api/ops/cost-anomaly` |
+If the list shows web + maintenance/sync/briefing (+ optional help-eval / cost-anomaly) but **no ops-poll**:
 
-Paste the **same** `CRON_SECRET` on these when Blueprint creates them (or add manually in Super_Admin). See `docs/RENDER_ENVIRONMENTS.md`.
+1. Search all Render environments for `echoaurion-company-os-ops-poll`.
+2. Prefer it next to the other Company OS crons in **Super_Admin**, same Oregon region.
+3. If absent: create from Blueprint / add manually (`*/5 * * * *` → `node scripts/cron-ops-poll.mjs`) with the same `CRON_SECRET` + `WEB_SERVICE_URL`.
+
+See `docs/RENDER_ENVIRONMENTS.md`.
 
 ## 4. Verify (5 minutes)
 
-After saving env vars on all five services:
+After saving env vars on all cron services:
 
 1. Open **echoaurion-company-os-maintenance** → **Trigger Run** (or wait for hourly).
-2. Open **echoaurion-company-os-ops-poll** → **Trigger Run**.
+2. Open **echoaurion-company-os-ops-poll** → **Trigger Run** (create first if missing).
 3. Logs should show `[cron] OK` (or a real HTTP status from the API) — **not** `Missing CRON_SECRET (CRON_SECRET:false)`.
 4. If you get **401**, web and cron secrets do not match — re-paste the **same** value on both sides.
 5. Web redeploy is only needed if you changed web env and an old instance is still running without it.
@@ -70,7 +86,8 @@ After saving env vars on all five services:
 - [ ] Ran `openssl rand -hex 32` and copied the value
 - [ ] Set `CRON_SECRET` on **echoaurion-company-os** (web)
 - [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-maintenance**
-- [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-ops-poll**
+- [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-ops-poll** (create if missing)
 - [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-sync**
 - [ ] Set the **same** `CRON_SECRET` on **echoaurion-company-os-briefing**
+- [ ] Set the **same** `CRON_SECRET` on **help-eval-friday** + **cost-anomaly** if those crons exist
 - [ ] Triggered maintenance + ops-poll — logs show success, not `CRON_SECRET:false`

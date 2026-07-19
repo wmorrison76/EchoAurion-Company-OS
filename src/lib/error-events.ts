@@ -2,7 +2,7 @@
  * Ingest + dedupe for pilot error_event → HelpTicket SYSTEM.
  * Same fingerprint within 1h updates occurrenceCount (no spam).
  * Upserts ErrorPattern for fleet learning (aggregated, no PII).
- * GLOBAL / high severity → queue computer_agent + Knights loop.
+ * Agent loop via shouldQueueAgentLoop (GLOBAL/ACCOUNT/HIGH + AUTH/INFRA/API + meal/Chronos).
  */
 
 import type { Prisma } from '@prisma/client'
@@ -311,7 +311,15 @@ export async function ingestErrorEvent(
         entityRef: existing.id,
         url: `/help-desk?ticket=${existing.id}`,
       })
-      if (scope === 'GLOBAL') {
+      const { shouldQueueAgentLoop } = await import('@/lib/error-agent-loop')
+      if (
+        shouldQueueAgentLoop({
+          errorScope: scope,
+          priority: nextPriority,
+          errorCategory,
+          moduleHint: input.moduleHint,
+        })
+      ) {
         const { enqueueIngestJob } = await import('@/lib/ingest-queue')
         void enqueueIngestJob({
           kind: 'agent_loop',
@@ -466,8 +474,16 @@ export async function ingestErrorEvent(
     url: `/help-desk?ticket=${ticket.id}`,
   })
 
-  // Queue agent + Knights for GLOBAL / high severity (async worker / cron drain).
-  if (scope === 'GLOBAL' || priority === 'URGENT' || priority === 'HIGH' || guestImpact) {
+  // Queue agent + Knights when threshold met (async worker / ops-poll drain).
+  const { shouldQueueAgentLoop } = await import('@/lib/error-agent-loop')
+  if (
+    shouldQueueAgentLoop({
+      errorScope: scope,
+      priority,
+      errorCategory,
+      moduleHint: input.moduleHint,
+    })
+  ) {
     const { enqueueIngestJob } = await import('@/lib/ingest-queue')
     void enqueueIngestJob({
       kind: 'agent_loop',

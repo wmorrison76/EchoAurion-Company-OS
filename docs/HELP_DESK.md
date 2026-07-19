@@ -99,6 +99,14 @@ Auto-answer is **TEXT how-to only** — never auto-execute code or FEATURE work.
 On `StandbySettings`: `helpDeskAutoSendEnabled` + `helpDeskAutoSendUntil`.  
 Help Desk UI: **Permit / Unlock auto-send** with day+time expiry. While `now < until`, low-risk TEXT Tech/Other may auto-send via the same `maybeStandbyAutoApprove` path (does not permanently flip standby mode). BUILD/BILLING never auto-send. See Ops Training Manual → *Permit / Unlock auto-send*.
 
+### Env unlock — `HELP_DESK_AUTO_SEND_TECH`
+
+Set `HELP_DESK_AUTO_SEND_TECH=true` on the **web** service to allow low-risk TEXT **Tech / Other** auto-send after Knights draft (same safeguards: Maestro, no code-change signal, rate limit, core-path block). **BUILD stays locked** (no auto-Knights, no auto-send). Default unset/false — use timed permit or standby mode instead.
+
+### Knights watching chip
+
+Help Desk + Dr. OS show **Knights watching** (seats configured, auto-Knights flag, last convene, ops-poll/cron freshness). Stale cron usually means `CRON_SECRET` missing on cron services — see `docs/CRON_SECRET_SETUP.md`.
+
 ---
 
 ## Status flow

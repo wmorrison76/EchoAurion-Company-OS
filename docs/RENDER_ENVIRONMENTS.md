@@ -28,20 +28,26 @@ Do **not** stand up a second Company OS web in empty Production. That would doub
 
 ---
 
+## Flash — Failed run on every cron
+
+All crons Failed + web Deployed almost always means **`CRON_SECRET` missing on each cron** (Env UI showing the key on web only is the usual trap). Paste the **identical** value on every cron. Details: `docs/CRON_SECRET_SETUP.md`.
+
 ## ops-poll placement
 
-Blueprint (`render.yaml`) defines **four** crons next to the web service:
+Blueprint (`render.yaml`) defines crons next to the web service, including:
 
 1. `echoaurion-company-os-sync`
 2. `echoaurion-company-os-briefing`
 3. `echoaurion-company-os-maintenance`
 4. `echoaurion-company-os-ops-poll` (every 5 min: CI/deploy failures → tickets + ingest drain)
+5. `echoaurion-company-os-help-eval-friday` / `echoaurion-company-os-cost-anomaly` (optional)
 
-If the Super_Admin list shows only **web + three crons** (maintenance / sync / briefing) and **ops-poll is missing**:
+If the Super_Admin list shows web + some crons and **ops-poll is missing**:
 
 1. Search Render for `echoaurion-company-os-ops-poll` (it may live under another environment/workspace — e.g. an old luccca “Production” folder).
 2. Prefer it living **next to** the other Company OS crons in **Super_Admin**, same Oregon region, same `CRON_SECRET` and `WEB_SERVICE_URL` → Company OS web.
 3. If it does not exist anywhere: create from Blueprint / add the cron manually (see `docs/CRON_SECRET_SETUP.md`). Do **not** force-merge pilot PR #202 for this.
+4. Without ops-poll, Knights stay “asleep” on SYSTEM errors — ingest `agent_loop` jobs never drain.
 
 Region rule (unchanged): Company OS **web + all its crons + Neon** stay same-region. See `docs/RENDER_REGION_NOTES.md`.
 

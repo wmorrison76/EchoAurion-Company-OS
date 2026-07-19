@@ -16,6 +16,7 @@ import { ToolbeltPanel } from '@/components/help-desk/ToolbeltPanel'
 import { TicketTimeline } from '@/components/help-desk/TicketTimeline'
 import { DeadLetterOpsPanel } from '@/components/help-desk/DeadLetterOpsPanel'
 import { CohortMessagingPanel } from '@/components/help-desk/CohortMessagingPanel'
+import { KnightsWatchingChip } from '@/components/help-desk/KnightsWatchingChip'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
 import type { APIResponse } from '@/types'
@@ -471,6 +472,7 @@ export function HelpDeskConsole() {
   return (
     <div className="flex flex-col gap-4">
       <LabInstallLinks />
+      <KnightsWatchingChip />
       <DeadLetterOpsPanel />
       <CohortMessagingPanel />
 

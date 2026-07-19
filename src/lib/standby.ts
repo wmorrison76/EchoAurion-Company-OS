@@ -6,6 +6,7 @@ import { raiseAlert } from '@/lib/alerts'
 import { dispatch } from '@/lib/board-room/connectors'
 import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
 import { isPayrollStandbyBlocked } from '@/lib/payroll-refuse'
+import { envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
 
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
@@ -399,14 +400,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   const config = await getStandbyConfig()
   const modeOk = modeAllowsAutoAnswer(config.mode)
   const permitOk = config.autoSendActive
-  if (!modeOk && !permitOk) {
-    return {
-      autoApproved: false,
-      reason: config.helpDeskAutoSendEnabled
-        ? `Standby mode is ${config.mode} and auto-send permit expired`
-        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required)`,
-    }
-  }
+  const techEnvOk = envHelpDeskAutoSendTech()
 
   const ticket = await db.helpTicket.findUnique({
     where: { id: ticketId },
@@ -422,20 +416,33 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       reason: 'FEATURE / WorkRequest never auto-executed or auto-approved in standby',
     }
   }
-  // BUILD / BILLING never auto-send — even with timed unlock or standby mode.
+  // BUILD / BILLING never auto-send — even with timed unlock, env, or standby mode.
   if (ticket.intakeGate === 'BUILD' || ticket.intakeGate === 'BILLING') {
     return {
       autoApproved: false,
       reason: `${ticket.intakeGate} gate never auto-sends — Approve & send required`,
     }
   }
-  // Timed unlock is TECH/OTHER only (null gate treated as OTHER-adjacent triage).
-  if (permitOk && !modeOk) {
-    const gate = ticket.intakeGate
-    if (gate != null && gate !== 'TECH' && gate !== 'OTHER') {
+
+  const gate = ticket.intakeGate
+  const techOtherGate = gate == null || gate === 'TECH' || gate === 'OTHER'
+  const envUnlock = techEnvOk && techOtherGate && ticket.channel === 'TEXT'
+
+  if (!modeOk && !permitOk && !envUnlock) {
+    return {
+      autoApproved: false,
+      reason: config.helpDeskAutoSendEnabled
+        ? `Standby mode is ${config.mode} and auto-send permit expired`
+        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required; set HELP_DESK_AUTO_SEND_TECH=true or unlock permit for TECH/OTHER)`,
+    }
+  }
+
+  // Timed unlock / env unlock are TECH/OTHER only (null gate = OTHER-adjacent triage).
+  if ((permitOk || envUnlock) && !modeOk) {
+    if (!techOtherGate) {
       return {
         autoApproved: false,
-        reason: `Auto-send permit does not cover gate ${gate}`,
+        reason: `Auto-send permit / HELP_DESK_AUTO_SEND_TECH does not cover gate ${gate}`,
       }
     }
   }
@@ -543,6 +550,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     approvedAnswer: answer,
     mode: config.mode,
     viaAutoSendPermit: permitOk && !modeOk,
+    viaTechEnv: envUnlock && !modeOk && !permitOk,
     helpDeskAutoSendUntil: config.helpDeskAutoSendUntil,
   }
 
@@ -554,13 +562,17 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       seat: 'standby',
     },
   })
+  const unlockNote =
+    envUnlock && !modeOk && !permitOk
+      ? 'HELP_DESK_AUTO_SEND_TECH approved low-risk TECH/OTHER TEXT — review queue. BUILD stays locked. William should audit later.'
+      : permitOk && !modeOk
+        ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
+        : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.'
   await db.helpMessage.create({
     data: {
       ticketId,
       role: 'SYSTEM',
-      body: permitOk && !modeOk
-        ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
-        : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.',
+      body: unlockNote,
     },
   })
 

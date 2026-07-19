@@ -20,6 +20,12 @@ const MEAL_CRITICAL_MODULES = [
   'expo',
   'menu',
   'ordering',
+  // Chronos / timekeeping — meal-period adjacent; treat as guest-impact escalate
+  'chronos',
+  'timeclock',
+  'time_clock',
+  'timecard',
+  'punch',
 ] as const
 
 export type TicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
