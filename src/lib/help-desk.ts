@@ -311,19 +311,17 @@ export async function ensureTicketFromInbox(input: {
               domain: 'echo_panel_load',
               sourceType: 'echo_silent_radio',
               sourceRef: q.id,
+              // Anonymized timing only — no userId / goals / emails.
               content: [
-                'Echo silent panel-load event (no user PII).',
-                `action=${String(ctx.action ?? 'open_panel')}`,
+                'Echo panel open timing (anonymized p95 learning; no user PII).',
                 `panelId=${String(ctx.panelId ?? ctx.moduleHint ?? 'unknown')}`,
                 `elapsedMs=${typeof ctx.elapsedMs === 'number' ? Math.round(ctx.elapsedMs) : 'n/a'}`,
                 `threshold=${String(ctx.loadThreshold ?? 'n/a')}`,
                 `kind=${kind || 'n/a'}`,
               ].join(' '),
               metadata: {
-                fingerprint:
-                  typeof ctx.fingerprint === 'string'
-                    ? ctx.fingerprint.slice(0, 120)
-                    : null,
+                anonymized: true,
+                p95Learning: true,
                 silent: true,
               },
               productLine: 'echo_aurion',

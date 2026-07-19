@@ -9,6 +9,7 @@ import { audit } from '@/lib/audit'
 import { db } from '@/lib/db'
 import { slaDueFieldsForCreate } from '@/lib/help-desk'
 import { recordTimelineEvent } from '@/lib/help-timeline'
+import { panelP95RegressionSignals } from '@/lib/echo-guardrails'
 import type {
   NightCleanerIngestResult,
   NightCleanerReport,
@@ -168,13 +169,63 @@ export async function ingestNightCleanerReport(
   opts?: { createTicket?: boolean }
 ): Promise<NightCleanerIngestResult> {
   const createTicket = opts?.createTicket !== false
-  const fingerprint = nightCleanerFingerprint(report)
-  const body = formatNightCleanerTicketBody(report)
+  // Merge live panel p95 regression signals (anonymized) into morning report.
+  const regressions = panelP95RegressionSignals()
+  const enriched: NightCleanerReport =
+    regressions.length === 0
+      ? report
+      : {
+          ...report,
+          categories: [
+            ...report.categories,
+            {
+              id: 'panel_p95_regression',
+              title: 'Panel p95 regression (Echo watch)',
+              pathKind: 'operator',
+              overall: {
+                status: 'warn',
+                shape: '▲',
+                label: `▲ ${regressions.length} panel p95 regression(s)`,
+              },
+              findings: regressions.map((r, i) => ({
+                id: `p95-${r.panelId}-${i}`,
+                category: 'panel_p95_regression' as const,
+                pathKind: 'operator' as const,
+                status: 'warn' as const,
+                shape: '▲' as const,
+                label: r.label,
+                ref: r.panelId,
+                detail: `p95=${r.p95Ms}ms baselineFail=${r.baselineFailMs}ms`,
+              })),
+            },
+          ],
+          tasks: [
+            ...report.tasks,
+            ...regressions.map((r, i) => ({
+              id: `task-p95-${r.panelId}-${i}`,
+              title: r.label,
+              status: 'warn' as const,
+              shape: '▲' as const,
+              label: r.label,
+              pathKind: 'operator' as const,
+              category: 'panel_p95_regression' as const,
+              priorityHint: 'HIGH' as const,
+              findingIds: [`p95-${r.panelId}-${i}`],
+            })),
+          ],
+          systemImprovements: [
+            ...(report.systemImprovements ?? []),
+            ...regressions.map((r) => r.label),
+          ],
+        }
+
+  const fingerprint = nightCleanerFingerprint(enriched)
+  const body = formatNightCleanerTicketBody(enriched)
   const subject = scrubLine(
-    `Night cleaner · Morning open · ${runDateUtc(report.finishedAt)} · ${report.productLine}`,
+    `Night cleaner · Morning open · ${runDateUtc(enriched.finishedAt)} · ${enriched.productLine}`,
     120
   )
-  const priority = priorityForReport(report)
+  const priority = priorityForReport(enriched)
 
   let ticketId: string | null = null
   let ticketCreated = false

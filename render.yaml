@@ -56,6 +56,15 @@ services:
         value: "4"
       - key: FIX_DIGEST_TO
         sync: false
+      # Echo panel-watch guardrails
+      - key: ECHO_PANEL_WATCH
+        value: "on"
+      - key: ECHO_TICKETS_PER_CLIENT_PER_HOUR
+        value: "8"
+      - key: ECHO_ONCALL_MINUTES
+        value: "30"
+      - key: ECHO_ONCALL_TO
+        sync: false
       # Auto-draft inbound tech questions with Knights (default true)
       - key: AUTO_KNIGHTS_ON_QUESTION
         value: "true"
@@ -172,6 +181,22 @@ services:
     schedule: "0 */4 * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-http-post.mjs /api/ops/fix-digest
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Every 10 minutes — page William if Echo TECH tickets unresolved past ECHO_ONCALL_MINUTES.
+  - type: cron
+    name: echoaurion-company-os-echo-oncall
+    runtime: node
+    schedule: "*/10 * * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/echo-oncall
     envVars:
       - key: WEB_SERVICE_URL
         fromService:

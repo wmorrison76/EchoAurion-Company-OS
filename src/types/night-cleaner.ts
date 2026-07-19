@@ -35,6 +35,7 @@ export type NightCleanerCategoryId =
   | 'npm_audit'
   | 'secrets_scan'
   | 'telemetry_summary'
+  | 'panel_p95_regression'
 
 export interface NightCleanerStatusView {
   status: NightCleanerStatus

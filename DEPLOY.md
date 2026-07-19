@@ -108,6 +108,9 @@ service is live (see **Cron jobs** below).
 | `GOOGLE_AI_API_KEY` | Scout (preferred). Also accepts `GEMINI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` |
 | `ECHO_AI_URL` / `ECHO_AI_KEY` | Chef's Brain — **exact URL:** `https://luccca-web.onrender.com/api/company-os/echo-brain`; KEY = luccca-web `ECHO_BRAIN_SECRET` (or ingest secret). Clears Connection health reds. See `docs/CONNECT_PILOT_TO_COMPANY_OS.md` |
 | `FIX_DIGEST_HOURS` / `FIX_DIGEST_TO` | Optional — 4h fix digest cron (`echoaurion-company-os-fix-digest`). Defaults: `4` / `ADMIN_EMAIL`. Needs `EMAIL_FROM` + Resend/SMTP |
+| `ECHO_PANEL_WATCH` | `on` (default) — set `off` to kill Echo silent panel-watch tickets |
+| `ECHO_TICKETS_PER_CLIENT_PER_HOUR` | Max Echo→Help Desk tickets per property/hour (default `8`) |
+| `ECHO_ONCALL_MINUTES` / `ECHO_ONCALL_TO` | Unresolved Echo TECH → email William (cron `echoaurion-company-os-echo-oncall`, every 10m). Defaults: `30` / `FIX_DIGEST_TO` or `ADMIN_EMAIL` |
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/diagnostics` and `/api/relay/*` (whoami, heartbeat, stream, questions, work) |
 | `AUTO_KNIGHTS_ON_QUESTION` | Default `true` — inbound relay questions auto-run Knights + HelpTicket TEXT |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |

@@ -21,6 +21,13 @@ import {
   parseRelayUserId,
   userIdContextEquals,
 } from '@/lib/relay-question-scope'
+import {
+  allowEchoTicketBudget,
+  echoFileWhy,
+  enforceEchoClientKey,
+  isEchoPanelWatchEnabled,
+} from '@/lib/echo-guardrails'
+import { isEchoAiContext } from '@/lib/echo-ticket-priority'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -208,6 +215,52 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
+    const echoCtx = parsed.data.context ?? null
+    const echoAi = isEchoAiContext(echoCtx)
+    if (echoAi) {
+      if (!isEchoPanelWatchEnabled()) {
+        return Response.json(
+          {
+            success: false,
+            error: 'Echo panel watch disabled (ECHO_PANEL_WATCH=off)',
+            code: 'ECHO_PANEL_WATCH_OFF',
+            label: '○ Echo panel watch off',
+          },
+          { status: 503 }
+        )
+      }
+      const isolation = enforceEchoClientKey({
+        clientKey: key.clientKey,
+        context: echoCtx,
+      })
+      if (!isolation.ok) {
+        return Response.json(
+          {
+            success: false,
+            error: isolation.error,
+            code: isolation.code,
+          },
+          { status: isolation.status }
+        )
+      }
+      const budget = allowEchoTicketBudget(key.clientKey)
+      if (!budget.ok) {
+        return Response.json(
+          {
+            success: false,
+            error: budget.label,
+            code: budget.code,
+            label: budget.label,
+            retryAfterSec: budget.retryAfterSec,
+          },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(budget.retryAfterSec) },
+          }
+        )
+      }
+    }
+
     const tenant = await enforcePerTenantSecretIfSet({
       clientKey: key.clientKey,
       req,
@@ -286,13 +339,33 @@ export async function POST(req: Request): Promise<Response> {
       })
     }
 
+    const echoWhy = echoAi ? echoFileWhy(mergedContext) : null
     await audit('computer_agent', 'support.question.receive', created.id, {
       intakeGate,
       locale: typeof mergedContext.locale === 'string' ? mergedContext.locale : undefined,
       ...(attachmentMetas.length
         ? { attachments: attachmentAuditMeta(attachmentMetas) }
         : {}),
+      ...(echoWhy
+        ? {
+            echoAi: true,
+            why: echoWhy.why,
+            failureKind: echoWhy.failureKind,
+            panelId: echoWhy.panelId,
+            silent: echoWhy.silent,
+            actor: 'computer_agent',
+          }
+        : {}),
     })
+    if (echoWhy) {
+      await audit('computer_agent', 'echo.ticket.file', created.id, {
+        clientKey: key.clientKey,
+        why: echoWhy.why,
+        failureKind: echoWhy.failureKind,
+        panelId: echoWhy.panelId,
+        silent: echoWhy.silent,
+      })
+    }
 
     const gateMeta = intakeGate ? INTAKE_GATE_META[intakeGate] : null
     const autoKnights =
