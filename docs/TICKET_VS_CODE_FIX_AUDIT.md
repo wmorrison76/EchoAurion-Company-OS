@@ -16,15 +16,29 @@ That is why the same crashes keep coming back: operators (and Echo auto-approve)
 
 ## What Render is deploying today
 
-| Service | Branch in `render.yaml` | Live health probe (2026-07-19) |
+| Service | Branch in `render.yaml` | Live health probe / tip |
 |---|---|---|
-| **luccca-web** | `claude/laughing-noether-lSZwe` | `commit: 3f51a8f02`, `branch: claude/laughing-noether-lSZwe` |
+| **luccca-web** | `claude/laughing-noether-lSZwe` | Tip pushed **2026-07-19:** `e98b29a52` (await Render autoDeploy; prior probe was `3f51a8f02`) |
 | luccca-workers | `claude/laughing-noether-lSZwe` | (tracks web) |
-| luccca-py-api | `claude/laughing-noether-lSZwe` | **HTTP 502** (down) |
+| luccca-py-api | `claude/laughing-noether-lSZwe` | **HTTP 502** until Atlas `MONGO_URL` is set in Render dashboard (code fix `7afc02e87` cherry-picked; see below) |
 
 **Action for William:** Render must keep deploying **`claude/laughing-noether-lSZwe`** (what is live today), **or** deliberately flip `render.yaml` + the Render dashboard to another branch after merging. Do **not** assume `-deploy` is what guests hit.
 
-Local tip branch `claude/prospect-to-plate-framework-deploy` is **ahead of laughing-noether by ~34 commits** and **behind by ~110**. Several crash soft-fails live only on `-deploy`.
+### Cherry-picks onto laughing-noether (2026-07-19) — Approve ≠ needed for these
+
+Careful port from `-deploy` (no wholesale merge). New tip: `7afc02e87` (includes MONGO_URL ops fix).
+
+| New SHA on laughing-noether | Upstream source | What it ships |
+|---|---|---|
+| `75efba0fb` | `31811960e` | Soft-fail `ytd.gross` / paystubs / forecast / room crashes + Help Desk drop/paste |
+| `591919189` | `2683605a7` | `POST /api/nutrition/analyze` + Recipe Library drop/select (kept Excel/CSV lane) |
+| `87f938529` | `66ff14540` | Help Desk per-user threads + soft-fail when luccca-py-api 502 |
+| `e98b29a52` | `1714ddbff` | MyEcho Help Desk chrome + Company OS relay |
+| `7afc02e87` | `7fe7fe47c` | Atlas `MONGO_URL` / fuse-box aliases + `render.yaml` for luccca-py-api |
+
+**Already on laughing before this port:** `f33da8540` (Recipe Library Excel/CSV drag-drop).
+
+**Still required (ops — William):** Set Atlas **`MONGO_URL`** (`mongodb+srv://…`) on Render service **luccca-py-api**. Cherry-pick `7afc02e87` aligns fuse-box + `render.yaml` aliases (`MONGO_URL` / `MONGODB_URL` / `MONGODB_URI`) and rejects localhost; without the Atlas secret in the dashboard, py-api stays 502.
 
 ---
 
@@ -51,15 +65,17 @@ Local tip branch `claude/prospect-to-plate-framework-deploy` is **ahead of laugh
 
 ## Recurring fingerprints vs branch reality
 
-Checked against live SHA `3f51a8f02` (laughing-noether) vs tip `-deploy`:
+Checked against laughing-noether tip `7afc02e87` (pushed; confirm via `/api/health` after Render) vs tip `-deploy`:
 
 | Issue | On live `laughing-noether`? | On `-deploy` tip? | Notes |
 |---|---|---|---|
-| **`ytd.gross` crash** (`data.ytd.gross` without guard) | **Still vulnerable** in `MyEcho.tsx` PayView | Soft-fail (`ytd ?? {}`, `Number(…??0)`) | Classic approve-without-deploy recurrence |
-| **Nutrition analyze wiring** | Older path; `2683605a7` **not** ancestor of live | `fix(culinary): wire nutrition analyze…` present | 404/empty UX can persist on live |
+| **`ytd.gross` crash** (`data.ytd.gross` without guard) | **Ported** (`75efba0fb` ← `31811960e`) | Soft-fail present | Wait for Render; then re-check fingerprint |
+| **Nutrition analyze wiring** | **Ported** (`591919189` ← `2683605a7`) | Present | `POST /api/nutrition/analyze` mounted |
+| **Recipe Library drop/select** | **Ported** (+ Excel/CSV already via `f33da8540`) | Present | Visible drop zone + file picker |
+| **Help Desk drop/paste + MyEcho** | **Ported** (`75efba0fb`, `e98b29a52`) | Present | |
 | **Language / i18n selector** | Shared history includes picker/auth fixes | Same family of fixes | If still recurring, verify **locale deploy + cache**, not Approve |
 | **Chronos 403 (Z1 replay)** | `40a5dc3b8` is on laughing-noether | Also on `-deploy` | If still red, likely **role/JWT / py-api**, not missing commit |
-| **py-api dependent panels** | Soft-fail commit `66ff14540` **not** on laughing-noether | On `-deploy` | Live **luccca-py-api = 502** → mobile/finance shims fail regardless of Approve |
+| **py-api dependent panels** | Soft-fail **ported** (`87f938529` ← `66ff14540`); MONGO_URL code **ported** (`7afc02e87` ← `7fe7fe47c`) | Present | **py-api itself still 502** until Atlas `MONGO_URL` is set in Render dashboard |
 
 ---
 
@@ -113,7 +129,7 @@ Paste results into this doc’s appendix when available.
 1. **Approve ≠ merge/deploy** — RESOLVED after chat while bug remains on live SHA.  
 2. **Deploy branch mismatch** — crash soft-fails landed on `-deploy`; Render serves **laughing-noether**.  
 3. **`echo_repair_ready` false confidence** — Echo retries; UI still crashes → new fingerprint / occurrence.  
-4. **luccca-py-api 502** — Python sidecar down; Node soft-fail for that path is on `-deploy`, not live.  
+4. **luccca-py-api 502** — Python sidecar still down until Atlas `MONGO_URL`; Node Help Desk soft-fail is now on laughing-noether (`87f938529`).  
 5. **Architect draft PRs never auto-merge** — by design.
 
 ---
@@ -122,12 +138,11 @@ Paste results into this doc’s appendix when available.
 
 ### Immediate (ops — William)
 
-1. **Treat live branch as source of truth:** `claude/laughing-noether-lSZwe` @ current Render commit.  
-2. **Cherry-pick or merge** into laughing-noether (then let autoDeploy run):
-   - Soft-fail `ytd.gross` / KPI / room hardeners from `-deploy`
-   - Nutrition analyze wiring (`2683605a7`) if still broken on live
-   - Help Desk py-api soft-fail (`66ff14540`) while py-api is unhealthy  
-3. **Repair luccca-py-api** (502): Atlas `MONGO_URL` required per `render.yaml` / `7fe7fe47c` notes.  
+1. **Treat live branch as source of truth:** `claude/laughing-noether-lSZwe` @ Render `/api/health` commit (expect `7afc02e87` after autoDeploy).  
+2. **Product soft-fails + MONGO_URL code cherry-picked** (done 2026-07-19) — see table above; confirm deploy finished.  
+3. **Repair luccca-py-api** (502) — still open on **ops**:
+   - Set **Atlas** `MONGO_URL` (`mongodb+srv://…`) on Render service **luccca-py-api** (not localhost).
+   - Code fix is on laughing-noether as `7afc02e87` (aliases + reject loopback); dashboard secret is still required.
 4. **Stop counting Approve as a code fix** — use Help Desk badges (below).
 
 ### Product / Company OS (done in this change)
