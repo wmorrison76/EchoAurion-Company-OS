@@ -204,6 +204,7 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
       ticketId: ticket.id,
     })
     if (scope === 'GLOBAL' || scope === 'COHORT') {
+      // banner_only — never instruct pilot auto-reload (reload loops in production).
       await publishRelayEvent(clientKey, 'feature_available', {
         type: 'feature_available',
         title,
@@ -212,31 +213,23 @@ export async function notifyErrorFixed(ticketId: string): Promise<{
         fingerprint: ticket.fingerprint,
         scope,
         rolloutStage: stage,
-        updateDirective: 'soft_reload',
-      })
-      await publishRelayEvent(clientKey, 'directive', {
-        type: 'feature_available',
-        title,
-        body,
-        ticketId: ticket.id,
-        fingerprint: ticket.fingerprint,
-        scope,
-        rolloutStage: stage,
-        updateDirective: 'soft_reload',
+        updateDirective: 'banner_only',
+        mode: 'banner_only',
       })
       await publishRelayEvent(clientKey, 'update_available', {
         type: 'update_available',
         title,
         body,
         ticketId: ticket.id,
-        updateDirective: 'soft_reload',
+        updateDirective: 'banner_only',
+        mode: 'banner_only',
       })
       await publishRelayEvent(clientKey, 'soft_reload', {
         type: 'soft_reload',
         reason: body,
         preserveDrafts: true,
         ticketId: ticket.id,
-        mode: 'soft_reload',
+        mode: 'banner_only',
       })
     } else if (scope === 'USER' && ticket.sessionHint) {
       await publishRelayEvent(clientKey, 'directive', {

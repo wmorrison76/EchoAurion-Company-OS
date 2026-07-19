@@ -30,7 +30,7 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 | **Payroll / compensation hard refuse** | Live — Knights skipped; safe refuse draft + operator note; never standby auto-send |
 | **Screenshot attachments** (max 2 × ~1.5MB, DB bytes, ~90d retention) | Live on **pilot** Help Desk: browse / drag-drop / paste (Ctrl/⌘V); compress + EXIF strip client-side. Company OS shows thumbnails for Approve — no customer-facing Approve copy on pilot |
 | **Echo AI priority queue** | Live — **silent night-shift radio**: product auto-files TECH tickets with `source: echo_ai` / `echoPriority` without telling the pilot; intake channel `ECHO`, priority `URGENT`, badge **◆ Echo AI**, sorts above normal TEXT; tighter SLA (15m first response / 2h resolve). Auto-Knights still TECH/OTHER; BUILD locked. Includes panel slow-load (`action: open_panel`, `panelId`, `elapsedMs`). |
-| **Live repair delivery** | Live — Approve & send pushes `answer_ready` + soft directives over SSE immediately; code-deploy replies also emit `update_available` / `soft_reload` for the pilot banner (no silent Chronos hot-swap). |
+| **Live repair delivery** | Live — Approve & send pushes soft directives over SSE. **Echo AI tickets** push `echo_repair_ready` to Echo only (no user toast / Help Desk chrome / reload). Non-Echo code notices use `banner_only`; pilot auto-reload is **OFF** unless `ECHO_SOFT_RELOAD=true`. |
 
 ---
 

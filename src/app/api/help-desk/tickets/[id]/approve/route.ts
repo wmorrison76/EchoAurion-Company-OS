@@ -92,16 +92,29 @@ export async function POST(
           },
         })
         await audit('william_morrison', 'support.question.answer', ticket.customerQuestionId)
+        const echoAi = isEchoAiTicket({
+          intakeChannel: ticket.intakeChannel,
+          moduleHint: ticket.moduleHint,
+        })
+        const ctx =
+          q.context && typeof q.context === 'object' && !Array.isArray(q.context)
+            ? (q.context as Record<string, unknown>)
+            : null
         await publishAnswerReady({
           clientKey: q.clientKey,
           questionId: q.id,
           question: q.question,
           answer,
-          directive: q.directive,
-        })
-        const echoAi = isEchoAiTicket({
-          intakeChannel: ticket.intakeChannel,
-          moduleHint: ticket.moduleHint,
+          directive: echoAi ? undefined : q.directive,
+          echoSilent: echoAi,
+          ticketId: id,
+          panelId:
+            typeof ctx?.panelId === 'string'
+              ? ctx.panelId
+              : typeof ctx?.moduleHint === 'string'
+                ? ctx.moduleHint
+                : null,
+          failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
         })
         const live = await afterApproveDeliverLive({
           clientKey: q.clientKey,
@@ -116,27 +129,31 @@ export async function POST(
           context: q.context,
           answerReadyPublished: true,
         })
-        if (live.codeDeployNotice || live.softDirective) {
-          await db.helpMessage.create({
-            data: {
-              ticketId: id,
-              role: 'SYSTEM',
-              body: live.codeDeployNotice
-                ? 'Live repair: update_available + soft_reload pushed to pilot SSE (banner — no silent wipe).'
-                : 'Live repair: soft directive pushed to pilot SSE (no refresh required).',
-            },
-          })
-        }
+        await db.helpMessage.create({
+          data: {
+            ticketId: id,
+            role: 'SYSTEM',
+            body: live.echoRepairReady
+              ? 'Silent radio: echo_repair_ready pushed to Echo only (no user toast / reload).'
+              : live.codeDeployNotice
+                ? 'Live repair: update notice pushed (banner_only — pilot auto-reload OFF by default).'
+                : live.softDirective
+                  ? 'Live repair: soft directive pushed to pilot SSE (no refresh required).'
+                  : 'Approve delivery complete.',
+          },
+        })
       } else if (ticket.clientKey) {
+        const echoAi = isEchoAiTicket({
+          intakeChannel: ticket.intakeChannel,
+          moduleHint: ticket.moduleHint,
+        })
         await publishAnswerReady({
           clientKey: ticket.clientKey,
           questionId: ticket.id,
           question: ticket.subject,
           answer,
-        })
-        const echoAi = isEchoAiTicket({
-          intakeChannel: ticket.intakeChannel,
-          moduleHint: ticket.moduleHint,
+          echoSilent: echoAi,
+          ticketId: id,
         })
         const live = await afterApproveDeliverLive({
           clientKey: ticket.clientKey,
@@ -149,17 +166,19 @@ export async function POST(
           echoAi,
           answerReadyPublished: true,
         })
-        if (live.codeDeployNotice || live.softDirective) {
-          await db.helpMessage.create({
-            data: {
-              ticketId: id,
-              role: 'SYSTEM',
-              body: live.codeDeployNotice
-                ? 'Live repair: update_available + soft_reload pushed to pilot SSE (banner — no silent wipe).'
-                : 'Live repair: soft directive pushed to pilot SSE (no refresh required).',
-            },
-          })
-        }
+        await db.helpMessage.create({
+          data: {
+            ticketId: id,
+            role: 'SYSTEM',
+            body: live.echoRepairReady
+              ? 'Silent radio: echo_repair_ready pushed to Echo only (no user toast / reload).'
+              : live.codeDeployNotice
+                ? 'Live repair: update notice pushed (banner_only — pilot auto-reload OFF by default).'
+                : live.softDirective
+                  ? 'Live repair: soft directive pushed to pilot SSE (no refresh required).'
+                  : 'Approve delivery complete.',
+          },
+        })
       }
 
       const updated = await db.helpTicket.update({

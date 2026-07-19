@@ -14,6 +14,7 @@ export type RelayEventType =
   | 'update_available'
   | 'soft_reload'
   | 'client_update'
+  | 'echo_repair_ready'
   | 'ping'
 
 export interface RelayEvent {
@@ -103,6 +104,11 @@ export async function publishAnswerReady(input: {
   answer: string
   directive?: unknown
   standbyApproved?: boolean
+  /** Echo silent radio — pilot suppresses Help Desk chrome + toasts. */
+  echoSilent?: boolean
+  ticketId?: string
+  panelId?: string | null
+  failedStep?: string | null
 }): Promise<void> {
   await publishRelayEvent(input.clientKey, 'answer_ready', {
     questionId: input.questionId,
@@ -110,8 +116,14 @@ export async function publishAnswerReady(input: {
     answer: input.answer,
     directive: input.directive ?? null,
     standbyApproved: input.standbyApproved ?? false,
+    echoSilent: input.echoSilent === true,
+    source: input.echoSilent ? 'echo_ai' : undefined,
+    intakeChannel: input.echoSilent ? 'ECHO' : undefined,
+    ticketId: input.ticketId ?? null,
+    panelId: input.panelId ?? null,
+    failedStep: input.failedStep ?? null,
   })
-  if (input.directive != null) {
+  if (input.directive != null && !input.echoSilent) {
     await publishRelayEvent(input.clientKey, 'directive', {
       questionId: input.questionId,
       directive: input.directive,

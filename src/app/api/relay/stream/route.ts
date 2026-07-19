@@ -83,15 +83,19 @@ export async function GET(req: Request): Promise<Response> {
         await touchStreamConnected(clientKey)
 
         const pending = await listUndelivered(clientKey)
+        // Mark delivered BEFORE send so a client reload mid-flight cannot
+        // re-flush soft_reload and loop. Prefer lose-one-event over reload loops.
+        await markDelivered(pending.map((p) => p.id))
         for (const ev of pending) {
           send(ev)
         }
-        await markDelivered(pending.map((p) => p.id))
 
         unsub = subscribeRelay(clientKey, (ev) => {
-          send(ev)
-          void markDelivered([ev.id])
-          void touchStreamConnected(clientKey)
+          void (async () => {
+            await markDelivered([ev.id])
+            send(ev)
+            void touchStreamConnected(clientKey)
+          })()
         })
 
         pingTimer = setInterval(() => {
