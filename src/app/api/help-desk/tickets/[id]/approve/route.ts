@@ -108,6 +108,7 @@ export async function POST(
           directive: echoAi ? undefined : q.directive,
           echoSilent: echoAi,
           ticketId: id,
+          userId: typeof ctx?.userId === 'string' ? ctx.userId : null,
           panelId:
             typeof ctx?.panelId === 'string'
               ? ctx.panelId

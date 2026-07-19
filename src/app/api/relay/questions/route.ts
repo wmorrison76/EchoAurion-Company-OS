@@ -17,6 +17,10 @@ import {
   parseIncomingAttachments,
   persistAttachments,
 } from '@/lib/help-desk-attachments'
+import {
+  parseRelayUserId,
+  userIdContextEquals,
+} from '@/lib/relay-question-scope'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -70,8 +74,9 @@ function redactPilotText(text: string, max = 4000): string {
 
 /**
  * GET /api/relay/questions?clientKey=…&userId=…
- * Last 15 days of Q&A for this deployment (does NOT mark delivered).
- * Optional userId scopes to context.userId when questions were submitted with it.
+ * Last 15 days of Q&A for this user on this deployment (does NOT mark delivered).
+ * userId is REQUIRED — without it we return an empty list (fail-closed privacy).
+ * Never returns org-wide / coworker tickets.
  */
 export async function GET(req: Request): Promise<Response> {
   const a = relayAuthorized(req)
@@ -89,11 +94,21 @@ export async function GET(req: Request): Promise<Response> {
       { status: key.status }
     )
   }
-  const userIdRaw = url.searchParams.get('userId')?.trim() ?? ''
-  const userId =
-    userIdRaw && userIdRaw.length <= 128 && /^[a-zA-Z0-9_.:-]+$/.test(userIdRaw)
-      ? userIdRaw
-      : null
+  const userId = parseRelayUserId(url.searchParams.get('userId'))
+
+  // Fail closed: no userId → empty history (never org-wide dump).
+  if (!userId) {
+    return Response.json({
+      success: true,
+      data: [] as QuestionHistoryItem[],
+      meta: {
+        lastUpdated: new Date().toISOString(),
+        days: HELP_DESK_HISTORY_DAYS,
+        scoped: false,
+        reason: 'userId_required',
+      },
+    })
+  }
 
   try {
     const since = new Date(
@@ -103,12 +118,7 @@ export async function GET(req: Request): Promise<Response> {
       clientKey: key.clientKey,
       createdAt: { gte: since },
       status: { not: 'DISMISSED' },
-    }
-    if (userId) {
-      where.context = {
-        path: ['userId'],
-        equals: userId,
-      }
+      context: userIdContextEquals(userId),
     }
 
     const rows = await db.customerQuestion.findMany({
@@ -146,9 +156,16 @@ export async function GET(req: Request): Promise<Response> {
       meta: {
         lastUpdated: new Date().toISOString(),
         days: HELP_DESK_HISTORY_DAYS,
+        scoped: true,
+        userId,
       },
     } as APIResponse<QuestionHistoryItem[]> & {
-      meta: { lastUpdated: string; days: number }
+      meta: {
+        lastUpdated: string
+        days: number
+        scoped: boolean
+        userId: string
+      }
     })
   } catch (error) {
     return Response.json(

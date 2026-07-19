@@ -22,6 +22,7 @@ import {
 } from '@/lib/help-desk-attachments'
 import { isSimpleGreeting } from '@/lib/help-desk-greetings'
 import { shouldAutoKnightsOnQuestion } from '@/lib/help-desk-auto-flags'
+import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -439,11 +440,20 @@ export async function processInboundQuestion(
   const ticketId = detail.id
 
   // BUILD / BILLING hard-skip auto-Knights. TECH + OTHER (+ unset) always eligible when flag ON.
+  // Echo-priority TECH always auto-convenes (silent radio) even if AUTO_KNIGHTS_ON_QUESTION=false.
   const gate = detail.intakeGate
   const gateBlocksKnights = gate === 'BILLING' || gate === 'BUILD'
   const techOtherOk = gate == null || gate === 'TECH' || gate === 'OTHER'
+  const echoAi = isEchoAiTicket({
+    intakeChannel: detail.intakeChannel,
+    moduleHint: detail.moduleHint,
+    priority: detail.priority,
+    echoAi: detail.echoAi,
+  })
+  const autoKnights =
+    !gateBlocksKnights && (shouldAutoKnightsOnQuestion() || (echoAi && techOtherOk))
 
-  if (!shouldAutoKnightsOnQuestion() || gateBlocksKnights) {
+  if (!autoKnights) {
     if (gateBlocksKnights) {
       await db.helpMessage.create({
         data: {

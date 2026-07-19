@@ -8,6 +8,8 @@ import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
 import { isPayrollStandbyBlocked } from '@/lib/payroll-refuse'
 import { envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
 import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings'
+import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
+import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
@@ -551,6 +553,15 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     }
   }
 
+  const echoAi = isEchoAiTicket({
+    intakeChannel: ticket.intakeChannel,
+    moduleHint: ticket.moduleHint,
+    priority: ticket.priority,
+  })
+  /** Echo TECH may progress under the same unlock levers as low-risk TEXT. */
+  const echoUnlock =
+    echoAi && techOtherGate && ticket.channel === 'TEXT' && (modeOk || permitOk || envUnlock)
+
   if (!modeOk && !permitOk && !envUnlock) {
     return {
       autoApproved: false,
@@ -584,10 +595,15 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     const synthesisPrompt = [
       'Synthesize a single clear customer-facing how-to / triage answer from these knight drafts.',
       'If any knight says a code change, deploy, or Architect handoff is required, reply exactly: NEEDS_CODE_CHANGE',
+      echoAi
+        ? 'This is an Echo AI silent-radio TECH ticket — prefer a short floor-safe triage if no code change is required.'
+        : '',
       `Ticket: ${ticket.subject}`,
       '',
       ...knightBodies.map((k) => `[${k.seat ?? 'knight'}]\n${k.body}`),
-    ].join('\n\n')
+    ]
+      .filter(Boolean)
+      .join('\n\n')
     const maestroResult = await dispatch(MAESTRO, {
       system:
         'You are Maestro synthesizing Help Desk knight drafts for a hospitality support answer. Be concise and floor-ready.',
@@ -620,7 +636,9 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: 'Standby blocked — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William.',
+        body: echoAi
+          ? 'Echo TECH — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William (BUILD/code stays locked; Approve after fix ships to push echo_repair_ready).'
+          : 'Standby blocked — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William.',
       },
     })
     return {
@@ -629,7 +647,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     }
   }
 
-  if (!eligibility.eligible) {
+  const combinedDrafts = knightBodies.map((k) => k.body).join('\n')
+  const echoSoftOk =
+    echoUnlock &&
+    knightBodies.length > 0 &&
+    !CODE_CHANGE_SIGNAL.test(combinedDrafts) &&
+    !CODE_CHANGE_SIGNAL.test(ticket.subject)
+
+  if (!eligibility.eligible && !echoSoftOk) {
     if (eligibility.forceAwaitingHuman) {
       await db.helpMessage.create({
         data: {
@@ -640,6 +665,16 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       })
     }
     return { autoApproved: false, reason: eligibility.reason }
+  }
+
+  if (!eligibility.eligible && echoSoftOk) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: 'Echo-priority TECH — soft progress under auto-send unlock (no code-change signal). BUILD stays locked.',
+      },
+    })
   }
 
   const answerSource = maestroBody ?? knightBodies[knightBodies.length - 1]?.body
@@ -700,6 +735,12 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   })
 
   let questionId = ticket.customerQuestionId
+  let deliveredClientKey: string | null = null
+  let deliveredQuestion: string = ticket.subject
+  let deliveredDirective: unknown = null
+  let deliveredContext: unknown = null
+  let deliveredUserId: string | null = null
+
   if (questionId) {
     const q = await db.customerQuestion.update({
       where: { id: questionId },
@@ -711,13 +752,32 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         actor: 'computer_agent',
       },
     })
+    const ctx =
+      q.context && typeof q.context === 'object' && !Array.isArray(q.context)
+        ? (q.context as Record<string, unknown>)
+        : null
+    deliveredUserId = typeof ctx?.userId === 'string' ? ctx.userId : null
+    deliveredClientKey = q.clientKey
+    deliveredQuestion = q.question
+    deliveredDirective = q.directive
+    deliveredContext = q.context
     await publishAnswerReady({
       clientKey: q.clientKey,
       questionId: q.id,
       question: q.question,
       answer,
-      directive: q.directive,
+      directive: echoAi ? undefined : q.directive,
       standbyApproved: true,
+      echoSilent: echoAi,
+      ticketId,
+      userId: deliveredUserId,
+      panelId:
+        typeof ctx?.panelId === 'string'
+          ? ctx.panelId
+          : typeof ctx?.moduleHint === 'string'
+            ? ctx.moduleHint
+            : null,
+      failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
     })
   } else if (ticket.clientKey) {
     const created = await db.customerQuestion.create({
@@ -734,6 +794,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       },
     })
     questionId = created.id
+    deliveredClientKey = created.clientKey
+    deliveredQuestion = created.question
     await db.helpTicket.update({
       where: { id: ticketId },
       data: { customerQuestionId: created.id },
@@ -744,6 +806,35 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       question: created.question,
       answer,
       standbyApproved: true,
+      echoSilent: echoAi,
+      ticketId,
+    })
+  }
+
+  // Echo silent radio: auto-approve must push echo_repair_ready (Approve path does this;
+  // previously standby skipped it and tickets looked "filed but never fixed").
+  if (echoAi && deliveredClientKey && questionId) {
+    const live = await afterApproveDeliverLive({
+      clientKey: deliveredClientKey,
+      ticketId,
+      questionId,
+      question: deliveredQuestion,
+      answer,
+      directive: deliveredDirective,
+      moduleHint: ticket.moduleHint,
+      intakeChannel: ticket.intakeChannel,
+      echoAi: true,
+      context: deliveredContext,
+      answerReadyPublished: true,
+    })
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: live.echoRepairReady
+          ? 'Silent radio: echo_repair_ready pushed to Echo only (standby auto-progress).'
+          : 'Echo standby auto-progress complete.',
+      },
     })
   }
 
@@ -752,18 +843,29 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     data: { status: 'RESOLVED', resolvedAt: new Date() },
   })
 
-  await audit('computer_agent', 'standby.question.auto_answer', ticketId, draftSnapshot)
+  await audit('computer_agent', 'standby.question.auto_answer', ticketId, {
+    ...draftSnapshot,
+    echoAi,
+    echoSoftProgress: echoSoftOk && !eligibility.eligible,
+  })
 
   await raiseAlert({
     kind: 'question',
     severity: 'INFO',
-    title: 'Standby approved — review queue',
+    title: echoAi
+      ? 'Echo TECH auto-progressed — review queue'
+      : 'Standby approved — review queue',
     body: ticket.subject.slice(0, 140),
     entityRef: ticketId,
     url: '/support/pilot-links',
   })
 
-  return { autoApproved: true, reason: 'Auto-answered under standby safeguards' }
+  return {
+    autoApproved: true,
+    reason: echoAi
+      ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
+      : 'Auto-answered under standby safeguards',
+  }
 }
 
 /** Work requests: standby may only draft + suggest quote — never execute. */

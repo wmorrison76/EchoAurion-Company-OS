@@ -109,6 +109,8 @@ export async function publishAnswerReady(input: {
   ticketId?: string
   panelId?: string | null
   failedStep?: string | null
+  /** Per-user isolation — pilot chrome ignores events for other users. */
+  userId?: string | null
 }): Promise<void> {
   await publishRelayEvent(input.clientKey, 'answer_ready', {
     questionId: input.questionId,
@@ -122,6 +124,7 @@ export async function publishAnswerReady(input: {
     ticketId: input.ticketId ?? null,
     panelId: input.panelId ?? null,
     failedStep: input.failedStep ?? null,
+    userId: input.userId ?? null,
   })
   if (input.directive != null && !input.echoSilent) {
     await publishRelayEvent(input.clientKey, 'directive', {
