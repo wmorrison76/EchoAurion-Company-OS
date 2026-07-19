@@ -1,7 +1,8 @@
 /**
  * Dr. OS "config debt" — panels that are red because Render env vars are
- * missing, not because of an exception flywheel. Knights cannot paste secrets;
- * these items are for William in the Render dashboard.
+ * missing, not because of an exception flywheel. Knights cannot paste secrets.
+ * William pastes RENDER_API_KEY once; then computer_agent / Dr. OS admin can
+ * upsert allowlisted keys via POST /api/dr-os/render-config (server-side key).
  *
  * Creates at most one SYSTEM ticket per UTC day (deduped). Does NOT queue
  * agent/Knights — priority LOW + USER scope + no INFRA/AUTH/API category.
@@ -10,6 +11,7 @@
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
+import { isRenderApiConfigured } from '@/lib/render-ops'
 import type { ConfigDebtHealth, ConfigDebtItem, DrOsStatus } from '@/types/dr-os'
 
 export type { ConfigDebtItem }
@@ -147,7 +149,9 @@ export async function ensureConfigDebtTicket(
 
   const bodyLines = [
     'Dr. OS config debt — env/config only. Knights cannot set Render secrets.',
-    'William: paste the listed vars on echoaurion-company-os → Environment, then redeploy.',
+    'William: paste RENDER_API_KEY once on Company OS web (if missing), then use',
+    'Dr. OS Config debt → Apply suggested ECHO_AI_URL, or POST /api/dr-os/render-config.',
+    'Perplexity/Cursor: RENDER_API_KEY in .env.local for local agents — never in Round Table prompts.',
     `Day (UTC): ${day}`,
     '',
     ...items.map(
@@ -214,10 +218,13 @@ export async function getConfigDebtSnapshot(
       // Ticket path must never blank Dr. OS
     }
   }
+  const echoAiUrlDebt = items.some((i) => i.envVars.includes('ECHO_AI_URL'))
   return {
     items,
     ticketId,
     ticketCreated,
     generatedAt: new Date().toISOString(),
+    renderApiConfigured: isRenderApiConfigured(),
+    echoAiUrlDebt,
   }
 }

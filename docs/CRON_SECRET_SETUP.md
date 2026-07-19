@@ -9,7 +9,7 @@ If **every** Company OS cron shows **Failed run** (maintenance, sync, briefing, 
 3. Blueprint `sync: false` means Render will **not** copy the value from web → cron.
 4. Look for `ops-poll` (`echoaurion-company-os-ops-poll`) — if it is **missing** from the Super_Admin list, search other folders or create it from Blueprint. Without ops-poll, failure ingest + agent_loop drain stay asleep.
 
-This repo **cannot** set Render env vars without a Render API key. William must click in the dashboard.
+With `RENDER_API_KEY` on Company OS web, `computer_agent` / admin can upsert allowlisted keys (including `CRON_SECRET` on a named service) via `POST /api/dr-os/render-config`. Until that key exists, William must paste in the dashboard. Knights never receive `RENDER_API_KEY`. See `docs/OPEN_OPS_CHECKLIST.md` §6.
 
 ---
 

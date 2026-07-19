@@ -3,7 +3,10 @@
 Manual Render / GitHub steps that code cannot finish without secrets pastes.
 **Do not claim secrets were set without Render dashboard or API access.**
 
-**Knights / exception flywheel ≠ Render secrets.** If Dr. OS shows Not configured / Unknown / Config debt, that is a **William paste** on `echoaurion-company-os` → Environment — not a ticket for Knights to invent keys.
+**Knights / exception flywheel ≠ Render secrets.** Round Table seats never receive `RENDER_API_KEY` (not in prompts, not in Help Desk tickets). If Dr. OS shows Not configured / Unknown / Config debt:
+
+1. **William pastes once:** `RENDER_API_KEY` (+ usually `RENDER_SERVICE_ID`) on **Company OS web** Environment.
+2. Then **computer_agent** / authenticated Dr. OS admin (and local Perplexity/Cursor with the key in `.env.local`) can upsert allowlisted vars via `POST /api/dr-os/render-config` — never by stuffing the key into Knights.
 
 **Dr. OS code-complete checklist** (what’s done vs these clicks): [`DR_OS_COMPLETE.md`](./DR_OS_COMPLETE.md) — includes **Panel → env checklist**.
 
@@ -150,9 +153,38 @@ git push origin HEAD   # if rebase: may need --force-with-lease ONLY if William 
 
 ---
 
-## 6. Render API (optional)
+## 6. Render API — who gets access (secure)
 
-If `RENDER_API_KEY` is available in the operator environment, matching secrets can be set via Render API. **Never print secret values.** This checklist does not assume API access — paste in the Render dashboard when needed.
+| Who | Gets `RENDER_API_KEY`? | How they fix config debt |
+|---|---|---|
+| **William** | Pastes **once** on Company OS web (Render Environment) | Dashboard paste, or Dr. OS Config debt button, or API while logged in |
+| **computer_agent** | Uses key **only from server env** (never in prompts) | `POST /api/dr-os/render-config` with `Authorization: Bearer $CRON_SECRET` |
+| **Perplexity / Cursor (local)** | Optional in **`.env.local`** for local agents | Same API against localhost or call Render from the agent host env — **never print values** |
+| **Knights Round Table** | **No** — seats never receive the key | Open a William/config reminder only; do not invent keys |
+
+**Company OS API (preferred):**
+
+```bash
+# List services (ids/names only — no env values)
+curl -sS -H "Authorization: Bearer $CRON_SECRET" \
+  https://<company-os-host>/api/dr-os/render-config
+
+# Apply suggested Chef's Brain URL (server uses SUGGESTED_ECHO_AI_URL; triggers redeploy)
+curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"apply":"echo_ai_url"}' \
+  https://<company-os-host>/api/dr-os/render-config
+
+# Upsert allowlisted keys (values in body only — never logged/audited)
+curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"service":"echoaurion-company-os","env":{"ECHO_AI_URL":"https://luccca-web.onrender.com/api/company-os/echo-brain"},"redeploy":true}' \
+  https://<company-os-host>/api/dr-os/render-config
+```
+
+Dr. OS **Config debt** panel: **Apply suggested ECHO_AI_URL via Render** when the key is present; otherwise shows **set RENDER_API_KEY first**.
+
+Audit action: `dr_os.render_config.*` — payload has **key names only**, never values. **Never print secret values.**
 
 ---
 

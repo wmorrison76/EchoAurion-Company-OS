@@ -119,6 +119,10 @@ export interface ConfigDebtHealth {
   ticketId: string | null
   ticketCreated: boolean
   generatedAt: string
+  /** Company OS has RENDER_API_KEY — admin/computer_agent can upsert via API. */
+  renderApiConfigured: boolean
+  /** Config debt includes ECHO_AI_URL gap — UI may offer apply-suggested. */
+  echoAiUrlDebt: boolean
 }
 
 export interface DrOsStatus {

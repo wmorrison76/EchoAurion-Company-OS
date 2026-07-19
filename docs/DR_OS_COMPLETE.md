@@ -10,14 +10,23 @@ Last updated: 2026-07-19 (branch `claude/vigilant-rubin-DtQE3`).
 
 | What you see | What it is | Who fixes it |
 |---|---|---|
-| **Not configured** / **Unknown** / missing env message | Render (or local) env var not pasted | **William** in Render → Environment |
-| **Config debt** panel + daily SYSTEM ticket (`dr-os-config-debt`) | Same — reminder only | **William** — Knights do **not** invent or set secrets |
-| Connection **Relay OK** vs **Chef's Brain unset** | Split deliberately — unset Brain ≠ pilot offline | William pastes `ECHO_AI_*`; relay needs heartbeat + ingest secret |
-| GitHub “token needs repo read” / 404 | `GITHUB_TOKEN` missing, wrong scope, or private-repo access | William PAT with **repo read** |
+| **Not configured** / **Unknown** / missing env message | Render (or local) env var not pasted | **William** pastes once, or **computer_agent** via Render API after `RENDER_API_KEY` is on Company OS |
+| **Config debt** panel + daily SYSTEM ticket (`dr-os-config-debt`) | Same — reminder; optional Apply ECHO_AI_URL button | **William** / **computer_agent** — Knights do **not** invent or set secrets |
+| Connection **Relay OK** vs **Chef's Brain unset** | Split deliberately — unset Brain ≠ pilot offline | Paste or `POST /api/dr-os/render-config` `{ "apply": "echo_ai_url" }`; relay needs heartbeat + ingest secret |
+| GitHub “token needs repo read” / 404 | `GITHUB_TOKEN` missing, wrong scope, or private-repo access | William PAT with **repo read** (or API upsert when allowlisted) |
 | Pilot **No pilot record** | Fixed in code — Miccosukee auto-upserts if missing | Code (deploy) |
 | Crash / CI / deploy failure tickets | Exception flywheel → Knights + agent loop | Knights / computer_agent |
 
-**Knights cannot open the Render dashboard or paste secrets.** Red “Not configured” panels are not bugs for the Round Table to invent keys.
+### Render access: Knights vs computer_agent / Perplexity
+
+| Actor | `RENDER_API_KEY`? |
+|---|---|
+| **Knights Round Table** | **No** — never in prompts, tickets, or seat config |
+| **computer_agent** | **Yes (server env only)** — calls Render via Company OS `POST /api/dr-os/render-config` with Bearer `CRON_SECRET` |
+| **Perplexity / Cursor** | **Yes if in `.env.local`** (local) or if calling the authenticated admin API — never put the key into Round Table |
+| **William** | Pastes **`RENDER_API_KEY` once** on Company OS web Environment (the bootstrap secret) |
+
+See [`OPEN_OPS_CHECKLIST.md`](./OPEN_OPS_CHECKLIST.md) §6.
 
 ---
 
@@ -47,6 +56,7 @@ See also [`CONNECT_PILOT_TO_COMPANY_OS.md`](./CONNECT_PILOT_TO_COMPANY_OS.md) ·
 |---|---|
 | System Status tally (GitHub, Render, Neon, Stripe, users, pilot) | ✓ |
 | **Config debt** panel + daily SYSTEM ticket (no Knights queue) | ✓ |
+| Render ops API `GET/POST /api/dr-os/render-config` + Config debt Apply ECHO_AI_URL | ✓ |
 | Connection health: **relay vs Chef's Brain** split badges | ✓ |
 | Miccosukee pilot auto-ensure if missing | ✓ |
 | GitHub 401/403/404 → clear “token needs repo read” (not forever Unknown) | ✓ |

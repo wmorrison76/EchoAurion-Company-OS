@@ -98,7 +98,10 @@ export function DrOsDashboard() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SystemStatusPanel status={status.data} />
-        <ConfigDebtPanel data={status.data?.configDebt} />
+        <ConfigDebtPanel
+          data={status.data?.configDebt}
+          onApplied={() => void status.mutate()}
+        />
         <GitHubHealthPanel data={status.data?.github} />
         <RenderDeployPanel data={status.data?.render} />
         <NeonDBPanel data={status.data?.neon} />
