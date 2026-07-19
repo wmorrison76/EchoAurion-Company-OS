@@ -106,12 +106,31 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
     window.setTimeout(() => setCopyMsg(null), 4000)
   }
 
+  const relayLevel = data.relayLevel ?? data.level
+  const relayLabel = data.relayLabel ?? data.label
+  const brainLevel = data.brainLevel ?? (data.chefsBrainConfigured ? 'ok' : 'warn')
+  const brainLabel =
+    data.brainLabel ??
+    (data.chefsBrainConfigured
+      ? "Chef's Brain OK"
+      : data.echoAiConfigured
+        ? "Chef's Brain down"
+        : "Chef's Brain unset")
+
   return (
     <KPICard
       title="Connection health"
-      badge={<StatusBadge level={data.level} label={data.label} />}
+      badge={<StatusBadge level={relayLevel} label={relayLabel} />}
     >
       <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge level={relayLevel} label={relayLabel} />
+          <StatusBadge level={brainLevel} label={brainLabel} />
+        </div>
+        <p className="text-[10px] text-[#5a5a78]" role="note">
+          Relay (heartbeat) and Chef&apos;s Brain are separate — unset Brain does not mean
+          pilot offline.
+        </p>
         <p className="font-mono text-3xl font-semibold tabular-nums text-white">
           {data.onlineCount}
           <span className="text-lg text-[#5a5a78]"> / {data.totalClients}</span>
@@ -140,7 +159,7 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
             detail={
               data.echoAiConfigured
                 ? undefined
-                : 'Unset on Render — copy URL below to turn green'
+                : 'Unset on Render — copy URL below (William paste; Knights cannot)'
             }
           />
           <BoolRow

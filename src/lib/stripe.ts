@@ -72,10 +72,19 @@ export async function snapshotMRR(): Promise<{ mrr: number; customerCount: numbe
  * when a single soonest date; otherwise sum of all amounts due on that date.
  */
 export async function getStripeMRRHealth(): Promise<StripeMRRHealth> {
+  const stripe = getStripe()
+  if (!stripe) {
+    return {
+      level: 'unknown',
+      label: 'Not configured',
+      mrr: 0,
+      subscriptionCount: 0,
+      nextBillingTotal: null,
+      nextBillingAt: null,
+      error: 'STRIPE_SECRET_KEY not set — paste on Render (William; Knights cannot)',
+    }
+  }
   try {
-    const stripe = getStripe()
-    if (!stripe) throw new Error('Stripe not configured')
-
     const subscriptions = await stripe.subscriptions.list({
       status: 'active',
       limit: 100,

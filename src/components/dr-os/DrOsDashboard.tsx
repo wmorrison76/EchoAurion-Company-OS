@@ -12,6 +12,7 @@ import { StripeMRRPanel } from './StripeMRRPanel'
 import { ActiveUsersPanel } from './ActiveUsersPanel'
 import { PilotStatusPanel } from './PilotStatusPanel'
 import { PilotConnectionPanel } from './PilotConnectionPanel'
+import { ConfigDebtPanel } from './ConfigDebtPanel'
 import { AuditTrailPanel } from './AuditTrailPanel'
 import { ContextualHelpWidget } from './ContextualHelpWidget'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
@@ -97,6 +98,7 @@ export function DrOsDashboard() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SystemStatusPanel status={status.data} />
+        <ConfigDebtPanel data={status.data?.configDebt} />
         <GitHubHealthPanel data={status.data?.github} />
         <RenderDeployPanel data={status.data?.render} />
         <NeonDBPanel data={status.data?.neon} />

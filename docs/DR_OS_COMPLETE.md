@@ -2,7 +2,42 @@
 
 Nerve-center status for `/dr-os`. **Code/docs vs William clicks.**
 
-Last updated: 2026-07-18 (branch `claude/vigilant-rubin-DtQE3`).
+Last updated: 2026-07-19 (branch `claude/vigilant-rubin-DtQE3`).
+
+---
+
+## Honest split: env/config vs exception flywheel
+
+| What you see | What it is | Who fixes it |
+|---|---|---|
+| **Not configured** / **Unknown** / missing env message | Render (or local) env var not pasted | **William** in Render → Environment |
+| **Config debt** panel + daily SYSTEM ticket (`dr-os-config-debt`) | Same — reminder only | **William** — Knights do **not** invent or set secrets |
+| Connection **Relay OK** vs **Chef's Brain unset** | Split deliberately — unset Brain ≠ pilot offline | William pastes `ECHO_AI_*`; relay needs heartbeat + ingest secret |
+| GitHub “token needs repo read” / 404 | `GITHUB_TOKEN` missing, wrong scope, or private-repo access | William PAT with **repo read** |
+| Pilot **No pilot record** | Fixed in code — Miccosukee auto-upserts if missing | Code (deploy) |
+| Crash / CI / deploy failure tickets | Exception flywheel → Knights + agent loop | Knights / computer_agent |
+
+**Knights cannot open the Render dashboard or paste secrets.** Red “Not configured” panels are not bugs for the Round Table to invent keys.
+
+---
+
+## Panel → env checklist (turn each green)
+
+Paste on **echoaurion-company-os** (Render) unless noted. Never commit values.
+
+| Panel | Green when | Env vars (William pastes) |
+|---|---|---|
+| **GitHub Repos** | Commits load; age → Active/Stale/Inactive (Inactive = last commit &gt;30d, not a missing key) | `GITHUB_TOKEN` (PAT: `repo` or at least read for private; `public_repo` insufficient for private). Repos: `wmorrison76/EchoAurion-Company-OS`, `wmorrison76/Echo_Aurion-LUCCCA_Framework` |
+| **Render Deploy** | Latest deploy status Live/Deploying/Failed | `RENDER_API_KEY` + `RENDER_SERVICE_ID` |
+| **Neon DB** | Connected + ms | `DATABASE_URL` (already required for app boot) |
+| **Stripe MRR** | Live MRR (even $0) | `STRIPE_SECRET_KEY` |
+| **Active Users** | 30-day count | `PRODUCT_DATABASE_URL` (read-only product Neon) |
+| **Pilot — Miccosukee** | Stage + health from DB | None after deploy — row auto-ensured |
+| **Connection · Relay** | Secret set + recent heartbeat | `SUPPORT_INGEST_SECRET` (= luccca-web `COMPANY_OS_INGEST_SECRET`) + pilot sending heartbeats |
+| **Connection · Chef's Brain** | Env + probe OK | `ECHO_AI_URL`=`https://luccca-web.onrender.com/api/company-os/echo-brain` · `ECHO_AI_KEY`=luccca-web `ECHO_BRAIN_SECRET` (or ingest secret) |
+| **Config debt** | Empty list | Clear each row’s vars above |
+
+See also [`CONNECT_PILOT_TO_COMPANY_OS.md`](./CONNECT_PILOT_TO_COMPANY_OS.md) · [`OPEN_OPS_CHECKLIST.md`](./OPEN_OPS_CHECKLIST.md).
 
 ---
 
@@ -11,6 +46,10 @@ Last updated: 2026-07-18 (branch `claude/vigilant-rubin-DtQE3`).
 | Surface | Status |
 |---|---|
 | System Status tally (GitHub, Render, Neon, Stripe, users, pilot) | ✓ |
+| **Config debt** panel + daily SYSTEM ticket (no Knights queue) | ✓ |
+| Connection health: **relay vs Chef's Brain** split badges | ✓ |
+| Miccosukee pilot auto-ensure if missing | ✓ |
+| GitHub 401/403/404 → clear “token needs repo read” (not forever Unknown) | ✓ |
 | Connection health panel + **rollup into System Status** | ✓ |
 | Dead-letter drain chip + **rollup into System Status** | ✓ |
 | Knights watching chip | ✓ |
@@ -31,14 +70,14 @@ Last updated: 2026-07-18 (branch `claude/vigilant-rubin-DtQE3`).
 
 `GET /api/dr-os/status` (SSE) now includes:
 
-- `pilotConnection`, `drain`, `nightCleaner`, `helpEval`, `costAnomaly`
+- `pilotConnection` (incl. `relayLevel` / `brainLevel`), `configDebt`, `drain`, `nightCleaner`, `helpEval`, `costAnomaly`
 - `neon.poolSize`, `stripe.nextBillingTotal` / `nextBillingAt`
 
 ---
 
 ## William-when-well (secrets / crons only)
 
-Do these in the Render dashboard when healthy. **No secrets in git.**
+Do these in the Render dashboard when healthy. **No secrets in git. Knights cannot do this.**
 
 1. **`CRON_SECRET`** on web **and each cron service** (see `docs/CRON_SECRET_SETUP.md`).
 2. **Ops poll cron** — `echoaurion-company-os-ops-poll` → `POST /api/ops/poll-failures` (every ~5m). Without it, drain chip stays “never / stale”.
@@ -46,7 +85,7 @@ Do these in the Render dashboard when healthy. **No secrets in git.**
 4. **Cost anomaly cron** — daily (after financial sync) → `POST /api/ops/cost-anomaly`.
 5. **Night Cleaner** — pilot/night script → `POST /api/ops/night-cleaner-report` (Bearer `CRON_SECRET`). Until first ingest, chip shows “No night report yet”.
 6. **`SUPPORT_INGEST_SECRET`** paired with luccca-web `COMPANY_OS_INGEST_SECRET` (byte-identical).
-7. Optional: `PRODUCT_DATABASE_URL` for Active Users; Stripe / Neon / Render keys if any panel shows Unavailable.
+7. **Panel greens** — paste from the table above (`GITHUB_TOKEN`, `RENDER_*`, `STRIPE_SECRET_KEY`, `PRODUCT_DATABASE_URL`, `ECHO_AI_*`).
 8. Optional: retire Railway — no further wiring required.
 
 Full secret matrix: [`OPEN_OPS_CHECKLIST.md`](./OPEN_OPS_CHECKLIST.md).

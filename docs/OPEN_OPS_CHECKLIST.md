@@ -3,7 +3,26 @@
 Manual Render / GitHub steps that code cannot finish without secrets pastes.
 **Do not claim secrets were set without Render dashboard or API access.**
 
-**Dr. OS code-complete checklist** (what’s done vs these clicks): [`DR_OS_COMPLETE.md`](./DR_OS_COMPLETE.md).
+**Knights / exception flywheel ≠ Render secrets.** If Dr. OS shows Not configured / Unknown / Config debt, that is a **William paste** on `echoaurion-company-os` → Environment — not a ticket for Knights to invent keys.
+
+**Dr. OS code-complete checklist** (what’s done vs these clicks): [`DR_OS_COMPLETE.md`](./DR_OS_COMPLETE.md) — includes **Panel → env checklist**.
+
+---
+
+## 0. Dr. OS panel greens (paste list for current reds)
+
+| If panel says… | Paste on Render |
+|---|---|
+| GitHub Unknown / “token needs repo read” / commits 404 | `GITHUB_TOKEN` (PAT with repo read; private repos 404 without access) |
+| Render Not configured | `RENDER_API_KEY` + `RENDER_SERVICE_ID` |
+| Stripe Not configured | `STRIPE_SECRET_KEY` |
+| Active Users · PRODUCT_DATABASE_URL | `PRODUCT_DATABASE_URL` (read-only product DB) |
+| Connection · Secret missing | `SUPPORT_INGEST_SECRET` (= luccca-web `COMPANY_OS_INGEST_SECRET`) |
+| Connection · ECHO_AI_URL No / Chef's Brain unset | `ECHO_AI_URL=https://luccca-web.onrender.com/api/company-os/echo-brain` + `ECHO_AI_KEY` |
+| Pilot No pilot record | Fixed in code after deploy (Miccosukee auto-ensure) — no env |
+| GitHub Inactive (with a real SHA/message) | Not env — last commit &gt;30 days; push code or ignore |
+
+After paste → Save → wait for redeploy → hard-refresh `/dr-os`. Config debt panel should shrink; daily SYSTEM config-debt ticket is a reminder only (no Knights).
 
 ---
 

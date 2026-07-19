@@ -19,7 +19,11 @@ export function GitHubHealthPanel({ data }: { data?: GitHubRepoHealth[] }) {
               <StatusBadge level={repo.level} label={repo.label} />
             </div>
             {repo.error ? (
-              <p className="text-xs text-[#a0a0b8]">Error: {repo.error}</p>
+              <p className="text-xs text-[#a0a0b8]" role="status">
+                {repo.error.startsWith('GITHUB_TOKEN') || repo.error.includes('repo read')
+                  ? repo.error
+                  : `Error: ${repo.error}`}
+              </p>
             ) : (
               <>
                 <p className="truncate text-xs text-[#a0a0b8]">

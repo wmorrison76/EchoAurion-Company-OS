@@ -24,6 +24,14 @@ import type {
   PilotHealth,
 } from '@/types/dr-os'
 import { getStandbyConfig } from '@/lib/standby'
+import { getConfigDebtSnapshot } from '@/lib/config-debt'
+
+const MICCOSUKEE_PILOT = {
+  name: 'Miccosukee',
+  stage: 'ACTIVE',
+  health: 'GREEN',
+  notes: 'Active pilot — Miccosukee Resort & Gaming.',
+} as const
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -127,18 +135,29 @@ function pilotLevel(health: string): PilotHealth['level'] {
   return 'unknown'
 }
 
+/** Ensure Miccosukee exists so Pilot panel never stuck on "No pilot record". */
+async function ensureMiccosukeePilot() {
+  const existing = await db.pilot.findFirst({
+    where: { name: { equals: MICCOSUKEE_PILOT.name, mode: 'insensitive' } },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (existing) return existing
+  return db.pilot.create({
+    data: {
+      name: MICCOSUKEE_PILOT.name,
+      stage: MICCOSUKEE_PILOT.stage,
+      health: MICCOSUKEE_PILOT.health,
+      notes: MICCOSUKEE_PILOT.notes,
+      lastContact: new Date(),
+    },
+  })
+}
+
 export async function getPilot(): Promise<PilotHealth> {
   try {
-    const pilot = await db.pilot.findFirst({ orderBy: { createdAt: 'asc' } })
+    let pilot = await db.pilot.findFirst({ orderBy: { createdAt: 'asc' } })
     if (!pilot) {
-      return {
-        level: 'unknown',
-        name: 'Miccosukee',
-        stage: 'UNKNOWN',
-        daysSinceContact: null,
-        notes: null,
-        error: 'No pilot record',
-      }
+      pilot = await ensureMiccosukeePilot()
     }
     return {
       level: pilotLevel(pilot.health),
@@ -208,40 +227,50 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
     const chefsProbe = await probeChefsBrain()
     const chefsBrainConfigured = chefsProbe.ok
 
-    let level: PilotConnectionHealth['level'] = 'unknown'
-    let label = 'Unknown'
+    // Relay = secret + heartbeats only. Never call relay Offline because Brain unset.
+    let relayLevel: PilotConnectionHealth['relayLevel'] = 'unknown'
+    let relayLabel = 'Unknown'
     if (!supportIngestSecretConfigured) {
-      level = 'error'
-      label = 'Secret missing'
+      relayLevel = 'error'
+      relayLabel = 'Secret missing'
     } else if (onlineCount > 0) {
-      level = 'ok'
-      label = 'Healthy'
+      relayLevel = 'ok'
+      relayLabel = 'Relay OK'
     } else if (clients.length > 0) {
-      level =
+      relayLevel = 'warn'
+      relayLabel =
         lastHeartbeatAgeMs != null && lastHeartbeatAgeMs > STALE_MS
-          ? 'warn'
-          : 'warn'
-      label = 'Offline'
+          ? 'Relay stale'
+          : 'Relay offline'
     } else {
-      level = 'warn'
-      label = 'No pilots'
+      relayLevel = 'warn'
+      relayLabel = 'No pilots'
     }
-    if (supportIngestSecretConfigured && !echoAiConfigured && level === 'ok') {
-      level = 'warn'
-      label = 'Echo AI unset'
-    } else if (
-      supportIngestSecretConfigured &&
-      echoAiConfigured &&
-      !chefsBrainConfigured &&
-      level === 'ok'
-    ) {
-      level = 'warn'
-      label = "Chef's Brain down"
+
+    let brainLevel: PilotConnectionHealth['brainLevel'] = 'unknown'
+    let brainLabel = 'Unknown'
+    if (!echoAiConfigured) {
+      brainLevel = 'warn'
+      brainLabel = "Chef's Brain unset"
+    } else if (!chefsBrainConfigured) {
+      brainLevel = 'error'
+      brainLabel = "Chef's Brain down"
+    } else {
+      brainLevel = 'ok'
+      brainLabel = "Chef's Brain OK"
     }
+
+    // Card badge follows relay; Brain stays on its own BoolRow / brain badge.
+    const level = relayLevel
+    const label = relayLabel
 
     return {
       level,
       label,
+      relayLevel,
+      relayLabel,
+      brainLevel,
+      brainLabel,
       onlineCount,
       totalClients: clients.length,
       streamCount,
@@ -266,9 +295,24 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       httpStatus: null,
       detail: 'probe skipped',
     }))
+    const echoAiConfigured = echoAiUrlConfigured()
+    const brainLevel: PilotConnectionHealth['brainLevel'] = !echoAiConfigured
+      ? 'warn'
+      : chefsProbe.ok
+        ? 'ok'
+        : 'error'
+    const brainLabel = !echoAiConfigured
+      ? "Chef's Brain unset"
+      : chefsProbe.ok
+        ? "Chef's Brain OK"
+        : "Chef's Brain down"
     return {
       level: 'unknown',
       label: 'Unknown',
+      relayLevel: 'unknown',
+      relayLabel: 'Unknown',
+      brainLevel,
+      brainLabel,
       onlineCount: 0,
       totalClients: 0,
       streamCount: 0,
@@ -278,7 +322,7 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
         process.env.SUPPORT_INGEST_SECRET?.trim()
       ),
       emailConfigured: isEmailConfigured(),
-      echoAiConfigured: echoAiUrlConfigured(),
+      echoAiConfigured,
       chefsBrainConfigured: chefsProbe.ok,
       chefsBrainDetail: chefsProbe.detail,
       echoAiKeyConfigured: echoAiKeyConfigured(),
@@ -318,7 +362,7 @@ export async function getDrOsStatus(): Promise<DrOsStatus> {
     getHelpEvalChip(),
     getCostAnomalyChip(),
   ])
-  return {
+  const base = {
     github,
     render,
     neon,
@@ -332,4 +376,7 @@ export async function getDrOsStatus(): Promise<DrOsStatus> {
     costAnomaly,
     generatedAt: new Date().toISOString(),
   }
+  // Config debt after panels resolve — daily SYSTEM ticket for William (no Knights).
+  const configDebt = await getConfigDebtSnapshot(base, { openTicket: true })
+  return { ...base, configDebt }
 }

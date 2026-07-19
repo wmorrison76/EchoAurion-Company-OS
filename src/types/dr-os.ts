@@ -23,7 +23,7 @@ export interface GitHubRepoHealth {
 
 export interface RenderDeployHealth {
   level: StatusLevel
-  label: 'Live' | 'Deploying' | 'Failed' | 'Unknown'
+  label: 'Live' | 'Deploying' | 'Failed' | 'Unknown' | 'Not configured'
   deployId: string | null
   triggeredAt: string | null
   durationSeconds: number | null
@@ -71,8 +71,18 @@ export interface PilotHealth {
 
 /** Live SupportClient heartbeats + connection config (Pilot Connection Hub). */
 export interface PilotConnectionHealth {
+  /**
+   * Overall badge = pilot relay only (secret + heartbeats).
+   * Chef's Brain / ECHO_AI are separate — never mark relay Offline when Brain unset.
+   */
   level: StatusLevel
   label: string
+  /** Relay slice — secret + recent heartbeats (independent of ECHO_AI). */
+  relayLevel: StatusLevel
+  relayLabel: string
+  /** Chef's Brain slice — env + live probe (independent of heartbeats). */
+  brainLevel: StatusLevel
+  brainLabel: string
   onlineCount: number
   totalClients: number
   streamCount: number
@@ -97,6 +107,20 @@ export interface PilotConnectionHealth {
   error?: string
 }
 
+/** Env/config gaps — William pastes on Render; Knights do not invent keys. */
+export interface ConfigDebtItem {
+  panel: string
+  reason: string
+  envVars: string[]
+}
+
+export interface ConfigDebtHealth {
+  items: ConfigDebtItem[]
+  ticketId: string | null
+  ticketCreated: boolean
+  generatedAt: string
+}
+
 export interface DrOsStatus {
   github: GitHubRepoHealth[]
   render: RenderDeployHealth
@@ -105,6 +129,7 @@ export interface DrOsStatus {
   activeUsers: ActiveUsersHealth
   pilot: PilotHealth
   pilotConnection: PilotConnectionHealth
+  configDebt: ConfigDebtHealth
   drain: DrainHealthSnapshot
   nightCleaner: NightCleanerChipSnapshot
   helpEval: HelpEvalChipSnapshot

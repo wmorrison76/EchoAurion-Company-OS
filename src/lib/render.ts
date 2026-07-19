@@ -55,13 +55,19 @@ export async function getRenderDeployHealth(): Promise<RenderDeployHealth> {
   const serviceId = process.env.RENDER_SERVICE_ID
 
   if (!apiKey || !serviceId) {
+    const missing = [
+      !apiKey ? 'RENDER_API_KEY' : null,
+      !serviceId ? 'RENDER_SERVICE_ID' : null,
+    ]
+      .filter(Boolean)
+      .join(' + ')
     return {
       level: 'unknown',
-      label: 'Unknown',
+      label: 'Not configured',
       deployId: null,
       triggeredAt: null,
       durationSeconds: null,
-      error: 'Render not configured',
+      error: `Render not configured — set ${missing} on Render (William paste; Knights cannot)`,
     }
   }
 

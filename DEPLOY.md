@@ -139,7 +139,9 @@ health from the Company OS DB. Without the key, the page shows Empty / Unknown
 (or a clearly labeled Demo graph in local `NODE_ENV=development` only — never
 faked as live in production).
 
-Unset integrations show as **Unknown** / unavailable — the app still boots.
+Unset integrations show as **Not configured** / Unknown — the app still boots.
+These are **env pastes for William** (see `docs/DR_OS_COMPLETE.md` Panel → env checklist),
+not exception-flywheel work for Knights.
 
 ### Forgot password (email) — Resend setup (get mail today)
 
