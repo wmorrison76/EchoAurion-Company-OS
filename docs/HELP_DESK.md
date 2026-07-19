@@ -47,7 +47,7 @@ Operator workspace for live support tickets in EchoAurion Company OS.
 
 | Button | What it does |
 |---|---|
-| **Approve & send** | Official answer → `answer_ready` (+ nested directive if any) |
+| **Approve & send** | Official answer → `answer_ready` (+ nested directive / `echo_repair_ready`). **Does not merge or deploy code.** Stamps `closeReason` (`reply_sent_code_pending` vs how-to/fix). See `docs/TICKET_VS_CODE_FIX_AUDIT.md`. |
 | **Send to client now** | Posts reply + `show_message` + `answer_ready` (does not require resolve) |
 | **Send + open panel** | Same as send, plus `open_panel` for the selected panelId |
 | **Open panel** | Only `open_panel` / `directive` for that clientKey |

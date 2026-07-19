@@ -6,6 +6,7 @@ import { onErrorTicketResolved } from '@/lib/error-resolve'
 import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
+import { closeReasonForApprove } from '@/lib/fix-disposition'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -182,9 +183,33 @@ export async function POST(
         })
       }
 
+      // Approve ≠ merge/deploy. Stamp disposition so UI does not look "fixed".
+      const disposition = closeReasonForApprove({
+        answer,
+        subject: ticket.subject,
+        needsHumanCoreReview: ticket.needsHumanCoreReview,
+        messageBodies: ticket.messages.map((m) => m.body),
+      })
+      await db.helpMessage.create({
+        data: {
+          ticketId: id,
+          role: 'SYSTEM',
+          body:
+            disposition === 'reply_sent_code_pending'
+              ? 'Disposition: reply sent · code not deployed. Approve pushes chat/echo_repair_ready only — no merge, no Render deploy.'
+              : disposition === 'resolved_fix'
+                ? 'Disposition: marked as product fix — verify commit is on the luccca-web deploy branch before treating as done.'
+                : 'Disposition: how-to / config reply (no code deploy expected).',
+        },
+      })
+
       const updated = await db.helpTicket.update({
         where: { id },
-        data: { status: 'RESOLVED', resolvedAt: new Date() },
+        data: {
+          status: 'RESOLVED',
+          resolvedAt: new Date(),
+          closeReason: disposition,
+        },
         include: {
           messages: { orderBy: { createdAt: 'asc' } },
           voiceNotes: { orderBy: { createdAt: 'asc' } },
@@ -200,7 +225,10 @@ export async function POST(
         console.error('[help-desk] onErrorTicketResolved failed', err)
       })
 
-      await audit('william_morrison', 'help_desk.ticket.approve', id, { mode: 'reply' })
+      await audit('william_morrison', 'help_desk.ticket.approve', id, {
+        mode: 'reply',
+        closeReason: disposition,
+      })
 
       const refreshed = await db.helpTicket.findUnique({
         where: { id },

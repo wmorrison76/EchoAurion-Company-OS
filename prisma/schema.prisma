@@ -742,7 +742,7 @@ model HelpTicket {
   // ── Post-resolve CSAT (1–5) ───────────────────────────────────────────────
   csatScore          Int? // 1–5
   csatComment        String? // optional short note — scrub PII in analytics
-  closeReason        String? // resolved_howto | resolved_config | resolved_fix | duplicate | spam | other
+  closeReason        String? // resolved_howto | resolved_config | resolved_fix | reply_sent_code_pending | duplicate | spam | other
 
   // ── Error capture / blast-radius (ZARO → Help Desk) ──────────────────────
   // See docs/ERROR_CAPTURE_AND_SCOPE.md. Fingerprint dedupes within 1h.

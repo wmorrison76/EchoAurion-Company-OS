@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import { formatDistanceToNow } from 'date-fns'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { fixDispositionBadge } from '@/lib/fix-disposition'
 import { PolicyRecommendationBanner } from '@/components/support/PolicyRecommendation'
 import { PricingReferenceCard } from '@/components/help-desk/PricingReferenceCard'
 import {
@@ -837,6 +838,17 @@ export function HelpDeskConsole() {
                     {t.needsHumanCoreReview && (
                       <StatusBadge level="error" label="NEEDS HUMAN CORE" />
                     )}
+                    {(() => {
+                      const fixBadge = fixDispositionBadge({
+                        status: t.status,
+                        closeReason: t.closeReason,
+                        subject: t.subject,
+                        needsHumanCoreReview: t.needsHumanCoreReview,
+                      })
+                      return fixBadge ? (
+                        <StatusBadge level={fixBadge.level} label={fixBadge.label} />
+                      ) : null
+                    })()}
                   </div>
                   <p className="mt-2 line-clamp-2 text-sm font-medium text-white">{t.subject}</p>
                   <p className="mt-1 font-mono text-[10px] text-[#5a5a78]">
@@ -930,6 +942,21 @@ export function HelpDeskConsole() {
                   {detail.needsHumanCoreReview && (
                     <StatusBadge level="error" label="NEEDS_HUMAN_CORE_REVIEW" />
                   )}
+                  {(() => {
+                    const fixBadge = fixDispositionBadge({
+                      status: detail.status,
+                      closeReason: detail.closeReason,
+                      subject: detail.subject,
+                      needsHumanCoreReview: detail.needsHumanCoreReview,
+                      messageBodies: detail.messages.map((m) => m.body),
+                      answer: detail.messages
+                        .filter((m) => m.role === 'ADMIN')
+                        .slice(-1)[0]?.body,
+                    })
+                    return fixBadge ? (
+                      <StatusBadge level={fixBadge.level} label={fixBadge.label} />
+                    ) : null
+                  })()}
                 </div>
                 <h2 className="mt-2 text-base font-semibold tracking-tight text-white">
                   {detail.subject}
@@ -1225,7 +1252,10 @@ export function HelpDeskConsole() {
                   >
                     <option value="resolved_howto">Resolved · how-to</option>
                     <option value="resolved_config">Resolved · config</option>
-                    <option value="resolved_fix">Resolved · fix</option>
+                    <option value="resolved_fix">Resolved · fix (on deploy branch)</option>
+                    <option value="reply_sent_code_pending">
+                      Reply sent · code not deployed
+                    </option>
                     <option value="duplicate">Duplicate</option>
                     <option value="spam">Spam</option>
                     <option value="other">Other</option>
