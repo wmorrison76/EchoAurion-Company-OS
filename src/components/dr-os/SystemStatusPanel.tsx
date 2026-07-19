@@ -14,6 +14,11 @@ function tally(status: DrOsStatus): Record<StatusLevel, number> {
     status.stripe.level,
     status.activeUsers.level,
     status.pilot.level,
+    status.pilotConnection.level,
+    status.drain.level,
+    status.nightCleaner.level,
+    status.helpEval.level,
+    status.costAnomaly.level,
   ]
   for (const l of levels) counts[l] += 1
   return counts

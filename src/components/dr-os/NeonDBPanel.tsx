@@ -11,7 +11,12 @@ export function NeonDBPanel({ data }: { data?: NeonHealth }) {
       {data.level === 'ok' ? (
         <KPIValue
           value={data.responseMs !== null ? `${data.responseMs} ms` : '—'}
-          sub={data.database ? `Database: ${data.database}` : 'Connected'}
+          sub={[
+            data.database ? `Database: ${data.database}` : 'Connected',
+            data.poolSize != null ? `pool ${data.poolSize}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         />
       ) : (
         <p className="text-sm text-[#a0a0b8]">Error: {data.error ?? 'Unreachable'}</p>

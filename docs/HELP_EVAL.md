@@ -50,7 +50,7 @@ Checklist for William:
 
 1. Confirm `CRON_SECRET` set on Company OS  
 2. Add cron job hitting `/api/ops/help-eval-friday`  
-3. Watch Dr. OS / audit for `ops.help_eval_friday` — score ≥90 = ✓, 70–89 = ⚠, &lt;70 = ✕ gate regressions  
+3. Watch Dr. OS **HelpEval chip** / audit for `ops.help_eval_friday` — score ≥90 = ✓, 70–89 = ⚠, &lt;70 = ✕ gate regressions  
 4. Optional: `{ "withDrafts": true }` when knight API keys are warm (slower)
 
 ## Notes

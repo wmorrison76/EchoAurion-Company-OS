@@ -66,14 +66,61 @@ export async function snapshotMRR(): Promise<{ mrr: number; customerCount: numbe
   return { mrr, customerCount }
 }
 
+/**
+ * MRR + next billing window (soonest period end among active subs).
+ * nextBillingTotal = sum of that sub’s items for the nearest billing date only
+ * when a single soonest date; otherwise sum of all amounts due on that date.
+ */
 export async function getStripeMRRHealth(): Promise<StripeMRRHealth> {
   try {
-    const { mrr, customerCount } = await calculateMRR()
+    const stripe = getStripe()
+    if (!stripe) throw new Error('Stripe not configured')
+
+    const subscriptions = await stripe.subscriptions.list({
+      status: 'active',
+      limit: 100,
+      expand: ['data.items'],
+    })
+
+    let mrr = 0
+    let soonestEnd: number | null = null
+    const amountByPeriodEnd = new Map<number, number>()
+
+    for (const sub of subscriptions.data) {
+      let subMonthly = 0
+      let subPeriodAmount = 0
+      for (const item of sub.items.data) {
+        const amount = item.price.unit_amount ?? 0
+        const qty = item.quantity ?? 1
+        const interval = item.price.recurring?.interval
+        const monthly =
+          interval === 'year'
+            ? amount / 12
+            : interval === 'week'
+              ? amount * 4.33
+              : interval === 'day'
+                ? amount * 30
+                : amount
+        subMonthly += (monthly * qty) / 100
+        subPeriodAmount += (amount * qty) / 100
+      }
+      mrr += subMonthly
+      const end = sub.current_period_end
+      if (typeof end === 'number') {
+        if (soonestEnd == null || end < soonestEnd) soonestEnd = end
+        amountByPeriodEnd.set(end, (amountByPeriodEnd.get(end) ?? 0) + subPeriodAmount)
+      }
+    }
+
     return {
       level: 'ok',
       label: 'Live',
       mrr,
-      subscriptionCount: customerCount,
+      subscriptionCount: subscriptions.data.length,
+      nextBillingTotal:
+        soonestEnd != null ? (amountByPeriodEnd.get(soonestEnd) ?? null) : null,
+      nextBillingAt:
+        soonestEnd != null ? new Date(soonestEnd * 1000).toISOString() : null,
     }
   } catch (error) {
     return {
@@ -81,6 +128,8 @@ export async function getStripeMRRHealth(): Promise<StripeMRRHealth> {
       label: 'Unavailable',
       mrr: 0,
       subscriptionCount: 0,
+      nextBillingTotal: null,
+      nextBillingAt: null,
       error: error instanceof Error ? error.message : 'Stripe request failed',
     }
   }

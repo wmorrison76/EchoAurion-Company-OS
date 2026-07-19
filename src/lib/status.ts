@@ -5,6 +5,12 @@ import { getRenderDeployHealth } from '@/lib/render'
 import { getStripeMRRHealth } from '@/lib/stripe'
 import { isEmailConfigured } from '@/lib/email'
 import { knightConfigured, ROSTER } from '@/lib/board-room/knights'
+import {
+  getCostAnomalyChip,
+  getDrainHealth,
+  getHelpEvalChip,
+  getNightCleanerChip,
+} from '@/lib/dr-os-chips'
 import type {
   ActiveUsersHealth,
   DrOsStatus,
@@ -25,22 +31,40 @@ function dbName(url: string | undefined): string | null {
   }
 }
 
+/** Neon / Prisma pool size hint from connection_limit query param when set. */
+function poolSizeFromUrl(url: string | undefined): number | null {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    const raw = u.searchParams.get('connection_limit')
+    if (!raw) return null
+    const n = Number.parseInt(raw, 10)
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+
 export async function checkNeon(): Promise<NeonHealth> {
   const start = Date.now()
+  const database = dbName(process.env.DATABASE_URL)
+  const poolSize = poolSizeFromUrl(process.env.DATABASE_URL)
   try {
     await db.$queryRaw`SELECT 1`
     return {
       level: 'ok',
       label: 'Connected',
       responseMs: Date.now() - start,
-      database: dbName(process.env.DATABASE_URL),
+      database,
+      poolSize,
     }
   } catch (error) {
     return {
       level: 'error',
       label: 'Error',
       responseMs: null,
-      database: dbName(process.env.DATABASE_URL),
+      database,
+      poolSize,
       error: error instanceof Error ? error.message : 'Database unreachable',
     }
   }
@@ -244,7 +268,19 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
 
 /** Runs every Dr. OS status check in parallel (CLAUDE.md §10.4). */
 export async function getDrOsStatus(): Promise<DrOsStatus> {
-  const [github, render, neon, stripe, activeUsers, pilot, pilotConnection] = await Promise.all([
+  const [
+    github,
+    render,
+    neon,
+    stripe,
+    activeUsers,
+    pilot,
+    pilotConnection,
+    drain,
+    nightCleaner,
+    helpEval,
+    costAnomaly,
+  ] = await Promise.all([
     getAllRepoHealth(),
     getRenderDeployHealth(),
     checkNeon(),
@@ -252,6 +288,10 @@ export async function getDrOsStatus(): Promise<DrOsStatus> {
     getActiveUsers(),
     getPilot(),
     getPilotConnection(),
+    getDrainHealth(),
+    getNightCleanerChip(),
+    getHelpEvalChip(),
+    getCostAnomalyChip(),
   ])
   return {
     github,
@@ -261,6 +301,10 @@ export async function getDrOsStatus(): Promise<DrOsStatus> {
     activeUsers,
     pilot,
     pilotConnection,
+    drain,
+    nightCleaner,
+    helpEval,
+    costAnomaly,
     generatedAt: new Date().toISOString(),
   }
 }

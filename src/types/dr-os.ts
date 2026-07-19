@@ -1,4 +1,10 @@
 import type { StatusLevel } from '@/types'
+import type { DrainHealthSnapshot } from '@/types/drain-health'
+import type {
+  CostAnomalyChipSnapshot,
+  HelpEvalChipSnapshot,
+  NightCleanerChipSnapshot,
+} from '@/types/ops-chips'
 
 // ── Dr. OS status payloads (CLAUDE.md §10) ──────────────────────────────────
 
@@ -29,6 +35,8 @@ export interface NeonHealth {
   label: 'Connected' | 'Error'
   responseMs: number | null
   database: string | null
+  /** From DATABASE_URL connection_limit when present (Neon pooled). */
+  poolSize: number | null
   error?: string
 }
 
@@ -37,6 +45,10 @@ export interface StripeMRRHealth {
   label: string
   mrr: number
   subscriptionCount: number
+  /** Sum of active subscription amounts due at nextBillingAt (USD). */
+  nextBillingTotal: number | null
+  /** Soonest current_period_end among active subs (ISO). */
+  nextBillingAt: string | null
   error?: string
 }
 
@@ -85,6 +97,10 @@ export interface DrOsStatus {
   activeUsers: ActiveUsersHealth
   pilot: PilotHealth
   pilotConnection: PilotConnectionHealth
+  drain: DrainHealthSnapshot
+  nightCleaner: NightCleanerChipSnapshot
+  helpEval: HelpEvalChipSnapshot
+  costAnomaly: CostAnomalyChipSnapshot
   generatedAt: string
 }
 

@@ -18,6 +18,10 @@ import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
 import { SupportReliabilityPanel } from './SupportReliabilityPanel'
 import { DeadLetterDrainChip } from './DeadLetterDrainChip'
 import { KnightsWatchingChip } from '@/components/help-desk/KnightsWatchingChip'
+import { NightCleanerChip } from './NightCleanerChip'
+import { HelpEvalChip } from './HelpEvalChip'
+import { CostAnomalyChip } from './CostAnomalyChip'
+import { NerveCenterLinks } from './NerveCenterLinks'
 
 export function DrOsDashboard() {
   const router = useRouter()
@@ -75,14 +79,21 @@ export function DrOsDashboard() {
         </div>
       ) : null}
 
+      <NerveCenterLinks />
+
       <ContextualHelpWidget />
 
       <LabInstallLinks />
 
       <SupportReliabilityPanel />
 
-      <KnightsWatchingChip />
-      <DeadLetterDrainChip />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <KnightsWatchingChip />
+        <DeadLetterDrainChip />
+        <NightCleanerChip data={status.data?.nightCleaner} />
+        <HelpEvalChip data={status.data?.helpEval} />
+        <CostAnomalyChip data={status.data?.costAnomaly} />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SystemStatusPanel status={status.data} />

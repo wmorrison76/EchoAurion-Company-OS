@@ -832,18 +832,18 @@ export async function pollRailwayDeployFailures(): Promise<{
       ticketIds: [],
       skipped: true,
       reason:
-        'RAILWAY_PROJECT_ID unset — set token + project to enable GraphQL poll (TODO)',
+        'RAILWAY_PROJECT_ID unset — Railway optional skip (scaffold only; prefer Render)',
     }
   }
 
-  // TODO(claude): Wire Railway GraphQL deployments query → ingestRailwayDeployFailure.
-  // Pattern exists (ingest + fingerprint); API list not implemented — avoid fake polls.
+  // Optional scaffold only — do not wire GraphQL unless a Railway service returns.
+  // Prefer retire Railway; Render webhook/poll covers deploys. Webhook path remains.
   return {
     checked: 0,
     ingested: 0,
     ticketIds: [],
     skipped: true,
     reason:
-      'Railway GraphQL poll not implemented — use POST /api/webhooks/railway or retire Railway',
+      'Railway GraphQL poll intentionally skipped — webhook scaffold only; prefer retire Railway',
   }
 }

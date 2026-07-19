@@ -151,8 +151,8 @@ Night cleaners don’t only write “✕ broken.” They also note what still fe
 | Pilot static scanners (placeholders, registry, npm audit…) | ✕ Not wired yet |
 | Playwright guest/operator 390px smoke | ✕ Stub / outline only |
 | EKG export → report mapper | ✕ Not wired yet |
-| Dr. OS “last night” chip | ✕ Not built yet |
-| Render nightly cron | ✕ Not in Blueprint yet |
+| Dr. OS “last night” chip | ✓ Built (`NightCleanerChip` on `/dr-os`, from `ops.night_cleaner.ingest`) |
+| Render nightly cron | ✕ William click — see `OPEN_OPS_CHECKLIST.md` / `DR_OS_COMPLETE.md` |
 
 Until scanners run, ingest still accepts a hand-built or dry-run report — useful for contract testing, not a full floor walk.
 
@@ -338,7 +338,7 @@ Suggested OPEN_OPS line: `CRON_SECRET` + nightly POST of report to `/api/ops/nig
 3. Pilot: export last EKG pass → `NightCleanerReport` mapper.  
 4. Pilot: static scanners (placeholders, registry orphans, npm audit, secrets).  
 5. Company OS: Help Desk ticket creation from ingest (scaffold in this PR).  
-6. Dr. OS chip: last night overall ✓/▲/✕ + link to ticket.  
+6. ~~Dr. OS chip: last night overall ✓/▲/✕ + link to ticket.~~ **Done.**  
 7. Playwright guest/operator 390px smoke (stub → real).  
 8. Wire Render cron + OPEN_OPS click for William.
 
