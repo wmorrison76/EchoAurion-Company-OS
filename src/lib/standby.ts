@@ -6,7 +6,11 @@ import { raiseAlert } from '@/lib/alerts'
 import { dispatch } from '@/lib/board-room/connectors'
 import { MAESTRO, knightConfigured } from '@/lib/board-room/knights'
 import { isPayrollStandbyBlocked } from '@/lib/payroll-refuse'
-import { envEchoAutoApprove, envHelpDeskAutoSendTech } from '@/lib/help-desk-auto-flags'
+import {
+  envEchoAutoApprove,
+  envHelpDeskAutoApprove,
+  envHelpDeskAutoSendTech,
+} from '@/lib/help-desk-auto-flags'
 import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
@@ -581,6 +585,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   const permitOk = config.autoSendActive
   const techEnvOk = envHelpDeskAutoSendTech()
   const echoAutoEnv = envEchoAutoApprove()
+  const helpDeskAutoApprove = envHelpDeskAutoApprove()
 
   const ticket = await db.helpTicket.findUnique({
     where: { id: ticketId },
@@ -604,6 +609,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   const gate = ticket.intakeGate
   const techOtherGate = gate == null || gate === 'TECH' || gate === 'OTHER'
   const envUnlock = techEnvOk && techOtherGate && ticket.channel === 'TEXT'
+  /** Dev fast-path — all TEXT TECH/OTHER, not Echo-only. Core review still blocked below. */
+  const devAutoUnlock = helpDeskAutoApprove && techOtherGate && ticket.channel === 'TEXT'
 
   const customerBodies = ticket.messages
     .filter((m) => m.role === 'CUSTOMER')
@@ -783,12 +790,21 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     ticket.channel === 'TEXT' &&
     (modeOk || permitOk || envUnlock || echoAuto)
 
-  if (!modeOk && !permitOk && !envUnlock && !echoAuto) {
+  if (!modeOk && !permitOk && !envUnlock && !echoAuto && !devAutoUnlock) {
     return {
       autoApproved: false,
       reason: config.helpDeskAutoSendEnabled
         ? `Standby mode is ${config.mode} and auto-send permit expired`
-        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required; set HELP_DESK_AUTO_SEND_TECH=true, ECHO_AUTO_APPROVE=true for Echo, or unlock permit for TECH/OTHER)`,
+        : `Standby/autonomy mode is ${config.mode} (auto-send locked — approve required; set HELP_DESK_AUTO_APPROVE=true, HELP_DESK_AUTO_SEND_TECH=true, ECHO_AUTO_APPROVE=true for Echo, or unlock permit for TECH/OTHER)`,
+    }
+  }
+
+  // Core-path dual-control: never send the draft body via dev fast-path either.
+  if (ticket.needsHumanCoreReview && !echoAuto) {
+    return {
+      autoApproved: false,
+      reason:
+        'NEEDS_HUMAN_CORE_REVIEW — dual control required (HELP_DESK_AUTO_APPROVE does not bypass core merge review)',
     }
   }
 
@@ -880,19 +896,28 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         auditExtra: { needsCodeChange: true },
       })
     }
+    if (!devAutoUnlock) {
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body: echoAi
+            ? 'Echo TECH — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William (BUILD/code stays locked; Approve after fix ships to push echo_repair_ready).'
+            : 'Standby blocked — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William.',
+        },
+      })
+      return {
+        autoApproved: false,
+        reason: 'Maestro says needs code change — force AWAITING_HUMAN',
+      }
+    }
     await db.helpMessage.create({
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: echoAi
-          ? 'Echo TECH — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William (BUILD/code stays locked; Approve after fix ships to push echo_repair_ready).'
-          : 'Standby blocked — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William.',
+        body: 'HELP_DESK_AUTO_APPROVE — Maestro NEEDS_CODE_CHANGE. Dev fast-path sending best knight draft. BUILD/merge stays locked.',
       },
     })
-    return {
-      autoApproved: false,
-      reason: 'Maestro says needs code change — force AWAITING_HUMAN',
-    }
   }
 
   const combinedDrafts = knightBodies.map((k) => k.body).join('\n')
@@ -928,7 +953,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     !hasCodeSignal &&
     (!isPayrollStandbyBlocked(ticket.subject, [combinedDrafts]) || policyRefuseOnly)
 
-  if (!eligibility.eligible && !echoSoftOk && !echoForceSend) {
+  /** HELP_DESK_AUTO_APPROVE: dev fast-path — send knight draft without Maestro/≥2-seat gates. */
+  const devForceSend =
+    devAutoUnlock &&
+    knightBodies.length > 0 &&
+    !ticket.needsHumanCoreReview &&
+    (!isPayrollStandbyBlocked(ticket.subject, [combinedDrafts]) || policyRefuseOnly)
+
+  if (!eligibility.eligible && !echoSoftOk && !echoForceSend && !devForceSend) {
     if (eligibility.forceAwaitingHuman) {
       await db.helpMessage.create({
         data: {
@@ -941,35 +973,49 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     return { autoApproved: false, reason: eligibility.reason }
   }
 
-  if (!eligibility.eligible && (echoSoftOk || echoForceSend)) {
+  if (!eligibility.eligible && (echoSoftOk || echoForceSend || devForceSend)) {
     await db.helpMessage.create({
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: echoForceSend
-          ? 'ECHO_AUTO_APPROVE — Echo AI ticket auto-send (soft/TEXT/refuse). BUILD stays locked.'
-          : 'Echo-priority TECH — soft progress under auto-send unlock (no code-change signal). BUILD stays locked.',
+        body: devForceSend
+          ? 'HELP_DESK_AUTO_APPROVE — dev fast-path auto-send. Approve & send only (no merge/deploy). Set false for dual-control.'
+          : echoForceSend
+            ? 'ECHO_AUTO_APPROVE — Echo AI ticket auto-send (soft/TEXT/refuse). BUILD stays locked.'
+            : 'Echo-priority TECH — soft progress under auto-send unlock (no code-change signal). BUILD stays locked.',
       },
     })
   }
 
-  const answerSource = maestroBody ?? knightBodies[knightBodies.length - 1]?.body
+  const maestroNeedsCode =
+    Boolean(maestroBody) && /NEEDS_CODE_CHANGE/i.test(maestroBody ?? '')
+  const nonMaestroDraft = knightBodies
+    .filter((k) => (k.seat ?? '').toLowerCase() !== 'maestro')
+    .map((k) => k.body.trim())
+    .find((b) => b.length > 0)
+  const answerSource =
+    devForceSend && maestroNeedsCode && nonMaestroDraft
+      ? nonMaestroDraft
+      : maestroBody ?? knightBodies[knightBodies.length - 1]?.body
   if (!answerSource?.trim()) {
     return { autoApproved: false, reason: 'No knight draft body to auto-approve' }
   }
 
-  const autoCount = await countAutoThisHour()
-  if (autoCount >= config.maxAutoPerHour) {
-    await db.helpMessage.create({
-      data: {
-        ticketId,
-        role: 'SYSTEM',
-        body: `Standby rate limit: ${config.maxAutoPerHour}/hour reached. Left for William.`,
-      },
-    })
-    return {
-      autoApproved: false,
-      reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+  // Dev / Echo testing fast-paths bypass the hourly standby cap so queues clear.
+  if (!devForceSend && !echoForceSend && !echoAuto) {
+    const autoCount = await countAutoThisHour()
+    if (autoCount >= config.maxAutoPerHour) {
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body: `Standby rate limit: ${config.maxAutoPerHour}/hour reached. Left for William.`,
+        },
+      })
+      return {
+        autoApproved: false,
+        reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+      }
     }
   }
 
@@ -985,6 +1031,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     mode: config.mode,
     viaAutoSendPermit: permitOk && !modeOk,
     viaTechEnv: envUnlock && !modeOk && !permitOk,
+    viaHelpDeskAutoApprove: Boolean(devForceSend),
     helpDeskAutoSendUntil: config.helpDeskAutoSendUntil,
   }
 
@@ -997,13 +1044,15 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     },
   })
   const unlockNote =
-    echoAuto && !modeOk && !permitOk && !envUnlock
-      ? 'ECHO_AUTO_APPROVE — Echo AI ticket auto-sent. echo_repair_ready will follow. BUILD stays locked. Set ECHO_AUTO_APPROVE=false for dual-control.'
-      : envUnlock && !modeOk && !permitOk
-        ? 'HELP_DESK_AUTO_SEND_TECH approved low-risk TECH/OTHER TEXT — review queue. BUILD stays locked. William should audit later.'
-        : permitOk && !modeOk
-          ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
-          : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.'
+    devForceSend && !modeOk && !permitOk && !envUnlock && !echoAuto
+      ? 'HELP_DESK_AUTO_APPROVE — ticket auto-sent (dev fast-path). BUILD/core merge stays locked. Set HELP_DESK_AUTO_APPROVE=false for dual-control.'
+      : echoAuto && !modeOk && !permitOk && !envUnlock
+        ? 'ECHO_AUTO_APPROVE — Echo AI ticket auto-sent. echo_repair_ready will follow. BUILD stays locked. Set ECHO_AUTO_APPROVE=false for dual-control.'
+        : envUnlock && !modeOk && !permitOk
+          ? 'HELP_DESK_AUTO_SEND_TECH approved low-risk TECH/OTHER TEXT — review queue. BUILD stays locked. William should audit later.'
+          : permitOk && !modeOk
+            ? `Auto-send permit approved — review queue. Unlocked until ${config.helpDeskAutoSendUntil ?? 'n/a'}. William should audit later.`
+            : 'Standby approved — review queue. Knights auto-answered under accuracy safeguards. William should audit later.'
   await db.helpMessage.create({
     data: {
       ticketId,
@@ -1125,7 +1174,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     ...draftSnapshot,
     echoAi,
     echoAuto,
+    helpDeskAutoApprove,
+    devForceSend: devForceSend && !eligibility.eligible,
     echoSoftProgress: (echoSoftOk || echoForceSend) && !eligibility.eligible,
+    autoApproveNote: devForceSend
+      ? 'HELP_DESK_AUTO_APPROVE dev fast-path'
+      : echoAuto
+        ? 'ECHO_AUTO_APPROVE'
+        : undefined,
   })
 
   await raiseAlert({
@@ -1143,11 +1199,13 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
 
   return {
     autoApproved: true,
-    reason: echoAuto
-      ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
-      : echoAi
-        ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
-        : 'Auto-answered under standby safeguards',
+    reason: devForceSend && !echoAuto
+      ? 'Help Desk auto-approved & sent (HELP_DESK_AUTO_APPROVE)'
+      : echoAuto
+        ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
+        : echoAi
+          ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
+          : 'Auto-answered under standby safeguards',
   }
 }
 

@@ -9,6 +9,7 @@ import { dispatch } from '@/lib/board-room/connectors'
 import { ROSTER } from '@/lib/board-room/knights'
 import { answerDraftSystemPrompt } from '@/lib/support-voice'
 import { detectPayrollRefuse } from '@/lib/payroll-refuse'
+import { maybeStandbyAutoApprove } from '@/lib/standby'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
 import type { ContextualHelpResult } from '@/types/help-files'
@@ -80,6 +81,17 @@ export async function POST(
         reason: payrollGate.reason,
         matched: payrollGate.matched,
       })
+      const auto = await maybeStandbyAutoApprove(id)
+      const refreshedPayroll = auto.autoApproved
+        ? await db.helpTicket.findUnique({
+            where: { id },
+            include: {
+              messages: { orderBy: { createdAt: 'asc' } },
+              voiceNotes: { orderBy: { createdAt: 'asc' } },
+              _count: { select: { messages: true } },
+            },
+          })
+        : updated
       const contextual: ContextualHelpResult = {
         draftAnswer: payrollGate.customerReply,
         suggestedDirectives: [],
@@ -88,7 +100,7 @@ export async function POST(
       }
       return Response.json({
         success: true,
-        data: { ticket: toDetail(updated), contextual },
+        data: { ticket: toDetail(refreshedPayroll ?? updated), contextual },
       } satisfies APIResponse<{ ticket: HelpTicketDetail; contextual: ContextualHelpResult }>)
     }
 
@@ -233,10 +245,26 @@ export async function POST(
       seat,
     })
 
+    let ticketOut = updated
+    if (cleanAnswer) {
+      const auto = await maybeStandbyAutoApprove(id)
+      if (auto.autoApproved) {
+        const refreshed = await db.helpTicket.findUnique({
+          where: { id },
+          include: {
+            messages: { orderBy: { createdAt: 'asc' } },
+            voiceNotes: { orderBy: { createdAt: 'asc' } },
+            _count: { select: { messages: true } },
+          },
+        })
+        if (refreshed) ticketOut = refreshed
+      }
+    }
+
     return Response.json({
       success: true,
       data: {
-        ticket: toDetail(updated),
+        ticket: toDetail(ticketOut),
         contextual: resultMeta,
       },
     } satisfies APIResponse<{ ticket: HelpTicketDetail; contextual: ContextualHelpResult }>)

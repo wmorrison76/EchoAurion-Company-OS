@@ -23,6 +23,7 @@ import {
 import { isSimpleGreeting } from '@/lib/help-desk-greetings'
 import {
   envEchoAutoApprove,
+  envHelpDeskAutoApprove,
   shouldAutoKnightsOnQuestion,
 } from '@/lib/help-desk-auto-flags'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
@@ -129,14 +130,16 @@ export async function dispatchKnightsOnTicket(
       matched: payrollGate.matched,
     })
 
-    // Echo AI testing: auto-send the safe refuse text (never invents pay figures).
-    const echoPayroll =
-      isEchoAiTicket({
+    // Echo AI testing + dev fast-path: auto-send the safe refuse text (never invents pay figures).
+    const mayAutoSendRefuse =
+      envHelpDeskAutoApprove() ||
+      (isEchoAiTicket({
         intakeChannel: refused.intakeChannel,
         moduleHint: refused.moduleHint,
         priority: refused.priority,
-      }) && envEchoAutoApprove()
-    if (echoPayroll) {
+      }) &&
+        envEchoAutoApprove())
+    if (mayAutoSendRefuse) {
       const standby = await maybeStandbyAutoApprove(ticketId)
       if (standby.autoApproved) {
         const refreshed = await db.helpTicket.findUnique({

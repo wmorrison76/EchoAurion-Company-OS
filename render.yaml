@@ -72,6 +72,10 @@ services:
       # Set false on production when William wants dual-control Approve again.
       - key: ECHO_AUTO_APPROVE
         value: "true"
+      # All Help Desk tickets (not Echo-only): auto Approve & send after Knights (testing).
+      # Set false when William wants dual-control Approve again.
+      - key: HELP_DESK_AUTO_APPROVE
+        value: "true"
 
   # Optional crons — scripts live in repo; buildCommand "true" keeps checkout only.
   # Each cron needs WEB_SERVICE_URL (fromService) + CRON_SECRET matching web.
