@@ -262,6 +262,26 @@ export function HelpDeskConsole() {
     await Promise.all([mutateList(), mutateDetail()])
   }, [mutateList, mutateDetail])
 
+  async function approveAllAwaiting() {
+    setBusy('approve-all')
+    setError(null)
+    try {
+      const res = await fetch('/api/ops/approve-all-awaiting', { method: 'POST' })
+      const body = (await res.json()) as APIResponse<{
+        approved: number
+        skipped: number
+        failed: number
+      }>
+      if (!body.success) throw new Error(body.error)
+      await refresh()
+      setFilter('awaiting')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Approve all failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function postAction(
     label: string,
     url: string,
@@ -604,6 +624,15 @@ export function HelpDeskConsole() {
                 className="rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] hover:bg-[#22223a] disabled:opacity-40"
               >
                 ■ Lock now
+              </button>
+              <button
+                type="button"
+                disabled={busy === 'approve-all'}
+                aria-label="Approve and send all tickets awaiting approval"
+                onClick={() => void approveAllAwaiting()}
+                className="rounded-lg border border-[#D4AF37] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-[#D4AF37] hover:bg-[#22223a] disabled:opacity-50"
+              >
+                {busy === 'approve-all' ? 'Approving…' : '✓ Approve all awaiting'}
               </button>
             </div>
           </div>

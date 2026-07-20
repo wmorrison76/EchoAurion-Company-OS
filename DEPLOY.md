@@ -114,7 +114,7 @@ service is live (see **Cron jobs** below).
 | `SUPPORT_INGEST_SECRET` | Product → `/api/support/diagnostics` and `/api/relay/*` (whoami, heartbeat, stream, questions, work) |
 | `AUTO_KNIGHTS_ON_QUESTION` | Default `true` — inbound relay questions auto-run Knights + HelpTicket TEXT |
 | `ECHO_AUTO_APPROVE` | Default `true` when unset — Echo AI–captured tickets auto-approve & send after Knights + always `echo_repair_ready`. Set `false` for production dual-control. Alias: `HELP_DESK_ECHO_AUTO_APPROVE`. Never auto BUILD / payroll disclose / core merge (code-change → auto-ack Echo only) |
-| `HELP_DESK_AUTO_APPROVE` | Default `false` on Render/production — all Help Desk TEXT tickets auto Approve & send after Knights (not Echo-only). Set `true` while testing; auto-on when `NODE_ENV=development`. BUILD/BILLING/core merge stay locked |
+| `HELP_DESK_AUTO_APPROVE` | Default `true` when unset (testing) — all Help Desk TEXT tickets auto Approve & send after Knights (not Echo-only). Set `false` for dual-control. Bulk clear: `POST /api/ops/approve-all-awaiting`. BUILD/BILLING/core merge stay locked |
 | `KNOWLEDGE_INGEST_SECRET` | Echo AI³ → `POST /api/knowledge/ingest` (falls back to SUPPORT_INGEST_SECRET) |
 | `KNIGHTS_STANDBY_MODE` | Legacy: `off` \| `draft_only` \| `auto_answer_low_risk`. Elite dial also accepted: `assist` \| `standby` \| `autopilot` |
 | `AUTONOMY_DIAL` | Preferred elite dial when DB unset (`assist` default intent) |
