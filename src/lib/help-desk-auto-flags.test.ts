@@ -14,11 +14,11 @@ const KEYS = [
   'AUTO_KNIGHTS_ON_QUESTION',
   'AUTONOMY_DIAL',
   'KNIGHTS_STANDBY_MODE',
-  'NODE_ENV',
 ] as const
 
 afterEach(() => {
   for (const k of KEYS) delete process.env[k]
+  vi.unstubAllEnvs()
 })
 
 describe('envEchoAutoApprove', () => {
@@ -46,10 +46,6 @@ describe('envEchoAutoApprove', () => {
 })
 
 describe('envHelpDeskAutoApprove', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs()
-  })
-
   it('defaults true in development when unset', () => {
     vi.stubEnv('NODE_ENV', 'development')
     expect(envHelpDeskAutoApprove()).toBe(true)
@@ -66,7 +62,7 @@ describe('envHelpDeskAutoApprove', () => {
     expect(envHelpDeskAutoApprove()).toBe(true)
   })
 
-  it('respects HELP_DESK_AUTO_APPROVE=false even in development', () => {
+  it('respects HELP_DESK_AUTO_APPROVE=false in development', () => {
     vi.stubEnv('NODE_ENV', 'development')
     process.env.HELP_DESK_AUTO_APPROVE = 'false'
     expect(envHelpDeskAutoApprove()).toBe(false)

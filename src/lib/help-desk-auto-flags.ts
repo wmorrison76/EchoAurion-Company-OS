@@ -38,21 +38,6 @@ export function envHelpDeskAutoSendTech(): boolean {
 }
 
 /**
- * Dev fast-path: auto-approve & send **all** Help Desk TEXT tickets after Knights
- * draft (not Echo-only). BUILD / BILLING / FEATURE / needsHumanCoreReview stay locked.
- *
- * Default **OFF** in production. ON when `HELP_DESK_AUTO_APPROVE=true`, or when
- * `NODE_ENV=development` unless explicitly `HELP_DESK_AUTO_APPROVE=false`.
- * On Render while testing: set `HELP_DESK_AUTO_APPROVE=true` explicitly.
- */
-export function envHelpDeskAutoApprove(): boolean {
-  const raw = (process.env.HELP_DESK_AUTO_APPROVE ?? '').trim().toLowerCase()
-  if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return false
-  if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on') return true
-  return process.env.NODE_ENV === 'development'
-}
-
-/**
  * Echo AI–captured tickets (source echo_ai / channel ECHO / echoPriority):
  * after Knights draft (or soft refuse/greeting), auto-approve & send and always
  * emit `echo_repair_ready`. Never auto BUILD / core merge / payroll disclose.
@@ -67,5 +52,21 @@ export function envEchoAutoApprove(): boolean {
   if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false
   if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true
   // Unset → true (William: testing now; set false for prod dual-control).
+  return true
+}
+
+/**
+ * Dev fast-path: auto-approve & send **all** Help Desk TEXT tickets after Knights
+ * draft (not Echo-only). BUILD / BILLING / FEATURE / needsHumanCoreReview stay locked.
+ *
+ * Default **true** when unset (testing — no Dr. OS Approve click per ticket).
+ * Set `HELP_DESK_AUTO_APPROVE=false` for production dual-control.
+ * Bulk clear existing queue: POST /api/ops/approve-all-awaiting (or Help Desk button).
+ */
+export function envHelpDeskAutoApprove(): boolean {
+  const raw = (process.env.HELP_DESK_AUTO_APPROVE ?? '').trim().toLowerCase()
+  if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return false
+  if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on') return true
+  // Unset → true (same testing default as ECHO_AUTO_APPROVE).
   return true
 }
