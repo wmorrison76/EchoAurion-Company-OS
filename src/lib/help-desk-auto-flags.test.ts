@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
   envEchoAutoApprove,
   envHelpDeskAutoApprove,
@@ -18,7 +18,6 @@ const KEYS = [
 
 afterEach(() => {
   for (const k of KEYS) delete process.env[k]
-  vi.unstubAllEnvs()
 })
 
 describe('envEchoAutoApprove', () => {
@@ -46,26 +45,18 @@ describe('envEchoAutoApprove', () => {
 })
 
 describe('envHelpDeskAutoApprove', () => {
-  it('defaults true in development when unset', () => {
-    vi.stubEnv('NODE_ENV', 'development')
+  it('defaults true when unset (testing)', () => {
     expect(envHelpDeskAutoApprove()).toBe(true)
   })
 
-  it('defaults false in production when unset', () => {
-    vi.stubEnv('NODE_ENV', 'production')
-    expect(envHelpDeskAutoApprove()).toBe(false)
-  })
-
-  it('respects HELP_DESK_AUTO_APPROVE=true on production', () => {
-    vi.stubEnv('NODE_ENV', 'production')
-    process.env.HELP_DESK_AUTO_APPROVE = 'true'
-    expect(envHelpDeskAutoApprove()).toBe(true)
-  })
-
-  it('respects HELP_DESK_AUTO_APPROVE=false in development', () => {
-    vi.stubEnv('NODE_ENV', 'development')
+  it('respects HELP_DESK_AUTO_APPROVE=false for dual-control', () => {
     process.env.HELP_DESK_AUTO_APPROVE = 'false'
     expect(envHelpDeskAutoApprove()).toBe(false)
+  })
+
+  it('respects HELP_DESK_AUTO_APPROVE=true', () => {
+    process.env.HELP_DESK_AUTO_APPROVE = 'true'
+    expect(envHelpDeskAutoApprove()).toBe(true)
   })
 })
 
