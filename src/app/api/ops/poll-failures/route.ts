@@ -8,6 +8,7 @@ import {
 import { processIngestJobs } from '@/lib/ingest-queue'
 import { purgeExpiredNonces } from '@/lib/request-handshake'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -36,9 +37,7 @@ type PollResult = {
  * Auth: Authorization: Bearer $CRON_SECRET
  */
 export async function POST(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  if (!secret || authz !== `Bearer ${secret}`) {
+    if (!verifyCronBearer(req)) {
     return Response.json(
       { success: false, error: 'Unauthorized', code: '401', label: '✕ Unauthorized' },
       { status: 401 }

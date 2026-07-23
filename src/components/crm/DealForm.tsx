@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { clearFormDraft, useFormDraft, useUnsavedChangesGuard } from '@/lib/use-form-draft'
 import { DEAL_STAGES, DEAL_STAGE_LABEL } from '@/types/crm'
 import type { APIResponse } from '@/types'
 import type { DealDTO, DealStage } from '@/types/crm'
@@ -20,6 +21,15 @@ export function DealForm({ deal, onSaved }: DealFormProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Zero-work-loss: keep unsent notes across disconnects and warn on close
+  // while any field differs from the server state.
+  useFormDraft(`crm-deal-notes:${deal.id}`, notes, setNotes)
+  useUnsavedChangesGuard(
+    notes !== (deal.notes ?? '') ||
+      stage !== deal.stage ||
+      value !== (deal.value !== null ? String(deal.value) : '')
+  )
+
   async function save() {
     setSaving(true)
     setError(null)
@@ -35,6 +45,7 @@ export function DealForm({ deal, onSaved }: DealFormProps) {
       })
       const body = (await res.json()) as APIResponse<unknown>
       if (!body.success) throw new Error(body.error)
+      clearFormDraft(`crm-deal-notes:${deal.id}`)
       onSaved()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed')

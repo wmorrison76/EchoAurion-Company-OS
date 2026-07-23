@@ -1,6 +1,7 @@
 import { audit } from '@/lib/audit'
 import { dispatchDueMaintenanceNotices } from '@/lib/maintenance'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -19,9 +20,7 @@ type DispatchResult = {
  *     -H "Authorization: Bearer $CRON_SECRET"
  */
 export async function POST(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  if (!secret || authz !== `Bearer ${secret}`) {
+    if (!verifyCronBearer(req)) {
     return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
   }
 

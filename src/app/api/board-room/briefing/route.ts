@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { generateBriefing, getLatestBriefing } from '@/lib/board-room/briefing'
 import type { APIResponse } from '@/types'
 import type { BriefingDTO } from '@/types/board-room'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -25,8 +26,7 @@ export async function GET(): Promise<Response> {
 // Generates the daily briefing. Allowed via the cron secret (Render 7am job) or
 // an authenticated operator.
 export async function POST(req: Request): Promise<Response> {
-  const cronSecret = process.env.CRON_SECRET
-  const authorized = cronSecret && req.headers.get('authorization') === `Bearer ${cronSecret}`
+  const authorized = verifyCronBearer(req)
   if (!authorized) {
     const session = await auth()
     if (!session?.user) {

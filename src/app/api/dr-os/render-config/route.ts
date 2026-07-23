@@ -21,6 +21,7 @@ import {
   upsertRenderEnvVars,
 } from '@/lib/render-ops'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -30,9 +31,7 @@ type AuthResult =
   | { ok: false; response: Response }
 
 async function authorize(req: Request): Promise<AuthResult> {
-  const cronSecret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  if (cronSecret && authz === `Bearer ${cronSecret}`) {
+  if (verifyCronBearer(req)) {
     return { ok: true, actor: 'computer_agent' }
   }
   const session = await auth()

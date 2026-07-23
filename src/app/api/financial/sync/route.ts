@@ -4,6 +4,7 @@ import { getAccounts, getTransactions, plaidConfigured } from '@/lib/plaid'
 import { getMercuryAccounts, mercuryConfigured } from '@/lib/mercury'
 import { getStripe, snapshotMRR } from '@/lib/stripe'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -17,9 +18,7 @@ type SyncResult = {
 
 // Daily sync (CLAUDE.md §12.1), invoked by a Render cron with a bearer secret.
 export async function POST(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  if (!secret || authz !== `Bearer ${secret}`) {
+    if (!verifyCronBearer(req)) {
     return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
   }
 

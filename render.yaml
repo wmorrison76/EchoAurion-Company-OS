@@ -17,7 +17,9 @@ services:
     # --include=dev: Render sets NODE_ENV=production during install, which would
     # skip devDependencies (tailwindcss, postcss, typescript, etc.) that Next needs to build.
     buildCommand: npm install --include=dev && npx prisma generate && npm run build
-    startCommand: npx prisma migrate deploy && npm start
+    # predeploy-snapshot: best-effort Neon branch rollback point before any
+    # migration runs — always exits 0, never blocks the deploy.
+    startCommand: node scripts/predeploy-snapshot.mjs && npx prisma migrate deploy && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
@@ -76,9 +78,32 @@ services:
       # Set false when William wants dual-control Approve again.
       - key: HELP_DESK_AUTO_APPROVE
         value: "true"
+      # Neon API access for pre-deploy snapshots (scripts/predeploy-snapshot.mjs).
+      # Same values as the -db-backup cron. Optional — script skips when unset.
+      - key: NEON_API_KEY
+        sync: false
+      - key: NEON_PROJECT_ID
+        sync: false
 
   # Optional crons — scripts live in repo; buildCommand "true" keeps checkout only.
   # Each cron needs WEB_SERVICE_URL (fromService) + CRON_SECRET matching web.
+
+  # Nightly DB snapshot (Neon branch) + retention pruning. Talks to the Neon
+  # API directly — no CRON_SECRET/web URL needed. See docs/RESTORE_RUNBOOK.md.
+  - type: cron
+    name: echoaurion-company-os-db-backup
+    runtime: node
+    schedule: "30 7 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-db-backup.mjs
+    envVars:
+      - key: NEON_API_KEY
+        sync: false
+      - key: NEON_PROJECT_ID
+        sync: false
+      - key: BACKUP_RETENTION_DAYS
+        value: "30"
+
   - type: cron
     name: echoaurion-company-os-sync
     runtime: node

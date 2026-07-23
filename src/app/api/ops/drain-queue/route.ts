@@ -1,6 +1,7 @@
 import { audit } from '@/lib/audit'
 import { processIngestJobs, ingestQueueStats } from '@/lib/ingest-queue'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -12,9 +13,7 @@ export const maxDuration = 60
  * Prefer combining with poll-failures; this route exists for high-load bursts.
  */
 export async function POST(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  if (!secret || authz !== `Bearer ${secret}`) {
+    if (!verifyCronBearer(req)) {
     return Response.json(
       { success: false, error: 'Unauthorized', code: '401', label: '✕ Unauthorized' },
       { status: 401 }

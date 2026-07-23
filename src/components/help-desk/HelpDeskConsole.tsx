@@ -20,6 +20,7 @@ import { CohortMessagingPanel } from '@/components/help-desk/CohortMessagingPane
 import { KnightsWatchingChip } from '@/components/help-desk/KnightsWatchingChip'
 import { LabInstallLinks } from '@/components/layout/LabInstallLinks'
 import { classifySupportRequest, type PolicyVerdict } from '@/lib/support-policy'
+import { clearFormDraft, useFormDraft, useUnsavedChangesGuard } from '@/lib/use-form-draft'
 import type { APIResponse } from '@/types'
 import type {
   HelpTicketDetail,
@@ -308,13 +309,21 @@ export function HelpDeskConsole() {
     }
   }
 
+  // Zero-work-loss: persist the reply draft per ticket across disconnects,
+  // redeploys, and soft reloads; warn before closing with unsent typing.
+  useFormDraft(`hd-reply:${selectedId ?? 'none'}`, reply, setReply)
+  useUnsavedChangesGuard(Boolean(reply.trim()))
+
   async function sendReply() {
     if (!selectedId || !reply.trim()) return
     const ok = await postAction('reply', `/api/help-desk/tickets/${selectedId}/messages`, {
       body: reply.trim(),
       role: 'ADMIN',
     })
-    if (ok) setReply('')
+    if (ok) {
+      setReply('')
+      clearFormDraft(`hd-reply:${selectedId}`)
+    }
   }
 
   async function askKnights() {
@@ -327,7 +336,10 @@ export function HelpDeskConsole() {
     const payload: { mode: typeof mode; answer?: string } = { mode }
     if (mode === 'reply' && reply.trim()) payload.answer = reply.trim()
     const ok = await postAction('approve', `/api/help-desk/tickets/${selectedId}/approve`, payload)
-    if (ok) setReply('')
+    if (ok) {
+      setReply('')
+      clearFormDraft(`hd-reply:${selectedId}`)
+    }
   }
 
   async function markResolved() {

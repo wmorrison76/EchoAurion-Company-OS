@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth'
 import { backfillLearningPlane } from '@/lib/echo-learning'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -12,9 +13,7 @@ export const maxDuration = 60
  * Auth: admin session OR Bearer $CRON_SECRET
  */
 export async function POST(req: Request): Promise<Response> {
-  const cronSecret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  const cronOk = Boolean(cronSecret && authz === `Bearer ${cronSecret}`)
+  const cronOk = verifyCronBearer(req)
 
   if (!cronOk) {
     const session = await auth()

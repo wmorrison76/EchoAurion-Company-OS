@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth'
 import { audit } from '@/lib/audit'
 import { approveAllAwaitingApproval } from '@/lib/help-desk-approve'
 import type { APIResponse } from '@/types'
+import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -21,9 +22,7 @@ type BulkApproveResult = Awaited<ReturnType<typeof approveAllAwaitingApproval>>
  *   curl -X POST "...?dryRun=1" -H "Authorization: Bearer $CRON_SECRET"
  */
 export async function POST(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET
-  const authz = req.headers.get('authorization')
-  const cronOk = Boolean(secret && authz === `Bearer ${secret}`)
+    const cronOk = verifyCronBearer(req)
 
   if (!cronOk) {
     const session = await auth()
