@@ -78,6 +78,11 @@ services:
       # Set false when William wants dual-control Approve again.
       - key: HELP_DESK_AUTO_APPROVE
         value: "true"
+      # Render self-correction: auto-rollback + real-time failure webhook
+      - key: RENDER_AUTO_ROLLBACK
+        value: "on"
+      - key: RENDER_WEBHOOK_SECRET
+        sync: false
       # Neon API access for pre-deploy snapshots (scripts/predeploy-snapshot.mjs).
       # Same values as the -db-backup cron. Optional — script skips when unset.
       - key: NEON_API_KEY

@@ -25,6 +25,8 @@ export const INGEST_BUDGETS = {
   githubWebhook: Number(process.env.RATE_GITHUB_WEBHOOK ?? 120),
   /** Railway webhook events / minute (scaffold) */
   railwayWebhook: Number(process.env.RATE_RAILWAY_WEBHOOK ?? 60),
+  /** Render webhook events / minute */
+  renderWebhook: Number(process.env.RATE_RENDER_WEBHOOK ?? 60),
   /** Ops poll / minute (cron) */
   opsPoll: Number(process.env.RATE_OPS_POLL ?? 6),
 } as const
@@ -90,6 +92,7 @@ export function allowIngestThrottle(input: {
     | 'self_report'
     | 'github_webhook'
     | 'railway_webhook'
+    | 'render_webhook'
     | 'ops_poll'
   clientKey?: string | null
 }): ThrottleResult {
@@ -187,6 +190,19 @@ export function allowIngestThrottle(input: {
         retryAfterSec: r.retryAfterSec,
         code: 'RATE_LIMITED',
         label: '⚠ Throttled — Railway webhook budget',
+      }
+    }
+    return { ok: true }
+  }
+
+  if (input.scope === 'render_webhook') {
+    const r = allowRateLimit('ingest:render_webhook', INGEST_BUDGETS.renderWebhook, WINDOW_MS)
+    if (!r.ok) {
+      return {
+        ok: false,
+        retryAfterSec: r.retryAfterSec,
+        code: 'RATE_LIMITED',
+        label: '⚠ Throttled — Render webhook budget',
       }
     }
     return { ok: true }

@@ -80,6 +80,7 @@ export type ConstitutionAction =
   | 'modify_core'
   | 'destructive_migrate'
   | 'rotate_secrets'
+  | 'rollback_to_last_good'
 
 export interface ConstitutionCheck {
   ok: boolean
@@ -172,6 +173,14 @@ export function checkConstitution(
         reason: 'Draft PR only — merge remains human/CI',
       }
     }
+    case 'rollback_to_last_good':
+      // Restoring the most recent human-approved deploy introduces no new
+      // code — allowed. The forward fix remains draft-PR → human merge.
+      return {
+        ok: true,
+        ruleId: null,
+        reason: 'Rollback restores a previously approved deploy — no new code ships',
+      }
     case 'invoke_tool':
       if (ctx?.dryRun === false && ctx?.autonomyDial === 'assist') {
         return {

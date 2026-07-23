@@ -11,6 +11,19 @@
 | 3 | BUILD | ■ Paid build |
 | 4 | OTHER | ○ Other |
 
+## Conversation phases (talk-to-talk)
+
+1. **DTMF menu** — press 1–4 (unchanged).
+2. **Speech intake (TECH/OTHER)** — `<Gather input="speech">`: the caller says the
+   problem in their own words; the transcript seeds the ticket body.
+3. **Spoken answer** — Knights draft + auto-approve run while the caller holds
+   (3 × 8s hold loop). When the approved ADMIN reply lands it is **spoken back on
+   the call** and also saved on the ticket. If it isn't ready in time, the caller
+   gets the ticket number and a follow-up promise.
+   - Only **approved** sends are voiced — drafts behind the approval gate stay silent.
+   - BILLING/BUILD never auto-answer (human follow-up promised).
+   - Kill switch: `SUPPORT_IVR_VOICE_ANSWER=off` → intake-only.
+
 ## Endpoints
 
 - `POST /api/webhooks/support-ivr` — Gather digits / create ticket (TwiML or JSON)

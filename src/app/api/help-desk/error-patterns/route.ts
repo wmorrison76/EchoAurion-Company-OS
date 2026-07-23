@@ -102,7 +102,9 @@ export async function GET(req: Request): Promise<Response> {
         byProduct: Array<{ key: string; hits: number; patterns: number }>
         byScope: Array<{ key: string; hits: number; patterns: number }>
       }
-    }>)
+    }>, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+    })
   } catch (error) {
     return Response.json(
       {

@@ -124,13 +124,13 @@ export async function queueAgentAndKnights(ticketId: string): Promise<{
 
   let prPlanQueued = false
   try {
-    await createDraftPrPlan(workRequestId)
+    const plan = await createDraftPrPlan(workRequestId)
     prPlanQueued = true
     await db.helpMessage.create({
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: `Architect draft PR plan stored on work ${workRequestId}. Merge forbidden — continue in Cursor / GitHub.`,
+        body: `Architect draft PR plan stored on work ${workRequestId}.\nBranch: ${plan.branchName}\nTitle: ${plan.prTitle}\nMerge forbidden — continue in Cursor / GitHub.`,
       },
     })
   } catch (err) {

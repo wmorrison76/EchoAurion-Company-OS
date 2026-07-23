@@ -4,6 +4,7 @@ import {
   pollGithubCiFailures,
   pollRailwayDeployFailures,
   pollRenderDeployFailures,
+  pollRenderRuntimeFailures,
 } from '@/lib/ops-failure-ingest'
 import { processIngestJobs } from '@/lib/ingest-queue'
 import { purgeExpiredNonces } from '@/lib/request-handshake'
@@ -15,6 +16,7 @@ export const maxDuration = 60
 
 type PollResult = {
   render: { checked: number; ingested: number; ticketIds: string[] }
+  renderRuntime: { checked: number; ingested: number; ticketIds: string[] }
   github: { checked: number; ingested: number; ticketIds: string[] }
   railway: {
     checked: number
@@ -48,15 +50,17 @@ export async function POST(req: Request): Promise<Response> {
   if (!throttle.ok) return throttleResponse(throttle)
 
   try {
-    const [render, github, railway] = await Promise.all([
+    const [render, renderRuntime, github, railway] = await Promise.all([
       pollRenderDeployFailures(),
+      pollRenderRuntimeFailures(),
       pollGithubCiFailures(),
       pollRailwayDeployFailures(),
     ])
     const queue = await processIngestJobs(10)
     const noncesPurged = await purgeExpiredNonces()
 
-    const ingested = render.ingested + github.ingested + railway.ingested
+    const ingested =
+      render.ingested + renderRuntime.ingested + github.ingested + railway.ingested
     const label =
       ingested > 0
         ? `⚠ Ops failures captured · ${ingested} ticket(s)`
@@ -64,6 +68,7 @@ export async function POST(req: Request): Promise<Response> {
 
     await audit('computer_agent', 'ops.poll_failures', undefined, {
       render,
+      renderRuntime,
       github,
       railway,
       queue,
@@ -74,6 +79,7 @@ export async function POST(req: Request): Promise<Response> {
       success: true,
       data: {
         render,
+        renderRuntime,
         github,
         railway,
         queue,

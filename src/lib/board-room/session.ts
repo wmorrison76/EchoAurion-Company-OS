@@ -38,11 +38,15 @@ async function runKnight(
   snap: CompanySnapshot
 ): Promise<void> {
   const config = ROSTER[seat]
-  const result = await dispatch(config, {
-    system: knightSystemPrompt(seat),
-    // Live DB context with the per-seat permission layer (Phase 3).
-    user: await buildKnightContext(seat, problem, snap),
-  })
+  const result = await dispatch(
+    config,
+    {
+      system: knightSystemPrompt(seat),
+      // Live DB context with the per-seat permission layer (Phase 3).
+      user: await buildKnightContext(seat, problem, snap),
+    },
+    { feature: 'board_room' }
+  )
   await db.knightResponse.updateMany({
     where: { sessionId, seat },
     data: {
@@ -63,14 +67,18 @@ async function synthesize(problem: string, responses: KnightResponseDTO[]): Prom
     )
     .join('\n\n')
 
-  const result = await dispatch(MAESTRO, {
-    system:
-      'You are the Maestro conducting the EchoAurion Board Room. Synthesize the knights’ ' +
-      'responses into a single ranked action plan. For each recommendation give a confidence ' +
-      'rating and surface any dissent between knights. Silent Service: the operator sees a clean, ' +
-      'actionable plan, not the scaffolding. Flag any knight that could not contribute.',
-    user: `Problem:\n${problem}\n\nKnight responses:\n${transcript}`,
-  })
+  const result = await dispatch(
+    MAESTRO,
+    {
+      system:
+        'You are the Maestro conducting the EchoAurion Board Room. Synthesize the knights’ ' +
+        'responses into a single ranked action plan. For each recommendation give a confidence ' +
+        'rating and surface any dissent between knights. Silent Service: the operator sees a clean, ' +
+        'actionable plan, not the scaffolding. Flag any knight that could not contribute.',
+      user: `Problem:\n${problem}\n\nKnight responses:\n${transcript}`,
+    },
+    { feature: 'board_room' }
+  )
 
   if (result.status === 'RESPONDED' && result.content) return result.content
   return `Maestro synthesis unavailable (${result.status}: ${result.error ?? 'no detail'}). ${responses.filter((r) => r.status === 'RESPONDED').length} of ${responses.length} knights responded.`

@@ -772,6 +772,12 @@ model HelpTicket {
   /// computer_agent + Knights actively drafting / PR-planning
   agentWorking     Boolean          @default(false)
 
+  // ── Fix truth-telling (docs/TICKET_VS_CODE_FIX_AUDIT.md P1/P2) ────────────
+  /// True only when a merged commit for this ticket's fix actually deployed.
+  productFixDeployed Boolean        @default(false)
+  /// Short SHA of the deployed fix commit — the "code really shipped" receipt.
+  fixedInSha         String?
+
   messages    HelpMessage[]
   voiceNotes  HelpVoiceNote[]
   timeline    HelpTimelineEvent[]
@@ -788,6 +794,10 @@ model HelpTicket {
   @@index([fingerprint, clientKey, status])
   @@index([errorScope, status])
   @@index([errorCategory, productLine])
+  // SLA breach scan (OR across the three due/breach clocks) — bitmap-or friendly.
+  @@index([slaBreachedAt])
+  @@index([firstResponseDueAt])
+  @@index([resolveDueAt])
   @@map("help_tickets")
 }
 
@@ -1143,6 +1153,32 @@ model RequestNonce {
   @@index([deliveryId])
   @@index([clientKey, createdAt])
   @@map("request_nonces")
+}
+
+// ── Real AI token metering (per provider/model/tenant) ───────────────────────
+// Captured from provider `usage` responses at the connector layer — replaces
+// the flat $0.04/message heuristic as the source of truth. No PII, no prompt
+// content — counts and cost only. See docs/CUSTOMER_AI_COST.md.
+
+model AiUsageEvent {
+  id               String   @id @default(cuid())
+  createdAt        DateTime @default(now())
+  /// Tenant when attributable; null = owner/internal (Board Room, ops).
+  clientKey        String?
+  provider         String // openai | anthropic | google | perplexity | echo
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  /// True when the provider returned no usage object (char-count estimate).
+  estimated        Boolean  @default(false)
+  costUsd          Float    @default(0)
+  /// knights | standby | board_room | support_relay | voice | …
+  feature          String?
+
+  @@index([createdAt])
+  @@index([clientKey, createdAt])
+  @@index([provider, model, createdAt])
+  @@map("ai_usage_events")
 }
 
 // ── Per-customer AI / seat cost snapshots (Fleet enterprise) ─────────────────

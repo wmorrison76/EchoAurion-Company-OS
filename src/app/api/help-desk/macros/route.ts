@@ -52,7 +52,9 @@ export async function GET(): Promise<Response> {
       success: true,
       data: [...builtins, ...fromArticles],
       meta: { lastUpdated: new Date().toISOString() },
-    } satisfies APIResponse<MacroChip[]>)
+    } satisfies APIResponse<MacroChip[]>, {
+      headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' },
+    })
   } catch (error) {
     return Response.json(
       {

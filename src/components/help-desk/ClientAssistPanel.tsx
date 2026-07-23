@@ -66,7 +66,7 @@ export function ClientAssistPanel({
   const { data: outbox, mutate: mutateOutbox } = useSWR(
     ticket.id ? `/api/help-desk/tickets/${ticket.id}/outbox` : null,
     jsonFetcher<{ clientKey: string | null; events: OutboxEvent[]; note: string }>,
-    { refreshInterval: 20_000 }
+    { refreshInterval: 30_000, dedupingInterval: 15_000, revalidateOnFocus: false }
   )
 
   const searchUrl = articleQ.trim()

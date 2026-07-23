@@ -119,6 +119,11 @@ export async function POST(req: Request): Promise<Response> {
       result = await ingestPullRequestFailure(
         payload as Parameters<typeof ingestPullRequestFailure>[0]
       )
+      // Merged PR → stamp fixedInSha on linked tickets (fix truth-telling).
+      const { recordMergedFix } = await import('@/lib/fix-linkage')
+      await recordMergedFix(payload as Parameters<typeof recordMergedFix>[0]).catch(() => ({
+        linked: 0,
+      }))
     } else if (event === 'issue_comment' || event === 'pull_request_review_comment') {
       result = await ingestBugbotAutofixComment(
         payload as Parameters<typeof ingestBugbotAutofixComment>[0]

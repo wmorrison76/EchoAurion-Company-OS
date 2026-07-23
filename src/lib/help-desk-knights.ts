@@ -309,10 +309,14 @@ export async function dispatchKnightsOnTicket(
 
     const extraResults = await Promise.allSettled(
       configuredExtras.map(async (seat) => {
-        const result = await dispatch(ROSTER[seat], {
-          system: answerDraftSystemPrompt({ replyLanguageLabel }),
-          user: prompt,
-        })
+        const result = await dispatch(
+          ROSTER[seat],
+          {
+            system: answerDraftSystemPrompt({ replyLanguageLabel }),
+            user: prompt,
+          },
+          { clientKey: ticket.clientKey, feature: 'knights' }
+        )
         if (result.status === 'RESPONDED' && result.content) {
           return { seat, body: result.content, status: result.status as string }
         }

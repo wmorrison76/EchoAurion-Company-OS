@@ -10,7 +10,8 @@ import { db } from '@/lib/db'
 import { ingestErrorEvent } from '@/lib/error-events'
 import { redactSensitive } from '@/lib/error-redact'
 import { MONITORED_REPOS } from '@/lib/github'
-import { listRenderServicesWithDeploys } from '@/lib/render'
+import { listRenderServicesWithDeploys, listRenderServiceEvents } from '@/lib/render'
+import { maybeAutoRollbackOnDeployFailure } from '@/lib/render-rollback'
 import { recordTimelineEvent } from '@/lib/help-timeline'
 import type { ProductLine } from '@/lib/error-taxonomy'
 
@@ -626,6 +627,16 @@ export async function ingestRenderDeployFailure(input: {
     `Deploy failed — repair queued · ${input.serviceName}`
   )
 
+  // Active self-correction: restore the last human-approved deploy so users
+  // aren't left on a broken build while the forward fix goes through PR review.
+  await maybeAutoRollbackOnDeployFailure({
+    serviceId: input.serviceId,
+    serviceName: input.serviceName,
+    failingDeployId: input.deployId,
+    failingSha: input.commitSha ?? null,
+    ticketId: result.ticket.id,
+  }).catch(() => {})
+
   return { ingested: true, ticketId: result.ticket.id }
 }
 
@@ -653,6 +664,102 @@ export async function pollRenderDeployFailures(): Promise<{
     }
   }
   return { checked: services.length, ingested, ticketIds }
+}
+
+const RUNTIME_FAILURE_EVENT = /failed|unhealthy|oom|crash|exited|out_of_memory/i
+const RUNTIME_EVENT_WINDOW_MS = 15 * 60_000
+
+/**
+ * Poll Render service EVENTS (crash loops, health-check failures, OOM,
+ * suspensions) — the runtime failures a deploy-status check can't see.
+ * Deploy lifecycle events are skipped (handled by pollRenderDeployFailures).
+ */
+export async function pollRenderRuntimeFailures(): Promise<{
+  checked: number
+  ingested: number
+  ticketIds: string[]
+}> {
+  const services = await listRenderServicesWithDeploys()
+  let ingested = 0
+  const ticketIds: string[] = []
+  const cutoff = Date.now() - RUNTIME_EVENT_WINDOW_MS
+
+  for (const svc of services) {
+    // Suspended service with no failing deploy: surface as a ticket (was
+    // previously visible only in the Fleet Nexus UI).
+    if (svc.suspended) {
+      const r = await ingestErrorEvent({
+        clientKey: clientKeyForRender(svc.id),
+        fingerprint: fpHash(['render-suspended', svc.id]),
+        message: redactSensitive(`Render service suspended: ${svc.name}`, 500),
+        stack: `source=render.suspended\nserviceId=${svc.id}\nserviceName=${svc.name}`,
+        errorClass: 'ServiceSuspended',
+        moduleHint: 'infra',
+        categoryHint: 'INFRA',
+        productLine: /company.?os/i.test(svc.name) ? 'company-os' : 'unknown',
+        scopeHint: 'GLOBAL',
+        source: 'render.events',
+        platform: 'render',
+      }).catch(() => null)
+      if (r?.ticket?.id) {
+        ingested += 1
+        ticketIds.push(r.ticket.id)
+      }
+      continue
+    }
+
+    const events = await listRenderServiceEvents(svc.id, 20)
+    for (const ev of events) {
+      if (ev.type.startsWith('deploy')) continue
+      if (!RUNTIME_FAILURE_EVENT.test(ev.type)) continue
+      const ts = Date.parse(ev.timestamp)
+      if (Number.isFinite(ts) && ts < cutoff) continue
+
+      const ticketId = await ingestRenderRuntimeEvent(
+        { id: svc.id, name: svc.name },
+        ev
+      )
+      if (ticketId) {
+        ingested += 1
+        ticketIds.push(ticketId)
+      }
+    }
+  }
+  return { checked: services.length, ingested, ticketIds }
+}
+
+/** Single runtime event → SYSTEM ticket. Shared by poll + Render webhook. */
+export async function ingestRenderRuntimeEvent(
+  svc: { id: string; name: string },
+  ev: { id: string; type: string; timestamp: string; details?: Record<string, unknown> | null }
+): Promise<string | null> {
+  const r = await ingestErrorEvent({
+    clientKey: clientKeyForRender(svc.id),
+    fingerprint: fpHash(['render-event', svc.id, ev.id]),
+    message: redactSensitive(`Runtime failure on ${svc.name}: ${ev.type}`, 500),
+    stack: redactSensitive(
+      [
+        `source=render.events`,
+        `serviceId=${svc.id}`,
+        `serviceName=${svc.name}`,
+        `eventId=${ev.id}`,
+        `type=${ev.type}`,
+        `at=${ev.timestamp}`,
+        ev.details ? `details=${JSON.stringify(ev.details).slice(0, 500)}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      4000
+    ),
+    errorClass: 'RuntimeFailure',
+    moduleHint: 'infra',
+    categoryHint: 'INFRA',
+    productLine: /company.?os/i.test(svc.name) ? 'company-os' : 'unknown',
+    scopeHint: 'GLOBAL',
+    source: 'render.events',
+    platform: 'render',
+  }).catch(() => null)
+  return r?.ticket?.id ?? null
 }
 
 /** Poll GitHub Actions for recent failed workflow runs on monitored repos. */

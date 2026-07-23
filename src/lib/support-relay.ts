@@ -45,10 +45,14 @@ export async function draftAnswer(
   const ctx = context
     ? `\n\nDeployment context:\n${JSON.stringify(context).slice(0, ctxLimit)}`
     : ''
-  const result = await dispatch(config, {
-    system: answerDraftSystemPrompt({ replyLanguageLabel: opts?.replyLanguageLabel }),
-    user: `Customer question:\n${question}${ctx}`,
-  })
+  const result = await dispatch(
+    config,
+    {
+      system: answerDraftSystemPrompt({ replyLanguageLabel: opts?.replyLanguageLabel }),
+      user: `Customer question:\n${question}${ctx}`,
+    },
+    { feature: 'support_relay' }
+  )
 
   if (result.status === 'RESPONDED' && result.content) {
     return { seat, answer: result.content, error: null }
@@ -69,10 +73,14 @@ export async function draftPlan(
   if (!seat) return { seat: null, answer: null, error: 'No AI seat is configured' }
 
   const config = ROSTER[seat]
-  const result = await dispatch(config, {
-    system: planDraftSystemPrompt(),
-    user: `Request type: ${kind}\nTitle: ${title}\nDetail:\n${detail}`,
-  })
+  const result = await dispatch(
+    config,
+    {
+      system: planDraftSystemPrompt(),
+      user: `Request type: ${kind}\nTitle: ${title}\nDetail:\n${detail}`,
+    },
+    { feature: 'work_plan' }
+  )
 
   if (result.status === 'RESPONDED' && result.content) {
     return { seat, answer: result.content, error: null }

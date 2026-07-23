@@ -177,6 +177,54 @@ export async function listRenderDeployHistory(
   }
 }
 
+export interface RenderServiceEvent {
+  id: string
+  type: string
+  timestamp: string
+  details: Record<string, unknown> | null
+}
+
+/**
+ * Recent service events (crashes, restarts, health-check failures, OOM…).
+ * Deploy lifecycle events are excluded — deploys are tracked separately.
+ * Returns [] on any failure so pollers degrade gracefully.
+ */
+export async function listRenderServiceEvents(
+  serviceId: string,
+  limit = 20
+): Promise<RenderServiceEvent[]> {
+  const apiKey = process.env.RENDER_API_KEY
+  if (!apiKey || !serviceId) return []
+  try {
+    const res = await fetch(`${RENDER_API}/services/${serviceId}/events?limit=${limit}`, {
+      headers: authHeaders(apiKey),
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const body = (await res.json()) as Array<{
+      event?: {
+        id?: string
+        type?: string
+        timestamp?: string
+        details?: Record<string, unknown>
+      }
+    }>
+    if (!Array.isArray(body)) return []
+    return body
+      .map((row) => row.event)
+      .filter((e): e is NonNullable<typeof e> => Boolean(e?.id && e?.type))
+      .map((e) => ({
+        id: e.id as string,
+        type: e.type as string,
+        timestamp: e.timestamp ?? new Date().toISOString(),
+        details: e.details ?? null,
+      }))
+  } catch {
+    return []
+  }
+}
+
 /**
  * List all services in the Render account (paginated). Used by Fleet Nexus.
  * Returns [] when RENDER_API_KEY is unset — callers degrade gracefully.

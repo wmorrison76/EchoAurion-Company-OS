@@ -1,6 +1,7 @@
 import { audit } from '@/lib/audit'
 import { scanCostAnomalies, type CostAnomalyScanResult } from '@/lib/cost-anomaly'
 import { snapshotCustomerCosts } from '@/lib/customer-cost'
+import { scanAiBudgets } from '@/lib/ai-usage'
 import type { APIResponse } from '@/types'
 import { verifyCronBearer } from '@/lib/verify-bearer'
 
@@ -33,17 +34,20 @@ export async function POST(req: Request): Promise<Response> {
       raiseAlerts: true,
       actor: 'computer_agent',
     })
+    const aiBudgets = await scanAiBudgets()
     await audit('computer_agent', 'ops.cost_anomaly', undefined, {
       snapCount,
       checked: scan.checked,
       anomalyCount: scan.anomalies.length,
       alertsRaised: scan.alertsRaised,
+      aiBudgets,
     })
 
     return Response.json({
       success: true,
       data: {
         snapshotted: snapCount,
+        aiBudgets,
         ...scan,
         label:
           scan.anomalies.length > 0
@@ -51,7 +55,11 @@ export async function POST(req: Request): Promise<Response> {
             : '✓ No cost anomalies',
       },
     } satisfies APIResponse<
-      CostAnomalyScanResult & { snapshotted: number; label: string }
+      CostAnomalyScanResult & {
+        snapshotted: number
+        label: string
+        aiBudgets: Awaited<ReturnType<typeof scanAiBudgets>>
+      }
     >)
   } catch (error) {
     return Response.json(

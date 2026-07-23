@@ -341,6 +341,83 @@ export async function ingestErrorEvent(
     return { ticket: toDetail(updated), created: false, promoted }
   }
 
+  // Reopen-on-recurrence (TICKET_VS_CODE_FIX_AUDIT.md P1): a RESOLVED/CLOSED
+  // ticket whose fingerprint re-hits within 24h reopens — one continuous
+  // audit trail instead of fragmenting across new ticket IDs, and an honest
+  // signal that "resolved" didn't hold.
+  const RECURRENCE_WINDOW_MS = 24 * 60 * 60 * 1000
+  const recentlyResolved = await db.helpTicket.findFirst({
+    where: {
+      fingerprint,
+      channel: 'SYSTEM',
+      clientKey: input.clientKey,
+      status: { in: ['RESOLVED', 'CLOSED'] },
+      updatedAt: { gte: new Date(now.getTime() - RECURRENCE_WINDOW_MS) },
+    },
+    orderBy: { updatedAt: 'desc' },
+  })
+  if (recentlyResolved) {
+    const reopened = await db.helpTicket.update({
+      where: { id: recentlyResolved.id },
+      data: {
+        status: 'OPEN',
+        occurrenceCount: { increment: 1 },
+        lastOccurredAt: now,
+        agentWorking: false,
+        productFixDeployed: false,
+        messages: {
+          create: {
+            role: 'SYSTEM',
+            body: truncate(
+              [
+                `REOPENED — error recurred ${recentlyResolved.status === 'CLOSED' ? 'after close' : 'after resolution'} (fingerprint re-hit within 24h).`,
+                recentlyResolved.closeReason
+                  ? `Previous closeReason: ${recentlyResolved.closeReason}${recentlyResolved.closeReason !== 'resolved_fix' ? ' — reply was sent but no code shipped; the underlying bug is still live.' : ' — deployed fix did not hold.'}`
+                  : null,
+                `clientKey=${input.clientKey}`,
+                stack ? `stack:\n${stack.slice(0, 1500)}` : null,
+              ]
+                .filter(Boolean)
+                .join('\n'),
+              3500
+            ),
+          },
+        },
+      },
+      include: {
+        messages: { orderBy: { createdAt: 'asc' } },
+        voiceNotes: { orderBy: { createdAt: 'asc' } },
+        _count: { select: { messages: true } },
+      },
+    })
+
+    await audit('computer_agent', 'help_desk.error_event.reopened', reopened.id, {
+      fingerprint,
+      previousStatus: recentlyResolved.status,
+      previousCloseReason: recentlyResolved.closeReason,
+      clientKey: input.clientKey,
+    } as unknown as Prisma.InputJsonValue)
+
+    const { shouldQueueAgentLoop } = await import('@/lib/error-agent-loop')
+    if (
+      shouldQueueAgentLoop({
+        errorScope: (reopened.errorScope ?? scope) as ErrorBlastScope,
+        priority: reopened.priority,
+        errorCategory,
+        moduleHint: input.moduleHint,
+      })
+    ) {
+      const { enqueueIngestJob } = await import('@/lib/ingest-queue')
+      void enqueueIngestJob({
+        kind: 'agent_loop',
+        payload: { ticketId: reopened.id },
+        dedupeKey: `agent:${reopened.id}`,
+      }).catch((err) => console.error('[error-events] agent queue on reopen failed', err))
+    }
+
+    return { ticket: toDetail(reopened), created: false, promoted: false }
+  }
+
   const subject = truncate(`[SYSTEM] ${message}`, 120)
   const guestImpact = isGuestImpactModule(input.moduleHint)
   let priority =

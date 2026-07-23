@@ -17,7 +17,7 @@ export async function GET(): Promise<Response> {
       data,
       meta: { lastUpdated: data.generatedAt },
     }
-    return Response.json(body)
+    return Response.json(body, { headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' } })
   } catch (error) {
     return Response.json(
       { success: false, error: error instanceof Error ? error.message : 'Overview failed' },

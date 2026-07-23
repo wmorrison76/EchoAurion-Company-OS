@@ -855,11 +855,15 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     ]
       .filter(Boolean)
       .join('\n\n')
-    const maestroResult = await dispatch(MAESTRO, {
-      system:
-        'You are Maestro synthesizing Help Desk knight drafts for a hospitality support answer. Be concise and floor-ready.',
-      user: synthesisPrompt,
-    })
+    const maestroResult = await dispatch(
+      MAESTRO,
+      {
+        system:
+          'You are Maestro synthesizing Help Desk knight drafts for a hospitality support answer. Be concise and floor-ready.',
+        user: synthesisPrompt,
+      },
+      { clientKey: ticket.clientKey, feature: 'standby' }
+    )
     if (maestroResult.status === 'RESPONDED' && maestroResult.content) {
       maestroBody = maestroResult.content
       await db.helpMessage.create({

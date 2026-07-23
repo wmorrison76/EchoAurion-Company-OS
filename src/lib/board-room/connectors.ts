@@ -1,5 +1,6 @@
 import type { KnightConfig, KnightProvider } from '@/types/board-room'
 import { googleAiApiKey } from './knights'
+import { recordAiUsage, aiCallAllowed, type AiAttribution, type AiUsage } from '@/lib/ai-usage'
 
 const KNIGHT_TIMEOUT_MS = 25_000 // 25s per knight — leave headroom under Render maxDuration
 
@@ -10,7 +11,21 @@ interface Prompt {
   user: string
 }
 
-async function callPerplexity(model: string, p: Prompt, signal: AbortSignal): Promise<string> {
+interface ProviderReply {
+  content: string
+  usage: AiUsage | null
+}
+
+/** Fallback when a provider returns no usage object: ~4 chars per token. */
+function estimateUsage(p: Prompt, content: string): AiUsage {
+  return {
+    promptTokens: Math.ceil((p.system.length + p.user.length) / 4),
+    completionTokens: Math.ceil(content.length / 4),
+    estimated: true,
+  }
+}
+
+async function callPerplexity(model: string, p: Prompt, signal: AbortSignal): Promise<ProviderReply> {
   const key = process.env.PERPLEXITY_API_KEY
   if (!key) throw new NotConfiguredError('PERPLEXITY_API_KEY not set')
   const res = await fetch('https://api.perplexity.ai/chat/completions', {
@@ -26,11 +41,21 @@ async function callPerplexity(model: string, p: Prompt, signal: AbortSignal): Pr
     signal,
   })
   if (!res.ok) throw new Error(`Perplexity ${res.status}`)
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-  return body.choices?.[0]?.message?.content ?? ''
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+    usage?: { prompt_tokens?: number; completion_tokens?: number }
+  }
+  const content = body.choices?.[0]?.message?.content ?? ''
+  const usage = body.usage
+    ? {
+        promptTokens: body.usage.prompt_tokens ?? 0,
+        completionTokens: body.usage.completion_tokens ?? 0,
+      }
+    : null
+  return { content, usage }
 }
 
-async function callOpenAI(model: string, p: Prompt, signal: AbortSignal): Promise<string> {
+async function callOpenAI(model: string, p: Prompt, signal: AbortSignal): Promise<ProviderReply> {
   const key = process.env.OPENAI_API_KEY
   if (!key) throw new NotConfiguredError('OPENAI_API_KEY not set')
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -46,11 +71,21 @@ async function callOpenAI(model: string, p: Prompt, signal: AbortSignal): Promis
     signal,
   })
   if (!res.ok) throw new Error(`OpenAI ${res.status}`)
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-  return body.choices?.[0]?.message?.content ?? ''
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+    usage?: { prompt_tokens?: number; completion_tokens?: number }
+  }
+  const content = body.choices?.[0]?.message?.content ?? ''
+  const usage = body.usage
+    ? {
+        promptTokens: body.usage.prompt_tokens ?? 0,
+        completionTokens: body.usage.completion_tokens ?? 0,
+      }
+    : null
+  return { content, usage }
 }
 
-async function callAnthropic(model: string, p: Prompt, signal: AbortSignal): Promise<string> {
+async function callAnthropic(model: string, p: Prompt, signal: AbortSignal): Promise<ProviderReply> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new NotConfiguredError('ANTHROPIC_API_KEY not set')
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -69,11 +104,21 @@ async function callAnthropic(model: string, p: Prompt, signal: AbortSignal): Pro
     signal,
   })
   if (!res.ok) throw new Error(`Anthropic ${res.status}`)
-  const body = (await res.json()) as { content?: Array<{ text?: string }> }
-  return body.content?.map((c) => c.text ?? '').join('') ?? ''
+  const body = (await res.json()) as {
+    content?: Array<{ text?: string }>
+    usage?: { input_tokens?: number; output_tokens?: number }
+  }
+  const content = body.content?.map((c) => c.text ?? '').join('') ?? ''
+  const usage = body.usage
+    ? {
+        promptTokens: body.usage.input_tokens ?? 0,
+        completionTokens: body.usage.output_tokens ?? 0,
+      }
+    : null
+  return { content, usage }
 }
 
-async function callGoogle(model: string, p: Prompt, signal: AbortSignal): Promise<string> {
+async function callGoogle(model: string, p: Prompt, signal: AbortSignal): Promise<ProviderReply> {
   const key = googleAiApiKey()
   if (!key) {
     throw new NotConfiguredError('GOOGLE_AI_API_KEY or GEMINI_API_KEY not set')
@@ -100,11 +145,19 @@ async function callGoogle(model: string, p: Prompt, signal: AbortSignal): Promis
   }
   const body = (await res.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
   }
-  return body.candidates?.[0]?.content?.parts?.map((x) => x.text ?? '').join('') ?? ''
+  const content = body.candidates?.[0]?.content?.parts?.map((x) => x.text ?? '').join('') ?? ''
+  const usage = body.usageMetadata
+    ? {
+        promptTokens: body.usageMetadata.promptTokenCount ?? 0,
+        completionTokens: body.usageMetadata.candidatesTokenCount ?? 0,
+      }
+    : null
+  return { content, usage }
 }
 
-async function callEcho(p: Prompt, signal: AbortSignal): Promise<string> {
+async function callEcho(p: Prompt, signal: AbortSignal): Promise<ProviderReply> {
   const url = process.env.ECHO_AI_URL
   if (!url) throw new NotConfiguredError('ECHO_AI_URL not set')
   const res = await fetch(url, {
@@ -118,10 +171,16 @@ async function callEcho(p: Prompt, signal: AbortSignal): Promise<string> {
   })
   if (!res.ok) throw new Error(`Echo AI ${res.status}`)
   const body = (await res.json()) as { reply?: string; content?: string }
-  return body.reply ?? body.content ?? ''
+  const content = body.reply ?? body.content ?? ''
+  return { content, usage: null }
 }
 
-function route(provider: KnightProvider, model: string, p: Prompt, signal: AbortSignal): Promise<string> {
+function route(
+  provider: KnightProvider,
+  model: string,
+  p: Prompt,
+  signal: AbortSignal
+): Promise<ProviderReply> {
   switch (provider) {
     case 'perplexity':
       return callPerplexity(model, p, signal)
@@ -143,12 +202,47 @@ export interface DispatchResult {
   latencyMs: number
 }
 
-/** Calls one provider with the 30s per-knight timeout, normalising the result. */
-export async function dispatch(config: KnightConfig, prompt: Prompt): Promise<DispatchResult> {
+/**
+ * Calls one provider with the 25s per-knight timeout, normalising the result.
+ * Records real token usage per provider/model/tenant (ai-usage.ts) and honors
+ * the owner AI budget hard stop when enabled.
+ */
+export async function dispatch(
+  config: KnightConfig,
+  prompt: Prompt,
+  attribution?: AiAttribution
+): Promise<DispatchResult> {
   const started = Date.now()
+
+  const budget = await aiCallAllowed()
+  if (!budget.ok) {
+    return {
+      status: 'UNAVAILABLE',
+      content: null,
+      error: budget.reason ?? 'AI budget exhausted',
+      latencyMs: Date.now() - started,
+    }
+  }
+
   try {
-    const content = await route(config.provider, config.model, prompt, AbortSignal.timeout(KNIGHT_TIMEOUT_MS))
-    return { status: 'RESPONDED', content, error: null, latencyMs: Date.now() - started }
+    const reply = await route(
+      config.provider,
+      config.model,
+      prompt,
+      AbortSignal.timeout(KNIGHT_TIMEOUT_MS)
+    )
+    void recordAiUsage({
+      provider: config.provider,
+      model: config.model,
+      usage: reply.usage ?? estimateUsage(prompt, reply.content),
+      attribution,
+    })
+    return {
+      status: 'RESPONDED',
+      content: reply.content,
+      error: null,
+      latencyMs: Date.now() - started,
+    }
   } catch (error) {
     const latencyMs = Date.now() - started
     if (error instanceof NotConfiguredError) {

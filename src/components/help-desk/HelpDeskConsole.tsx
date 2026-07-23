@@ -119,7 +119,7 @@ export function HelpDeskConsole() {
   const { data: tickets, error: listError, mutate: mutateList, isLoading } = useSWR(
     listKey,
     jsonFetcher<HelpTicketListItem[]>,
-    { refreshInterval: 20_000 }
+    { refreshInterval: 20_000, dedupingInterval: 10_000, revalidateOnFocus: false }
   )
   const { data: macros } = useSWR('/api/help-desk/macros', jsonFetcher<MacroChip[]>, {
     revalidateOnFocus: false,
@@ -134,7 +134,7 @@ export function HelpDeskConsole() {
       helpDeskAutoSendUntil: string | null
       autoSendActive: boolean
     }>,
-    { refreshInterval: 15_000 }
+    { refreshInterval: 30_000, dedupingInterval: 15_000, revalidateOnFocus: false }
   )
 
   const [permitUntilLocal, setPermitUntilLocal] = useState(() =>
@@ -203,7 +203,7 @@ export function HelpDeskConsole() {
   } = useSWR(
     selectedId ? `/api/help-desk/tickets/${selectedId}` : null,
     jsonFetcher<HelpTicketDetail>,
-    { refreshInterval: 15_000 }
+    { refreshInterval: 15_000, dedupingInterval: 7_500 }
   )
 
   // Deep-link: ?import=question:id or work:id

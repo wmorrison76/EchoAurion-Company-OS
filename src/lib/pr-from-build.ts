@@ -255,6 +255,25 @@ export async function maybeCreateGithubDraftPr(
         number: data.number,
         url: data.html_url,
       })
+
+      // Mirror the PR link onto every linked ticket so the ticket alone tells
+      // the whole story (TICKET_VS_CODE_FIX_AUDIT.md — PR link gap).
+      const linked = await db.helpTicket.findMany({
+        where: { workRequestId },
+        select: { id: true },
+      })
+      for (const t of linked) {
+        await db.helpMessage
+          .create({
+            data: {
+              ticketId: t.id,
+              role: 'SYSTEM',
+              body: `Draft PR opened: #${data.number} — ${data.html_url}\nBranch: ${plan.branchName}. Merge is human/CI only.`,
+            },
+          })
+          .catch(() => {})
+      }
+
       return {
         created: true,
         number: data.number,
