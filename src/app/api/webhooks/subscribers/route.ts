@@ -86,8 +86,9 @@ export async function POST(req: Request): Promise<Response> {
     },
   })
 
-  await audit(session.user.email, 'webhooks.subscriber.create', row.id, {
+  await audit('william_morrison', 'webhooks.subscriber.create', row.id, {
     url: body.url,
+    ownerEmail: session.user.email,
     eventTypes,
   })
 
