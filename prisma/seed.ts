@@ -2,31 +2,62 @@ import { PrismaClient } from '@prisma/client'
 
 const db = new PrismaClient()
 
-// Known recurring bills (CLAUDE.md §12.3). "varies" days are set to a sensible
-// default and can be edited in-app.
+// Known recurring bills (CLAUDE.md §12.3).
+// Consolidated 2026-07-24: all payment methods migrating from Mercury/AMEX → Brex.
+// "notes" field carries the vendor billing URL for one-click updates.
+// Amounts reflect current EchoAurion 25-account infrastructure posture
+// (Render 2× Standard web services + Standard workers + Neon + Mongo + Cloudflare Pro).
+// Update via /financial UI or POST /api/financial/bills.
 const BILLS: Array<{
   name: string
   amount: number
   dueDay: number
   category: string
+  notes?: string
 }> = [
+  // ── Personal (non-EchoAurion) ─────────────────────────────────────────────
   { name: 'Rent (Apple Wallet transfer)', amount: 1450, dueDay: 1, category: 'rent' },
   { name: 'Netflix', amount: 22, dueDay: 15, category: 'subscription' },
-  { name: 'ChatGPT Plus', amount: 20, dueDay: 7, category: 'software' },
-  { name: 'GitHub', amount: 4, dueDay: 4, category: 'software' },
-  { name: 'Render', amount: 25, dueDay: 1, category: 'software' },
-  { name: 'Neon', amount: 19, dueDay: 1, category: 'software' },
-  { name: 'Cloudflare', amount: 20, dueDay: 20, category: 'software' },
+
+  // ── Infrastructure: Compute & Hosting ─────────────────────────────────────
+  { name: 'Render (luccca-web, py-api, docs-editor, workers, crons)', amount: 200, dueDay: 1, category: 'software', notes: 'dashboard.render.com/billing/info · Brex' },
+  { name: 'Railway', amount: 20, dueDay: 1, category: 'software', notes: 'railway.app/account/billing · Brex' },
+  { name: 'Cloudflare Pro (echoaurion.com zone)', amount: 20, dueDay: 20, category: 'software', notes: 'dash.cloudflare.com billing · Brex' },
+  { name: 'Cloudflare Workers Paid', amount: 5, dueDay: 20, category: 'software', notes: 'dash.cloudflare.com billing · Brex' },
+  { name: 'Cloudflare R2 storage (echo-uploads, echoaurion)', amount: 5, dueDay: 20, category: 'software', notes: 'egress-free · Brex' },
+
+  // ── Databases ─────────────────────────────────────────────────────────────
+  { name: 'Neon Postgres (Scale plan)', amount: 69, dueDay: 1, category: 'software', notes: 'console.neon.tech/app/billing · Brex' },
+  { name: 'MongoDB Atlas (M10 shared)', amount: 60, dueDay: 15, category: 'software', notes: 'cloud.mongodb.com billing · Brex' },
+
+  // ── AI / LLM Providers ────────────────────────────────────────────────────
+  { name: 'Anthropic (Claude API)', amount: 300, dueDay: 5, category: 'software', notes: 'console.anthropic.com billing · Brex · usage varies' },
+  { name: 'OpenAI (ChatGPT / API)', amount: 100, dueDay: 7, category: 'software', notes: 'platform.openai.com/account/billing · Brex · usage varies' },
+  { name: 'Perplexity Max', amount: 20, dueDay: 12, category: 'software', notes: 'perplexity.ai/settings/account · Brex' },
+  { name: 'Google Gemini API', amount: 25, dueDay: 15, category: 'software', notes: 'aistudio.google.com · Brex · usage varies' },
+
+  // ── Developer Tools ───────────────────────────────────────────────────────
+  { name: 'GitHub Pro + Actions + Copilot', amount: 100, dueDay: 4, category: 'software', notes: 'github.com/settings/billing · Brex · RAISE SPENDING LIMIT TO $200' },
+
+  // ── Observability & Reliability (add for 25-account posture) ──────────────
+  { name: 'Sentry Team', amount: 80, dueDay: 1, category: 'software', notes: 'sentry.io · Brex · TODO: subscribe' },
+  { name: 'BetterStack Uptime', amount: 29, dueDay: 1, category: 'software', notes: 'betterstack.com · Brex · TODO: subscribe' },
+
+  // ── Productivity / Comms ──────────────────────────────────────────────────
+  { name: 'Google Workspace', amount: 12, dueDay: 8, category: 'software', notes: 'admin.google.com/billing · Brex' },
 ]
 
 async function seedBills() {
+  // On re-seed, wipe and re-populate so we track true current state.
+  // Bills table is a manual list of recurring commitments, not transactional.
   const existing = await db.bill.count()
   if (existing > 0) {
-    console.log(`bills: ${existing} already present, skipping`)
-    return
+    console.log(`bills: ${existing} already present, wiping and reseeding for Brex migration`)
+    await db.bill.deleteMany({})
   }
   await db.bill.createMany({ data: BILLS })
-  console.log(`bills: seeded ${BILLS.length}`)
+  const total = BILLS.reduce((s, b) => s + b.amount, 0)
+  console.log(`bills: seeded ${BILLS.length} entries, monthly total $${total}`)
 }
 
 async function seedPilot() {
