@@ -1071,6 +1071,26 @@ model MaintenanceNotice {
 // See docs/KNIGHTS_FLYWHEEL.md. Promotion requires confirmedBy william_morrison
 // OR evalScore >= threshold. Core-path content is always denied.
 
+// Standard-Webhooks outbound subscriber registry.
+// Consumers register a URL, receive a `secret` (whsec_...) and select which
+// event types they want to be notified about. Signed with HMAC-SHA256 per
+// standardwebhooks.com. See src/lib/standard-webhooks.ts.
+model WebhookSubscriber {
+  id          String   @id @default(cuid())
+  ownerEmail  String // who created it
+  url         String
+  secret      String // whsec_<base64_random_32_bytes>
+  description String?
+  active      Boolean  @default(true)
+  // Array of EventType strings from src/lib/standard-webhooks.ts
+  eventTypes  String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@map("webhook_subscribers")
+}
+
 model KnightRunbook {
   id               String         @id @default(cuid())
   fingerprint      String

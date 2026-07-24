@@ -637,6 +637,21 @@ export async function ingestRenderDeployFailure(input: {
     ticketId: result.ticket.id,
   }).catch(() => {})
 
+  // Emit outbound Standard-Webhooks event so external subscribers
+  // (status page CNAME, on-call bots, external monitors) get notified.
+  try {
+    const { emitEvent } = await import('./standard-webhooks')
+    await emitEvent('deploy.failed', {
+      service: input.serviceName,
+      serviceId: input.serviceId,
+      deployId: input.deployId,
+      commitSha: input.commitSha ?? null,
+      ticketId: result.ticket.id,
+    })
+  } catch {
+    // Never let a webhook emission failure block the ingest path.
+  }
+
   return { ingested: true, ticketId: result.ticket.id }
 }
 
