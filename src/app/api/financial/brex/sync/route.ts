@@ -131,6 +131,7 @@ export async function POST(): Promise<Response> {
 
     await audit('william_morrison', 'financial.brex.sync', 'primary_card', {
       cardTransactions: cardCount,
+      sessionUser: session.user.email ?? null,
     })
 
     const body: APIResponse<{ cardTransactions: number }> = {

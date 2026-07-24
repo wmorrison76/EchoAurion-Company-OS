@@ -169,12 +169,14 @@ async function ticketComment(
     return { ok: true, action: 'ticket.comment', args: { text }, detail: 'dry-run' }
   }
   try {
-    await db.helpTicketEvent.create({
+    await db.helpTimelineEvent.create({
       data: {
         ticketId,
-        kind: 'KNIGHTS_AUTO_COMMENT',
+        kind: 'knights_auto_comment',
+        label: 'Knights-Watch auto-comment',
+        detail: text,
         actor: 'knights-executor',
-        payload: JSON.stringify({ text }),
+        visibleToCustomer: false,
       },
     })
     return { ok: true, action: 'ticket.comment', args: { text }, detail: 'comment posted' }
@@ -252,13 +254,13 @@ export async function executeRunbook(input: {
   const finishedAt = new Date().toISOString()
 
   await audit(
-    'knights-executor',
+    'computer_agent',
     ok ? 'knights.execute.ok' : 'knights.execute.fail',
     input.runbookId,
     {
       ticketId: input.ticketId,
       mode: input.mode,
-      steps,
+      steps: steps.map((s) => ({ ...s })),
     }
   )
 
