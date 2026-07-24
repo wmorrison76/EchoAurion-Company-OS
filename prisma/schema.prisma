@@ -113,6 +113,8 @@ model Transaction {
   @@map("transactions")
 }
 
+// Mercury account snapshots (historical — Mercury retired 2026-07-23).
+// New activity flows into BrexSnapshot; keep model for historical read-only display.
 model MercurySnapshot {
   id          String   @id @default(cuid())
   accountId   String // Mercury account UUID
@@ -123,6 +125,45 @@ model MercurySnapshot {
 
   @@index([snappedAt])
   @@map("mercury_snapshots")
+}
+
+// Brex account/card snapshots. Populated by /api/financial/brex/sync
+// which pulls balances and recent settled activity via the Brex connector.
+// See CLAUDE.md §12.4 (added 2026-07-24, Brex migration).
+model BrexSnapshot {
+  id          String   @id @default(cuid())
+  accountId   String // Brex account or card UUID
+  accountName String
+  accountType String // "cash" | "card" | "credit"
+  available   Float
+  current     Float
+  currency    String   @default("USD")
+  snappedAt   DateTime @default(now())
+
+  @@index([snappedAt])
+  @@index([accountId, snappedAt])
+  @@map("brex_snapshots")
+}
+
+// Individual Brex card/cash transaction cache, driven by the same sync route.
+// Small footprint — keep last 90 days for the Financial dashboard.
+model BrexTransaction {
+  id             String   @id @default(cuid())
+  brexId         String   @unique // transaction id from Brex
+  accountId      String
+  accountType    String // "card" | "cash"
+  postedAt       DateTime
+  amount         Float
+  currency       String   @default("USD")
+  merchantName   String?
+  description    String?
+  category       String?
+  pending        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([accountId, postedAt])
+  @@index([postedAt])
+  @@map("brex_transactions")
 }
 
 model Bill {

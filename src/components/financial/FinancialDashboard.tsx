@@ -12,6 +12,7 @@ import { BalanceCards } from './BalanceCards'
 import { BurnRateChart } from './BurnRateChart'
 import { RunwayCountdown } from './RunwayCountdown'
 import { BillCalendar } from './BillCalendar'
+import { BrexPanel } from './BrexPanel'
 import { PLSummary } from './PLSummary'
 import { PlaidLinkButton } from './PlaidLinkButton'
 import { SkeletonCard } from '@/components/ui/SkeletonCard'
@@ -78,8 +79,8 @@ export function FinancialDashboard() {
       <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-[#2a2a3f] bg-gradient-to-b from-[#12121a] to-[#0a0a0f] px-6 py-16 text-center">
         <h2 className="text-lg font-semibold text-white">No accounts connected</h2>
         <p className="max-w-md text-sm text-[#a0a0b8]">
-          Link Wells Fargo personal, Wells Fargo business, and Mercury via Plaid to see balances,
-          burn rate, and runway. Mercury syncs through its read-only API.
+          Link Wells Fargo personal, Wells Fargo business, and Brex via Plaid to see balances,
+          burn rate, and runway. Brex activity also syncs through its API — use the Brex panel to sync on demand.
         </p>
         <PlaidLinkButton onConnected={() => mutate()} />
       </div>
@@ -93,6 +94,7 @@ export function FinancialDashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <RunwayCountdown runway={data.runway} />
         <BurnRateChart burn={data.burnRate} />
+        <BrexPanel />
         <BillCalendar bills={data.bills} />
         <PLSummary pl={data.pl} />
 
