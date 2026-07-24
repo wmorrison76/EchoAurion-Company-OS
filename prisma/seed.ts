@@ -29,21 +29,50 @@ async function seedBills() {
   console.log(`bills: seeded ${BILLS.length}`)
 }
 
+// 25-account pilot pipeline. Miccosukee is the live installation; the rest
+// are named prospects to visualize Fleet Nexus with realistic pipeline shape.
+const PILOT_PIPELINE: Array<{
+  name: string
+  stage: string
+  health: string
+  notes?: string
+}> = [
+  { name: 'Miccosukee Resort & Gaming', stage: 'ACTIVE', health: 'GREEN', notes: 'Live pilot — Chronos + EchoAI + Prospect-to-Plate' },
+  { name: 'Seminole Hard Rock Hollywood', stage: 'PROSPECT', health: 'UNKNOWN', notes: 'Chef Robert Mancuso intro path' },
+  { name: 'Pier 66 Hotel & Marina', stage: 'PROSPECT', health: 'UNKNOWN', notes: 'Prior workplace — warm intro' },
+  { name: 'Loews Coral Gables', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Kimpton EPIC Miami', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'W South Beach', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'The Diplomat Beach Resort', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Boca Raton Resort & Club', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'The Breakers Palm Beach', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Eau Palm Beach Resort', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Fontainebleau Miami Beach', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Loews Miami Beach Hotel', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Faena Hotel Miami Beach', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: '1 Hotel South Beach', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Four Seasons Fort Lauderdale', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'The Ritz-Carlton Key Biscayne', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'St. Regis Bal Harbour', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Acqualina Resort & Spa', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'JW Marriott Marco Island', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'The Ritz-Carlton Naples', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Waldorf Astoria Orlando', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Four Seasons Orlando', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'The Vinoy Resort St. Petersburg', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Hutchinson Shores Resort', stage: 'PROSPECT', health: 'UNKNOWN' },
+  { name: 'Streamsong Resort', stage: 'PROSPECT', health: 'UNKNOWN' },
+]
+
 async function seedPilot() {
   const existing = await db.pilot.count()
-  if (existing > 0) {
-    console.log(`pilot: already present, skipping`)
+  if (existing >= PILOT_PIPELINE.length) {
+    console.log(`pilot: ${existing} already present, skipping`)
     return
   }
-  await db.pilot.create({
-    data: {
-      name: 'Miccosukee',
-      stage: 'ACTIVE',
-      health: 'GREEN',
-      notes: 'Active pilot — Miccosukee Resort & Gaming.',
-    },
-  })
-  console.log('pilot: seeded Miccosukee')
+  await db.pilot.deleteMany({})
+  await db.pilot.createMany({ data: PILOT_PIPELINE })
+  console.log(`pilot: seeded ${PILOT_PIPELINE.length} slots (1 ACTIVE + 24 PROSPECT)`)
 }
 
 async function seedRaiseConfig() {
