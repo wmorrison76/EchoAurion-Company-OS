@@ -1,0 +1,29 @@
+# Board Room — Architect seat (Claude Code).
+# Triggered via workflow_dispatch from /api/board-room/architect so the
+# Architect can implement decisions, review PRs, and build modules on the repo.
+name: Board Room Architect
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Task for the Architect (from the Board Room synthesis)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  architect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ inputs.task }}

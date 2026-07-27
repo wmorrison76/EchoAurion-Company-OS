@@ -141,3 +141,17 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Next.js env helper
+next-env.d.ts
+
+# AurionIndex CDK (infrastructure/)
+infrastructure/node_modules/
+infrastructure/cdk.out/
+infrastructure/**/*.js
+infrastructure/**/*.d.ts
+infrastructure/*.tsbuildinfo
+infrastructure/package-lock.json
+
+# Local screenshot artifacts
+screenshots/

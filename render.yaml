@@ -1,0 +1,245 @@
+# EchoAurion Company OS — Super Admin control plane.
+# Full checklist: DEPLOY.md
+#
+# Blueprint notes (Render 2025/2026):
+# - Use `runtime:` (not deprecated `env:`).
+# - Cron startCommands call scripts/cron-*.mjs (clear errors, no nested quotes).
+# - Prefer Node 18+ fetch over curl (Node images may lack curl).
+# - Secrets are prompted in the dashboard via sync: false — never commit values.
+# - WEB_SERVICE_URL is copied from the web service's RENDER_EXTERNAL_URL.
+# - CRON_SECRET: set the SAME value on web + every cron (sync: false prompts
+#   dashboard entry — never commit the secret). See docs/CRON_SECRET_SETUP.md.
+
+services:
+  - type: web
+    name: echoaurion-company-os
+    runtime: node
+    # --include=dev: Render sets NODE_ENV=production during install, which would
+    # skip devDependencies (tailwindcss, postcss, typescript, etc.) that Next needs to build.
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    # predeploy-snapshot: best-effort Neon branch rollback point before any
+    # migration runs — always exits 0, never blocks the deploy.
+    startCommand: node scripts/predeploy-snapshot.mjs && npx prisma migrate deploy && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      # Set to the public https URL after first deploy (e.g. https://echoaurion-company-os.onrender.com).
+      # sync: false avoids Blueprint self-ref edge cases on first create.
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      # Must match CRON_SECRET on sync / briefing / maintenance / ops-poll crons (same value).
+      - key: CRON_SECRET
+        sync: false
+      - key: KNOWLEDGE_INGEST_SECRET
+        sync: false
+      - key: SUPPORT_INGEST_SECRET
+        sync: false
+      # Chef's Brain — full URL to luccca-web echo-brain proxy
+      # Exact: https://luccca-web.onrender.com/api/company-os/echo-brain
+      - key: ECHO_AI_URL
+        sync: false
+      - key: ECHO_AI_KEY
+        sync: false
+      # Fix digest email (cron echoaurion-company-os-fix-digest)
+      - key: FIX_DIGEST_HOURS
+        value: "4"
+      - key: FIX_DIGEST_TO
+        sync: false
+      # Echo panel-watch guardrails
+      - key: ECHO_PANEL_WATCH
+        value: "on"
+      - key: ECHO_TICKETS_PER_CLIENT_PER_HOUR
+        value: "8"
+      - key: ECHO_ONCALL_MINUTES
+        value: "30"
+      - key: ECHO_ONCALL_TO
+        sync: false
+      # Auto-draft inbound tech questions with Knights (default true)
+      - key: AUTO_KNIGHTS_ON_QUESTION
+        value: "true"
+      # Echo AI silent-radio: auto-approve & send + echo_repair_ready (testing default).
+      # Set false on production when William wants dual-control Approve again.
+      - key: ECHO_AUTO_APPROVE
+        value: "true"
+      # All Help Desk tickets (not Echo-only): auto Approve & send after Knights (testing).
+      # Set false when William wants dual-control Approve again.
+      - key: HELP_DESK_AUTO_APPROVE
+        value: "true"
+      # Render self-correction: auto-rollback + real-time failure webhook
+      - key: RENDER_AUTO_ROLLBACK
+        value: "on"
+      - key: RENDER_WEBHOOK_SECRET
+        sync: false
+      # Neon API access for pre-deploy snapshots (scripts/predeploy-snapshot.mjs).
+      # Same values as the -db-backup cron. Optional — script skips when unset.
+      - key: NEON_API_KEY
+        sync: false
+      - key: NEON_PROJECT_ID
+        sync: false
+
+  # Optional crons — scripts live in repo; buildCommand "true" keeps checkout only.
+  # Each cron needs WEB_SERVICE_URL (fromService) + CRON_SECRET matching web.
+
+  # Nightly DB snapshot (Neon branch) + retention pruning. Talks to the Neon
+  # API directly — no CRON_SECRET/web URL needed. See docs/RESTORE_RUNBOOK.md.
+  - type: cron
+    name: echoaurion-company-os-db-backup
+    runtime: node
+    schedule: "30 7 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-db-backup.mjs
+    envVars:
+      - key: NEON_API_KEY
+        sync: false
+      - key: NEON_PROJECT_ID
+        sync: false
+      - key: BACKUP_RETENTION_DAYS
+        value: "30"
+
+  - type: cron
+    name: echoaurion-company-os-sync
+    runtime: node
+    schedule: "0 8 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-financial-sync.mjs
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      # Same value as web CRON_SECRET — see docs/CRON_SECRET_SETUP.md
+      - key: CRON_SECRET
+        sync: false
+
+  - type: cron
+    name: echoaurion-company-os-briefing
+    runtime: node
+    schedule: "0 11 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-briefing.mjs
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      # Same value as web CRON_SECRET — see docs/CRON_SECRET_SETUP.md
+      - key: CRON_SECRET
+        sync: false
+
+  # Hourly: fire due SCHEDULED maintenance / major-update notices to pilots.
+  - type: cron
+    name: echoaurion-company-os-maintenance
+    runtime: node
+    schedule: "0 * * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-maintenance-dispatch.mjs
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      # Same value as web CRON_SECRET — see docs/CRON_SECRET_SETUP.md
+      - key: CRON_SECRET
+        sync: false
+
+  # Every 5 minutes: Render/GitHub failure → SYSTEM tickets + drain ingest queue.
+  # See docs/SCALE_AND_THROTTLE.md, docs/ERROR_CAPTURE_AND_SCOPE.md
+  - type: cron
+    name: echoaurion-company-os-ops-poll
+    runtime: node
+    schedule: "*/5 * * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-ops-poll.mjs
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false
+
+  # Thursday 22:00 UTC — HelpEval Friday simulation (standby night before rush).
+  - type: cron
+    name: echoaurion-company-os-help-eval-friday
+    runtime: node
+    schedule: "0 22 * * 4"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/help-eval-friday
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Daily after financial sync — CustomerCostSnapshot anomaly → Alert.
+  - type: cron
+    name: echoaurion-company-os-cost-anomaly
+    runtime: node
+    schedule: "30 8 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/cost-anomaly
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Every 4 hours — email William a digest of Help Desk / Echo / SYSTEM fixes.
+  # Needs RESEND_API_KEY + EMAIL_FROM on web; FIX_DIGEST_TO falls back to ADMIN_EMAIL.
+  - type: cron
+    name: echoaurion-company-os-fix-digest
+    runtime: node
+    schedule: "0 */4 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/fix-digest
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Every 10 minutes — page William if Echo TECH tickets unresolved past ECHO_ONCALL_MINUTES.
+  - type: cron
+    name: echoaurion-company-os-echo-oncall
+    runtime: node
+    schedule: "*/10 * * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/echo-oncall
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false

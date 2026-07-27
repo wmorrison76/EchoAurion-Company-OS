@@ -1,0 +1,170 @@
+# Support 90-Day Plan — Aggressive Sprint to #1 (Hospitality Tech Ops)
+
+**Audience:** William Morrison  
+**Date:** 2026-07-12  
+**Branch:** `claude/vigilant-rubin-DtQE3`  
+**Source:** `docs/SUPPORT_COMPETITIVE_ANALYSIS.md` + `docs/OPEN_OPS_CHECKLIST.md`  
+**Thesis hook:** Echo wins hospitality multi-property tech ops by owning  
+`error/question → tenant ticket → Knights → free/paid gate → draft-PR repair → canary/fleet notify`  
+— not by copying Fin WhatsApp rates or ServiceNow CMDB.
+
+---
+
+## Top 5 — Automated / AI competitor capabilities (match or beat)
+
+| # | Capability | Steal from | Why Echo must ship | Thesis hook |
+|---|---|---|---|---|
+| A1 | **Phone IVR → IntakeGate** (Twilio-ready, feature-flagged) | Sierra / Fin / Zendesk voice | Floor managers call; stubs already create tickets | Property-native gates (TECH/BILLING/BUILD/OTHER), not generic CX IVR |
+| A2 | **Omnichannel lite: email → HelpTicket** (+ SMS status later) | Intercom / Zendesk AI | Managers live in email; in-app alone is not enough | Same `clientKey` + gate taxonomy as relay — one Help Desk, not a second inbox product |
+| A3 | **Dead-letter / stuck outbox visibility + retry** | Reliability table-stakes for AI delivery | Notify-when-fixed and directives fail silently → trust dies | In-product actuation (`show_message` / `open_panel`) only works if outbox is operable |
+| A4 | **Intake / omnichannel analytics live** (gate + channel) | Fin / Zendesk Insights | Prove TECH vs BUILD mix and channel mix without PII | Defends unit economics + free-vs-paid clarity competitors lack |
+| A5 | **Per-customer AI cost panel completeness** | Rare in horizontal CX | 5k-tenant unit economics; cost anomaly → rate limit later | Pillar: show hospitality groups what automation costs per property |
+
+---
+
+## Top 5 — Human / classic ITSM capabilities (match or beat)
+
+| # | Capability | Steal from | Why Echo must ship | Thesis hook |
+|---|---|---|---|---|
+| H1 | **Enforced SLA clocks + breach escalation** | Zendesk / HubSpot / Freshservice | Every buyer asks; soft 10-min copy is not enough | Shape+label breaches; gate-aware first-response + resolve clocks |
+| H2 | **Post-resolve CSAT (1–5)** | Zendesk / HubSpot / Freshdesk | Quality + renewal signal; feeds HelpEval later | Closes the loop after Knights/repair — not deflection vanity |
+| H3 | **Macro library UX** (Help Files insert + stubs) | Zendesk macros | Agent speed for single-operator Help Desk | Help Files already exist — wire into reply box, don’t rebuild KB |
+| H4 | **Property-facing Help Center lite** | Zendesk Guide / HubSpot KB | Deflection without Fin-scale SEO CMS | Public read of tagged HelpArticles; still install-keyed narrative |
+| H5 | **WorkAgreement → Stripe invoice hooks** | HubSpot / MSP PSA lite | Paid BUILD path incomplete without invoice/receipt | Free vs paid product-change commerce is a core differentiator |
+
+---
+
+## Also cover (P1 — after P0 vertical slices)
+
+- [x] Omnichannel lite SMS status updates (notify-when-fixed off-app) — webhook + Twilio stub
+- [x] Expand HelpEval + gate regression simulations (Fin “test before live”) — Friday cron scaffold
+- SOC2 Type II process kickoff (controls already mapped)
+- [x] Cohort messaging UI (“Safari 17 broke print BEO”) — Help Desk panel + `/api/help-desk/cohort-notify`
+- [x] Cost anomaly alerts (10× Knight burn per `clientKey`)
+- [x] Billing-contact portal (quote history without full Dr. OS) — `/portal/billing`
+- [x] Guest-impact / meal-period auto-escalate priority — `src/lib/guest-impact.ts`
+
+**Explicitly defer (P2):** WFM schedules, App Marketplace, ServiceNow CMDB, Sierra-class brand voice AI, MSP RMM/remote desktop.
+
+---
+
+## Ideas William hadn’t emphasized (include in 90 days where cheap)
+
+From competitive analysis §6 — schedule into P0 polish or early P1:
+
+1. [x] **Property reliability score** (open SYSTEM + MTTR + canary + CSAT) on Fleet Nexus  
+2. [x] **Guest-impact mode** for meal-critical modules (priority escalate; no stack traces to floor)  
+3. [x] **Standby simulation nights** (weekly HelpEval before Friday rush)  
+4. [x] **Quote → Help File draft** for T3+ paid builds (tenant-scrubbed) — Work panel “→ Help File draft”  
+5. [x] **Public trust page** (handshake, PR-only, canary, retention) — SOC2-prep marketing — `/trust`
+6. [x] **Cost anomaly alerts** once CustomerCostSnapshot cron is live  
+7. [ ] **Night Cleaner Mole** — EKG panel sweep as hospitality night cleaners → morning-open **task report** (not auto-fix). See [`NIGHT_CLEANER_MOLE.md`](./NIGHT_CLEANER_MOLE.md) · ingest `POST /api/ops/night-cleaner-report`
+
+---
+
+## 5-day execution backlog (ordered)
+
+### Day 1 (this session / “24h”) — credibility P0
+
+| # | Item | Acceptance |
+|---|---|---|
+| 1 | SLA clocks on `HelpTicket` + breach badges | First-response + resolve due; breached shape+label in Help Desk + analytics |
+| 2 | Post-resolve CSAT 1–5 + close reason | PATCH resolve stores score; Dr. OS avg CSAT |
+| 3 | Dead-letter UI + undelivered outbox retry | Help Desk ops panel; retry IngestJob + re-publish RelayOutbox |
+| 4 | Macro library: HelpArticle search insert | Reply box loads articles + static macros; keyboard-friendly chips |
+| 5 | Intake **channel** analytics | IN_APP / VOICE / PHONE_IVR / EMAIL chips on SupportReliabilityPanel |
+| 6 | Email → HelpTicket webhook (feature-flagged) | `POST /api/webhooks/support-email` creates ticket with `intakeChannel=EMAIL` |
+| 7 | Help Center lite (public read) | `/help-center` lists `public=true` articles; no PII |
+| 8 | WorkAgreement `stripeInvoiceId` + link helper | Schema + authorize path stores/links invoice id when Stripe configured |
+| 9 | IVR Twilio-ready polish | Menu TwiML GET; signature verify when `TWILIO_AUTH_TOKEN` set; else feature-flag bypass |
+| 10 | Cost panel polish | Channel/gate context; snapshot button; docs for William verify |
+
+### Days 2–3 — Session 2 shipped
+
+- [x] SMS status lite (Twilio Messaging feature-flagged) — `docs/SUPPORT_SMS.md`
+- [x] Reliability score composite on Fleet Nexus
+- [x] CSAT collection via relay directive to property UI — `POST /api/relay/csat`
+- [x] Stripe Invoice create-on-authorize (when keys present) — finalize + sendInvoice polish
+- [x] Help Files UI toggles for `public` / `isMacro`
+- [x] Dead-letter drain cron health on Dr. OS — `DeadLetterDrainChip` + `/api/dr-os/drain-health`
+
+### Days 4–5 — Session 2 partial
+
+- [x] HelpEval gate regressions + Friday simulation checklist — `/api/ops/help-eval-friday`
+- [x] Cost anomaly alert → Alert row — `/api/ops/cost-anomaly`
+- [x] Property Help Center search + panel deep-links — `/help-center` URL sync + panel chips
+- [x] Pilot PR #202 conflict notes (separate; do not force-merge) — `docs/PILOT_PR_202_REBASE_NOTES.md`
+- [x] Trust page draft — `/trust` (handshake / draft-PR-only / canary / retention)
+---
+
+## Acceptance criteria (P0 “done enough” for buyer conversation)
+
+- [x] Operator can see **⏱ On track / ▲ At risk / ✕ Breached** per ticket (shape + label)  
+- [x] Resolve flow prompts **CSAT 1–5**; Dr. OS shows average (90d)  
+- [x] Failed notify jobs + stuck outbox are **visible and retriable** without SQL  
+- [x] Email webhook (secret-gated) creates HelpTicket with gate + `EMAIL` channel  
+- [x] Macros insert from Help Files + builtins  
+- [x] Analytics show gate **and** channel mix (PII-free)  
+- [x] `/help-center` serves public articles without login  
+- [x] WorkAgreement can store `stripeInvoiceId` / hosted invoice URL  
+- [x] IVR creates tickets; Twilio verify when credentials set; otherwise documented flag  
+- [x] Customer cost table refreshable; heuristic + work spend visible  
+- [x] No secrets committed; Twilio/ElevenLabs no-op without keys  
+- [x] Colorblind-safe UI; tenant isolation preserved; draft-PR-only core unchanged  
+
+### Session 2 add-ons
+
+- [x] SMS inbound + status stub/webhook  
+- [x] CSAT relay request on resolve + property submit endpoint  
+- [x] Fleet Nexus property reliability score (shape + label + number)  
+- [x] Cost anomaly 10× scan → Alert  
+- [x] HelpEval Friday cron scaffold + doc  
+- [x] Help Files `public` / `isMacro` toggles in UI  
+- [x] Stripe invoice send after finalize  
+- [x] PR #202 rebase notes (no force-merge)  
+- [x] Dead-letter drain health chip on Dr. OS  
+- [x] Help Center search + panel deep-links  
+- [x] Public `/trust` page  
+- [x] Blueprint crons for help-eval-friday + cost-anomaly  
+
+### Session 3 add-ons (P1 vertical slices)
+
+- [x] Guest-impact escalate on meal-critical `moduleHint` (▲ badge + HIGH/URGENT)
+- [x] Cohort messaging UI on Help Desk + floor-safe notify API
+- [x] Billing portal stub `/portal/billing` (BillingContact token)
+- [x] Quote → Help File draft for T3+ (`POST /api/work/[id]/promote-help-file`)
+
+### Session 4 — diligence + multilingual (scoped)
+
+- [x] Multilingual Help Desk → Knights (14 pilot locales; locale forward + prompt path)
+- [x] `docs/DILIGENCE_409A_DATAROOM.md` (capability narrative + export checklist — not a valuation)
+- [x] `docs/OPS_TRAINING_MANUAL.md` (day-one ops + multilingual section)
+- [x] OPEN_OPS_CHECKLIST links to diligence / training
+
+**Still William clicks (not code):** ingest secret pairing, Render crons, Twilio/Stripe optional keys, PR #202 rebase (no force-merge).
+---
+
+## Env / Render clicks William must do (code cannot finish)
+
+| Item | Where |
+|---|---|
+| `npx prisma migrate deploy` (SLA/CSAT/email migration if not applied) | Render deploy / Neon |
+| `SUPPORT_INGEST_SECRET` paired with pilot | Company OS + luccca-web |
+| `SUPPORT_EMAIL_WEBHOOK_SECRET` (or reuse ingest) | Company OS — for email intake |
+| `SUPPORT_SMS_WEBHOOK_SECRET` (or reuse ingest) | Company OS — for SMS intake / status |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | Optional — live IVR + SMS |
+| `SUPPORT_IVR_WEBHOOK_SECRET` | Optional override for IVR |
+| ElevenLabs TTS keys | Optional — voice replies |
+| Stripe live keys already used for MRR | Needed for real Invoice create + send |
+| `CRON_SECRET` + Render cron → `/api/ops/help-eval-friday` | Thu 22:00 UTC — Blueprint: `echoaurion-company-os-help-eval-friday` |
+| `CRON_SECRET` + Render cron → `/api/ops/cost-anomaly` | Daily after snapshots — Blueprint: `echoaurion-company-os-cost-anomaly` |
+| `CRON_SECRET` + nightly night-cleaner ingest | Pilot script → `POST /api/ops/night-cleaner-report` — see `docs/NIGHT_CLEANER_MOLE.md` · tag `pre-night-cleaner-mole-20260714` before big runner work |
+| Confirm `echoaurion-company-os-ops-poll` in Super_Admin | If missing from list, search other folders / create from Blueprint — do not force-merge PR #202 |
+| Confirm help-eval-friday + cost-anomaly crons exist | Super_Admin next to other Company OS crons — see `docs/RENDER_ENVIRONMENTS.md` |
+| Pilot property UI: handle `open_panel` `support.csat` / deep link | luccca-web — rate surface |
+| Pilot PR #202 rebase | Dedicated conflict session — **do not force-merge** · see `docs/PILOT_PR_202_REBASE_NOTES.md` |
+| Share billing portal URL + token | `https://<company-os-host>/portal/billing` — token from Billing Contact create (shown once) |
+
+---
+
+*Aurion Holdings, Inc. · EchoAurion Company OS · 90-day support push*
