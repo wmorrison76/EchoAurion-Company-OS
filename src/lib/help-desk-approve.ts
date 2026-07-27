@@ -20,8 +20,7 @@ export type ApproveHelpTicketInput = {
 }
 
 export type ApproveHelpTicketResult =
-  | { ok: true; detail: HelpTicketDetail }
-  | { ok: false; error: string; status: number }
+  { ok: true; detail: HelpTicketDetail } | { ok: false; error: string; status: number }
 
 function resolveAnswer(
   ticket: { messages: Array<{ id: string; role: string; body: string }> },
@@ -29,9 +28,7 @@ function resolveAnswer(
 ): string {
   let answer = input.answer?.trim() ?? ''
   if (!answer && input.knightMessageId) {
-    const km = ticket.messages.find(
-      (m) => m.id === input.knightMessageId && m.role === 'KNIGHT'
-    )
+    const km = ticket.messages.find((m) => m.id === input.knightMessageId && m.role === 'KNIGHT')
     if (km) answer = km.body
   }
   if (!answer && (input.mode ?? 'reply') === 'reply') {
@@ -361,6 +358,9 @@ export type BulkApproveAwaitingResult = {
 /**
  * Approve every ticket in AWAITING_APPROVAL using the real reply path.
  * Skips tickets with no knight draft (nothing to send).
+ * Honors the same safety locks as maybeStandbyAutoApprove:
+ * FEATURE channel, BUILD/BILLING gates, and needsHumanCoreReview stay locked
+ * for individual Approve & send (dual control).
  */
 export async function approveAllAwaitingApproval(opts?: {
   actor?: HelpDeskApproveActor
@@ -387,6 +387,37 @@ export async function approveAllAwaitingApproval(opts?: {
   let failed = 0
 
   for (const ticket of tickets) {
+    if (ticket.channel === 'FEATURE') {
+      skipped += 1
+      results.push({
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        outcome: 'skipped',
+        error: 'FEATURE / WorkRequest never bulk-approved — dual control required',
+      })
+      continue
+    }
+    if (ticket.intakeGate === 'BUILD' || ticket.intakeGate === 'BILLING') {
+      skipped += 1
+      results.push({
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        outcome: 'skipped',
+        error: `${ticket.intakeGate} gate never bulk-approved — Approve & send required`,
+      })
+      continue
+    }
+    if (ticket.needsHumanCoreReview) {
+      skipped += 1
+      results.push({
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        outcome: 'skipped',
+        error: 'NEEDS_HUMAN_CORE_REVIEW — dual control required',
+      })
+      continue
+    }
+
     const draft = ticket.messages[0]?.body?.trim()
     if (!draft) {
       skipped += 1

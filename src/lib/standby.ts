@@ -25,12 +25,7 @@ const ECHO_CORE_REVIEW_ACK =
 
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
-  | 'off'
-  | 'draft_only'
-  | 'auto_answer_low_risk'
-  | 'assist'
-  | 'standby'
-  | 'autopilot'
+  'off' | 'draft_only' | 'auto_answer_low_risk' | 'assist' | 'standby' | 'autopilot'
 
 export const STANDBY_MODES: StandbyMode[] = [
   'off',
@@ -116,10 +111,7 @@ function emptyAutoSend(): Pick<
 function mapAutoSend(row: {
   helpDeskAutoSendEnabled: boolean
   helpDeskAutoSendUntil: Date | null
-}): Pick<
-  StandbyConfig,
-  'helpDeskAutoSendEnabled' | 'helpDeskAutoSendUntil' | 'autoSendActive'
-> {
+}): Pick<StandbyConfig, 'helpDeskAutoSendEnabled' | 'helpDeskAutoSendUntil' | 'autoSendActive'> {
   const active = isHelpDeskAutoSendActive({
     helpDeskAutoSendEnabled: row.helpDeskAutoSendEnabled,
     helpDeskAutoSendUntil: row.helpDeskAutoSendUntil,
@@ -284,9 +276,7 @@ export async function setHelpDeskAutoSendPermit(input: {
   })
 
   return {
-    mode: (STANDBY_MODES.includes(row.mode as StandbyMode)
-      ? row.mode
-      : envMode()) as StandbyMode,
+    mode: (STANDBY_MODES.includes(row.mode as StandbyMode) ? row.mode : envMode()) as StandbyMode,
     maxAutoPerHour: row.maxAutoPerHour,
     source: 'db',
     updatedAt: row.updatedAt.toISOString(),
@@ -389,7 +379,8 @@ export function evaluateStandbyEligibility(input: {
 
   return {
     eligible: true,
-    reason: 'TEXT how-to/triage · FREE_ANSWER · ≥2 knights · Maestro synthesis · no code-change signal',
+    reason:
+      'TEXT how-to/triage · FREE_ANSWER · ≥2 knights · Maestro synthesis · no code-change signal',
     forceAwaitingHuman: false,
   }
 }
@@ -423,8 +414,7 @@ async function deliverEchoAiAutoProgress(input: {
   auditAction: string
   auditExtra?: Record<string, unknown>
 }): Promise<{ autoApproved: true; reason: string }> {
-  const { ticketId, ticket, answer, systemNote, resolveTicket, auditAction, auditExtra } =
-    input
+  const { ticketId, ticket, answer, systemNote, resolveTicket, auditAction, auditExtra } = input
 
   await db.helpMessage.create({
     data: {
@@ -612,17 +602,13 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   /** Dev fast-path — all TEXT TECH/OTHER, not Echo-only. Core review still blocked below. */
   const devAutoUnlock = helpDeskAutoApprove && techOtherGate && ticket.channel === 'TEXT'
 
-  const customerBodies = ticket.messages
-    .filter((m) => m.role === 'CUSTOMER')
-    .map((m) => m.body)
+  const customerBodies = ticket.messages.filter((m) => m.role === 'CUSTOMER').map((m) => m.body)
   const greetingText = [ticket.subject, ...customerBodies].find((t) => isSimpleGreeting(t))
-  const isGreeting =
-    ticket.channel === 'TEXT' && techOtherGate && Boolean(greetingText)
+  const isGreeting = ticket.channel === 'TEXT' && techOtherGate && Boolean(greetingText)
 
   // Normal path requires AWAITING_APPROVAL. Greetings may still be OPEN if Knights skipped.
   if (ticket.status !== 'AWAITING_APPROVAL') {
-    const greetingOpen =
-      isGreeting && (ticket.status === 'OPEN' || ticket.status === 'WAITING')
+    const greetingOpen = isGreeting && (ticket.status === 'OPEN' || ticket.status === 'WAITING')
     if (!greetingOpen) {
       return { autoApproved: false, reason: `Ticket status is ${ticket.status}` }
     }
@@ -900,28 +886,20 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         auditExtra: { needsCodeChange: true },
       })
     }
-    if (!devAutoUnlock) {
-      await db.helpMessage.create({
-        data: {
-          ticketId,
-          role: 'SYSTEM',
-          body: echoAi
-            ? 'Echo TECH — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William (BUILD/code stays locked; Approve after fix ships to push echo_repair_ready).'
-            : 'Standby blocked — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William.',
-        },
-      })
-      return {
-        autoApproved: false,
-        reason: 'Maestro says needs code change — force AWAITING_HUMAN',
-      }
-    }
+    // HELP_DESK_AUTO_APPROVE never bypasses code-change — leave for William.
     await db.helpMessage.create({
       data: {
         ticketId,
         role: 'SYSTEM',
-        body: 'HELP_DESK_AUTO_APPROVE — Maestro NEEDS_CODE_CHANGE. Dev fast-path sending best knight draft. BUILD/merge stays locked.',
+        body: echoAi
+          ? 'Echo TECH — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William (BUILD/code stays locked; Approve after fix ships to push echo_repair_ready).'
+          : 'Standby blocked — Maestro flagged NEEDS_CODE_CHANGE. Left AWAITING_APPROVAL for William.',
       },
     })
+    return {
+      autoApproved: false,
+      reason: 'Maestro says needs code change — force AWAITING_HUMAN',
+    }
   }
 
   const combinedDrafts = knightBodies.map((k) => k.body).join('\n')
@@ -939,16 +917,25 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       auditExtra: { needsCodeChange: true, viaSignal: true },
     })
   }
+  if (hasCodeSignal && !echoAuto) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: 'Standby blocked — Architect/code-change signal detected. Left AWAITING_APPROVAL for William (HELP_DESK_AUTO_APPROVE does not bypass code-change).',
+      },
+    })
+    return {
+      autoApproved: false,
+      reason: 'Architect/code-change signal detected — force AWAITING_HUMAN',
+    }
+  }
 
-  const echoSoftOk =
-    echoUnlock &&
-    knightBodies.length > 0 &&
-    !hasCodeSignal
+  const echoSoftOk = echoUnlock && knightBodies.length > 0 && !hasCodeSignal
 
   /** Policy-seat payroll refuse is safe to auto-send (refuse text, not figures). */
   const policyRefuseOnly =
-    knightBodies.length > 0 &&
-    knightBodies.every((k) => (k.seat ?? '').toLowerCase() === 'policy')
+    knightBodies.length > 0 && knightBodies.every((k) => (k.seat ?? '').toLowerCase() === 'policy')
 
   /** ECHO_AUTO_APPROVE: send any soft TEXT / refuse draft (not code/core/BUILD). */
   const echoForceSend =
@@ -957,11 +944,12 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     !hasCodeSignal &&
     (!isPayrollStandbyBlocked(ticket.subject, [combinedDrafts]) || policyRefuseOnly)
 
-  /** HELP_DESK_AUTO_APPROVE: dev fast-path — send knight draft without Maestro/≥2-seat gates. */
+  /** HELP_DESK_AUTO_APPROVE: soft TEXT only — never code-change / core review. */
   const devForceSend =
     devAutoUnlock &&
     knightBodies.length > 0 &&
     !ticket.needsHumanCoreReview &&
+    !hasCodeSignal &&
     (!isPayrollStandbyBlocked(ticket.subject, [combinedDrafts]) || policyRefuseOnly)
 
   if (!eligibility.eligible && !echoSoftOk && !echoForceSend && !devForceSend) {
@@ -991,16 +979,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     })
   }
 
-  const maestroNeedsCode =
-    Boolean(maestroBody) && /NEEDS_CODE_CHANGE/i.test(maestroBody ?? '')
-  const nonMaestroDraft = knightBodies
-    .filter((k) => (k.seat ?? '').toLowerCase() !== 'maestro')
-    .map((k) => k.body.trim())
-    .find((b) => b.length > 0)
-  const answerSource =
-    devForceSend && maestroNeedsCode && nonMaestroDraft
-      ? nonMaestroDraft
-      : maestroBody ?? knightBodies[knightBodies.length - 1]?.body
+  const answerSource = maestroBody ?? knightBodies[knightBodies.length - 1]?.body
   if (!answerSource?.trim()) {
     return { autoApproved: false, reason: 'No knight draft body to auto-approve' }
   }
@@ -1203,13 +1182,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
 
   return {
     autoApproved: true,
-    reason: devForceSend && !echoAuto
-      ? 'Help Desk auto-approved & sent (HELP_DESK_AUTO_APPROVE)'
-      : echoAuto
-        ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
-        : echoAi
-          ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
-          : 'Auto-answered under standby safeguards',
+    reason:
+      devForceSend && !echoAuto
+        ? 'Help Desk auto-approved & sent (HELP_DESK_AUTO_APPROVE)'
+        : echoAuto
+          ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
+          : echoAi
+            ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
+            : 'Auto-answered under standby safeguards',
   }
 }
 
