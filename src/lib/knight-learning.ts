@@ -39,21 +39,23 @@ export async function loadRunbookContext(input: {
   errorCategory?: string | null
 }): Promise<string> {
   const clauses: Array<Record<string, unknown>> = [{ status: 'PROMOTED' }]
+  // Teach only PROMOTED runbooks — DRAFT/unconfirmed must not amplify hallucinations
+  // into the next Knights draft. William reviews DRAFTs via /api/ops/mole-knights-audit.
   if (input.fingerprint) {
     const exact = await db.knightRunbook.findMany({
       where: {
         fingerprint: input.fingerprint,
         productLine: input.productLine ?? undefined,
-        status: { in: ['PROMOTED', 'DRAFT'] },
+        status: 'PROMOTED',
       },
-      orderBy: [{ status: 'desc' }, { hitCount: 'desc' }],
+      orderBy: [{ hitCount: 'desc' }],
       take: 3,
     })
     if (exact.length) {
       return exact
         .map(
           (r) =>
-            `[Runbook ${r.status} fp=${r.fingerprint.slice(0, 12)}]\n${r.title}\n${r.resolutionSteps}`
+            `[Runbook PROMOTED fp=${r.fingerprint.slice(0, 12)}]\n${r.title}\n${r.resolutionSteps}`
         )
         .join('\n\n')
         .slice(0, MAX_RUNBOOK_CONTEXT)

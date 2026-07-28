@@ -78,6 +78,7 @@ Ingest rejects bodies with forbidden keys (`findForbiddenPiiKey`) and always run
 | `POST /api/knowledge/retrieve` | `KNOWLEDGE_INGEST_SECRET` or `ECHO_AI_KEY` | Keyword retrieve for Echo |
 | `POST /api/knowledge/book-ingest` | ingest secret | Pre-extracted book/PDF **text** → scrubbed chunks (no raw upload) |
 | `GET /api/knowledge/learning-stats` | session | Counts + last ingest + `✓ PII scrub active` |
+| `GET /api/knowledge/chunks` | session | Browse redacted chunk text (`?section=&limit=`) for Dr. OS UI |
 | `POST /api/knowledge/backfill` | session or `CRON_SECRET` | One-shot seed from runbooks / patterns / help |
 | Existing `POST /api/knowledge/ingest` | ingest secret | Telemetry signals (rate-limited) |
 

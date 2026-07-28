@@ -243,3 +243,20 @@ services:
           envVarKey: RENDER_EXTERNAL_URL
       - key: CRON_SECRET
         sync: false
+
+  # Daily 11:00 UTC — three desk moles (workflow / UX / i18n) → Help Desk TASK ticket.
+  # Report only — William decides. Does not replace pilot Night Cleaner floor walk.
+  - type: cron
+    name: echoaurion-company-os-desk-moles
+    runtime: node
+    schedule: "0 11 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/desk-moles-run
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false

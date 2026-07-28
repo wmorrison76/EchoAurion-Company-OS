@@ -22,6 +22,7 @@ import { KnightsWatchingChip } from '@/components/help-desk/KnightsWatchingChip'
 import { NightCleanerChip } from './NightCleanerChip'
 import { HelpEvalChip } from './HelpEvalChip'
 import { CostAnomalyChip } from './CostAnomalyChip'
+import { MoleKnightsAuditPanel } from './MoleKnightsAuditPanel'
 import { NerveCenterLinks } from './NerveCenterLinks'
 
 export function DrOsDashboard() {
@@ -95,6 +96,8 @@ export function DrOsDashboard() {
         <HelpEvalChip data={status.data?.helpEval} />
         <CostAnomalyChip data={status.data?.costAnomaly} />
       </div>
+
+      <MoleKnightsAuditPanel />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SystemStatusPanel status={status.data} />

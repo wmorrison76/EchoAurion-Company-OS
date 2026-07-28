@@ -36,6 +36,11 @@ export type NightCleanerCategoryId =
   | 'secrets_scan'
   | 'telemetry_summary'
   | 'panel_p95_regression'
+  /** Desk moles — workflow / UX / i18n (Company OS + pilot) */
+  | 'workflow_clicks'
+  | 'workflow_duplication'
+  | 'ux_consistency'
+  | 'underbuilt_pages'
 
 export interface NightCleanerStatusView {
   status: NightCleanerStatus
