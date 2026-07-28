@@ -128,8 +128,14 @@ export function FleetNexusViewer() {
           {data.counts.supportAmber > 0 ? (
             <StatusBadge level="warn" label="Support AMBER" count={data.counts.supportAmber} />
           ) : null}
+          {data.counts.supportUnknown > 0 ? (
+            <StatusBadge level="unknown" label="Unknown" count={data.counts.supportUnknown} />
+          ) : null}
           <span className="font-mono text-xs tabular-nums text-[#a0a0b8]">
             {data.counts.renderServices} svc · {data.counts.supportClients} clients
+            {data.counts.productNexusSnapshots > 0
+              ? ` · ${data.counts.productNexusSnapshots} snapshot${data.counts.productNexusSnapshots === 1 ? '' : 's'}`
+              : ''}
           </span>
         </div>
         <div className="flex flex-1 flex-wrap items-center gap-2 sm:justify-end">
@@ -206,6 +212,27 @@ export function FleetNexusViewer() {
         <p className="mt-1 text-xs text-[#5a5a78]">{graph.title}</p>
       </div>
 
+      {data.configDebt.length > 0 ? (
+        <div
+          className="rounded-xl border border-[#f59e0b]/40 bg-[#12121a] px-4 py-3 text-sm"
+          role="region"
+          aria-label="Fleet Nexus config debt"
+        >
+          <p className="font-medium text-[#D4AF37]">Config debt — paste on Render (William)</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {data.configDebt.map((item) => (
+              <li key={item.panel} className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-2">
+                <p className="text-xs font-medium text-white">{item.panel}</p>
+                <p className="mt-0.5 text-xs text-[#a0a0b8]">{item.reason}</p>
+                <p className="mt-1 font-mono text-[11px] text-[#D4AF37]">
+                  {item.envVars.join(' · ')}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="grid min-h-[min(70vh,640px)] grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
         <div className="relative min-h-[420px] overflow-hidden rounded-xl border border-[#2a2a3f]">
           {graph.nodes.length === 0 ? (
@@ -268,7 +295,7 @@ export function FleetNexusViewer() {
               </p>
               <p className="mt-3 text-xs text-[#5a5a78]">
                 Fleet = Render services + Support clients · Chain = property groups · Deployment =
-                primary service (partial without product snapshots).
+                primary service + product topology (via POST /api/relay/nexus-snapshot).
               </p>
             </div>
           ) : (
@@ -326,6 +353,18 @@ function DetailPanel({
         ) : null}
         {node.meta.clientHealthLabel ? (
           <Stat label="Client health" value={String(node.meta.clientHealthLabel)} />
+        ) : null}
+        {node.meta.unknownReason ? (
+          <div className="py-2">
+            <dt className="text-[#a0a0b8]">Why unknown</dt>
+            <dd className="mt-0.5 text-xs text-[#f59e0b]">{String(node.meta.unknownReason)}</dd>
+          </div>
+        ) : null}
+        {typeof node.meta.openTickets === 'number' && node.meta.openTickets > 0 ? (
+          <Stat label="Open tickets" value={String(node.meta.openTickets)} />
+        ) : null}
+        {typeof node.meta.openSystemTickets === 'number' && node.meta.openSystemTickets > 0 ? (
+          <Stat label="SYSTEM tickets" value={String(node.meta.openSystemTickets)} />
         ) : null}
         {typeof node.meta.reliabilityScore === 'number' ? (
           <Stat

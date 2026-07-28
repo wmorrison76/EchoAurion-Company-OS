@@ -188,6 +188,26 @@ Audit action: `dr_os.render_config.*` — payload has **key names only**, never 
 
 ---
 
+## 6b. Fleet Nexus (`/fleet-nexus`) — Render + product topology
+
+| Symptom | Fix |
+|---|---|
+| Banner **Render not configured** · `0 svc` | Paste on **echoaurion-company-os** Render Environment: `RENDER_API_KEY` (personal API key — lists all account services) and `RENDER_SERVICE_ID` (primary web service id for Deployment lens). Save → redeploy → hard-refresh `/fleet-nexus`. |
+| 3 clients all **Unknown** (`?`) | Heartbeats without diagnostics only set `lastHealth` — ensure pilot POSTs `/api/support/diagnostics` (full bundle) or verify `SUPPORT_INGEST_SECRET` matches luccca-web `COMPANY_OS_INGEST_SECRET`. Detail panel shows **Why unknown**. |
+| Deployment/Chain scopes thin | Product must POST topology to Company OS: `POST /api/relay/nexus-snapshot` with Bearer `SUPPORT_INGEST_SECRET`. Body: `{ clientKey, nodes: [{ id, label, kind, deps? }], edges? }`. Kinds: `edge`, `service`, `datastore`, `external`, `chain-deployment`. |
+| Support-only blast radius (no Render yet) | Fleet scope still shows **Company OS** hub + **Help Desk** node when open tickets exist; clients link via edges. Chain groups by `property`. |
+
+**Verify after paste:**
+
+1. `/fleet-nexus` banner moves from PARTIAL toward LIVE (Render services count &gt; 0).
+2. Fleet graph shows Render service nodes + client edges (not isolated gray dots).
+3. Click a client → detail shows last heartbeat, ticket counts, unknown reason if applicable.
+4. After product ingest: Deployment scope shows internal services (Neon, API, etc.) from snapshot.
+
+See `DEPLOY.md` · `docs/CONNECT_PILOT_TO_COMPANY_OS.md`.
+
+---
+
 ## 7. Billing portal (no Dr. OS login)
 
 | Item | Action |
