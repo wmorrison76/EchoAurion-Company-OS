@@ -1,6 +1,18 @@
 # Pending Help Desk — William Morrison (2026-07-28)
 
-**Status:** Pilot fix LIVE (`luccca-web` @ `6d2fbce59`). Company OS: draft-prefix leak fixed + auto-send through **2026-08-31** on `claude/vigilant-rubin-DtQE3`.
+**Status:** Investigated 2026-07-28 — root cause **B** (reply ≠ code). Pilot Chronos skin fix pending deploy on `laughing-noether`.
+
+## Investigation summary (2026-07-28)
+
+| Check | Result |
+|---|---|
+| Company OS live deploy | `2e16217` on Render (`claude/vigilant-rubin-DtQE3`) — sanitize + auto-send **live** |
+| `luccca-web` live SHA | `9868f2e5a` @ `claude/laughing-noether-lSZwe` — **no** Chronos skin commits for Menu/Wine or AI Recommendations |
+| Failure class | **B** — auto-approve sent chat + `echo_repair_ready`; UI panels still used legacy gradient styling |
+| Secondary gap (fixed) | Auto-approve did not stamp `closeReason=reply_sent_code_pending` → tickets looked "fixed" in queue |
+| Product fix (pushed) | `Recommendations.tsx` + `MenuSommelierBridge.tsx` → Chronos instrument-panel tokens |
+
+**William:** A RESOLVED ticket with a clean reply does **not** mean the panel changed. Watch for badge **▲ Chat replied · Code not deployed** until `luccca-web` `/api/health` shows the product SHA with the Chronos panel commit.
 
 ## Intake
 

@@ -15,6 +15,7 @@ import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
+import { closeReasonForApprove } from '@/lib/fix-disposition'
 
 /** Customer-facing ack when Echo TECH needs a code change (BUILD stays locked). */
 const ECHO_CODE_CHANGE_ACK =
@@ -933,7 +934,10 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     policyKind: 'QUESTION',
   })
 
+  let codeChangePending = false
+
   if (maestroBody && /NEEDS_CODE_CHANGE/i.test(maestroBody)) {
+    codeChangePending = true
     if (echoAuto) {
       // Auto-ack Echo; leave ticket for William / Architect draft PR path. No BUILD merge.
       return deliverEchoAiAutoProgress({
@@ -976,6 +980,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   const combinedDrafts = knightBodies.map((k) => k.body).join('\n')
   const hasCodeSignal =
     CODE_CHANGE_SIGNAL.test(combinedDrafts) || CODE_CHANGE_SIGNAL.test(ticket.subject)
+  if (hasCodeSignal) codeChangePending = true
   if (echoAuto && hasCodeSignal) {
     return deliverEchoAiAutoProgress({
       ticketId,
@@ -1227,9 +1232,31 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     })
   }
 
+  const disposition = codeChangePending
+    ? ('reply_sent_code_pending' as const)
+    : closeReasonForApprove({
+        answer,
+        subject: ticket.subject,
+        needsHumanCoreReview: ticket.needsHumanCoreReview,
+        messageBodies: knightBodies.map((k) => k.body),
+      })
+
+  await db.helpMessage.create({
+    data: {
+      ticketId,
+      role: 'SYSTEM',
+      body:
+        disposition === 'reply_sent_code_pending'
+          ? 'Disposition: reply sent · code not deployed. Auto-approve pushes chat/echo_repair_ready only — merge Architect draft PR onto laughing-noether for UI fixes.'
+          : disposition === 'resolved_fix'
+            ? 'Disposition: marked as product fix — verify commit is on the luccca-web deploy branch before treating as done.'
+            : 'Disposition: how-to / config reply (no code deploy expected).',
+    },
+  })
+
   await db.helpTicket.update({
     where: { id: ticketId },
-    data: { status: 'RESOLVED', resolvedAt: new Date() },
+    data: { status: 'RESOLVED', resolvedAt: new Date(), closeReason: disposition },
   })
 
   await audit('computer_agent', 'standby.question.auto_answer', ticketId, {
@@ -1244,6 +1271,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       : echoAuto
         ? 'ECHO_AUTO_APPROVE'
         : undefined,
+    closeReason: disposition,
+    codeChangePending,
   })
 
   await raiseAlert({
