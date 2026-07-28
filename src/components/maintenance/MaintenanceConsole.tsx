@@ -66,8 +66,11 @@ export function MaintenanceConsole() {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   }, [clients])
 
-  const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
+  // Prefill real values (not placeholders) so Send now works immediately.
+  const [title, setTitle] = useState('Scheduled maintenance')
+  const [body, setBody] = useState(
+    'We will be offline briefly for a platform update. Your session will reconnect automatically.'
+  )
   const [severity, setSeverity] = useState<MaintenanceSeverity>('INFO')
   const [targetScope, setTargetScope] = useState<MaintenanceTargetScope>('ALL')
   const [targetValue, setTargetValue] = useState('')
@@ -82,12 +85,16 @@ export function MaintenanceConsole() {
   const [actionMsg, setActionMsg] = useState<string | null>(null)
 
   const previewSeverity = severityBadge(severity)
+  const titleFilled = title.trim().length > 0
+  const bodyFilled = body.trim().length > 0
 
   async function createNotice(then: 'draft' | 'schedule' | 'send'): Promise<void> {
     setFormError(null)
     setActionMsg(null)
     if (!title.trim() || !body.trim()) {
-      setFormError('Title and body are required')
+      setFormError(
+        'Title and body are required — grey hint text is only a placeholder until you type (or keep the defaults).'
+      )
       return
     }
     if (targetScope !== 'ALL' && !targetValue.trim()) {
@@ -138,8 +145,10 @@ export function MaintenanceConsole() {
         setActionMsg('Draft saved')
       }
 
-      setTitle('')
-      setBody('')
+      setTitle('Scheduled maintenance')
+      setBody(
+        'We will be offline briefly for a platform update. Your session will reconnect automatically.'
+      )
       setTargetValue('')
       setWindowStart('')
       setWindowEnd('')
@@ -203,25 +212,31 @@ export function MaintenanceConsole() {
           </h2>
           <div className="mt-4 flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-[#a0a0b8]">Title</span>
+              <span className="text-[#a0a0b8]">
+                Title {!titleFilled ? <span className="text-[#f59e0b]">· required</span> : null}
+              </span>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 aria-label="Notice title"
-                className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-2 text-white"
-                placeholder="Scheduled maintenance"
+                aria-invalid={!titleFilled}
+                className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-2 text-white placeholder:text-[#5a5a78]"
+                placeholder="Type title here…"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="text-[#a0a0b8]">Body</span>
+              <span className="text-[#a0a0b8]">
+                Body {!bodyFilled ? <span className="text-[#f59e0b]">· required</span> : null}
+              </span>
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 aria-label="Notice body"
+                aria-invalid={!bodyFilled}
                 rows={4}
-                className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-2 text-white"
-                placeholder="We will be offline briefly for a platform update…"
+                className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-3 py-2 text-white placeholder:text-[#5a5a78]"
+                placeholder="Type notice body here…"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -376,11 +391,19 @@ export function MaintenanceConsole() {
                 Maintenance
               </span>
             </div>
-            <h3 className="mt-3 text-base font-semibold text-white">
-              {title.trim() || 'Notice title'}
+            <h3
+              className={`mt-3 text-base font-semibold ${
+                titleFilled ? 'text-white' : 'text-[#5a5a78] italic'
+              }`}
+            >
+              {titleFilled ? title.trim() : 'Empty — type a title (preview updates live)'}
             </h3>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-[#a0a0b8]">
-              {body.trim() || 'Notice body will appear here.'}
+            <p
+              className={`mt-2 whitespace-pre-wrap text-sm ${
+                bodyFilled ? 'text-[#a0a0b8]' : 'text-[#5a5a78] italic'
+              }`}
+            >
+              {bodyFilled ? body.trim() : 'Empty — type a body to preview the pilot notice.'}
             </p>
             {(windowStart || windowEnd) && (
               <p className="mt-3 font-mono text-xs tabular-nums text-[#5a5a78]">

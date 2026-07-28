@@ -90,9 +90,9 @@ export async function GET(req: Request): Promise<Response> {
 /**
  * POST — retry actions:
  * { action: 'requeue_ingest', id }
- * { action: 'republish_outbox', id } — clears deliveredAt null (already null) by bumping createdAt
- *   so pilots re-pull; or marks a synthetic redelivery by resetting deliveredAt to null if set.
+ * { action: 'republish_outbox', id } — clone fresh + ack original (no stuck duplicate)
  * { action: 'mark_outbox_delivered', id } — operator ack when manually confirmed
+ * { action: 'ack_all_stuck_outbox' } — mark all stuck undelivered rows delivered
  */
 export async function POST(req: Request): Promise<Response> {
   const session = await auth()
@@ -103,11 +103,34 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const body = (await req.json()) as {
       id?: string
-      action?: 'requeue_ingest' | 'republish_outbox' | 'mark_outbox_delivered'
+      action?:
+        | 'requeue_ingest'
+        | 'republish_outbox'
+        | 'mark_outbox_delivered'
+        | 'ack_all_stuck_outbox'
     }
 
     // Back-compat: { id } alone → requeue ingest
     const action = body.action ?? 'requeue_ingest'
+
+    if (action === 'ack_all_stuck_outbox') {
+      const stuckCutoff = new Date(Date.now() - 5 * 60_000)
+      const result = await db.relayOutbox.updateMany({
+        where: {
+          deliveredAt: null,
+          createdAt: { lt: stuckCutoff },
+        },
+        data: { deliveredAt: new Date() },
+      })
+      await audit('william_morrison', 'help_desk.outbox.ack_all', undefined, {
+        count: result.count,
+      })
+      return Response.json({
+        success: true,
+        data: { id: 'all', status: 'DELIVERED', action, count: result.count },
+      })
+    }
+
     if (!body.id) {
       return Response.json({ success: false, error: 'id required' }, { status: 400 })
     }
@@ -137,7 +160,7 @@ export async function POST(req: Request): Promise<Response> {
       if (!row) {
         return Response.json({ success: false, error: 'Outbox row not found' }, { status: 404 })
       }
-      // Clone as fresh undelivered event so pilots that already ACKed stale ids still get it.
+      // Clone as fresh undelivered event, then ack the stale original so count drops.
       const fresh = await db.relayOutbox.create({
         data: {
           clientKey: row.clientKey,
@@ -145,6 +168,12 @@ export async function POST(req: Request): Promise<Response> {
           payload: row.payload ?? {},
         },
       })
+      if (!row.deliveredAt) {
+        await db.relayOutbox.update({
+          where: { id: row.id },
+          data: { deliveredAt: new Date() },
+        })
+      }
       await audit('william_morrison', 'help_desk.outbox.republish', fresh.id, {
         fromId: row.id,
         clientKey: row.clientKey,

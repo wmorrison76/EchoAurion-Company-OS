@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import useSWR from 'swr'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import type { APIResponse } from '@/types'
@@ -38,19 +39,40 @@ export function DeadLetterOpsPanel() {
   const { data, error, mutate, isLoading } = useSWR('/api/help-desk/dead-letter', fetcher, {
     refreshInterval: 30_000,
   })
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMsg, setActionMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   async function retry(
-    action: 'requeue_ingest' | 'republish_outbox' | 'mark_outbox_delivered',
-    id: string
+    action: 'requeue_ingest' | 'republish_outbox' | 'mark_outbox_delivered' | 'ack_all_stuck_outbox',
+    id?: string
   ) {
-    const res = await fetch('/api/help-desk/dead-letter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, id }),
-    })
-    const body = (await res.json()) as APIResponse<unknown>
-    if (!body.success) throw new Error(body.error)
-    await mutate()
+    setBusy(true)
+    setActionError(null)
+    setActionMsg(null)
+    try {
+      const res = await fetch('/api/help-desk/dead-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id ? { action, id } : { action }),
+      })
+      const body = (await res.json()) as APIResponse<{ count?: number }>
+      if (!body.success) throw new Error(body.error)
+      if (action === 'ack_all_stuck_outbox') {
+        setActionMsg(`✓ Cleared ${body.data.count ?? 0} stuck outbox rows`)
+      } else if (action === 'mark_outbox_delivered') {
+        setActionMsg('✓ Acked — removed from stuck queue')
+      } else if (action === 'republish_outbox') {
+        setActionMsg('✓ Republished (stale row acked)')
+      } else {
+        setActionMsg('✓ Re-queued ingest job')
+      }
+      await mutate()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -62,14 +84,27 @@ export function DeadLetterOpsPanel() {
         <h2 className="text-xs font-semibold uppercase tracking-widest text-[#D4AF37]">
           Delivery ops
         </h2>
-        <button
-          type="button"
-          onClick={() => void mutate()}
-          className="text-[10px] text-[#5a5a78] underline"
-          aria-label="Refresh dead letter panel"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {data && data.counts.stuckOutbox > 0 ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void retry('ack_all_stuck_outbox')}
+              className="rounded border border-[#D4AF37] px-2 py-0.5 text-[10px] text-[#D4AF37] disabled:opacity-50"
+              aria-label="Acknowledge all stuck outbox rows"
+            >
+              {busy ? '…' : `Ack all ${data.counts.stuckOutbox}`}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void mutate()}
+            className="text-[10px] text-[#5a5a78] underline"
+            aria-label="Refresh dead letter panel"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {isLoading && !data ? (
@@ -78,6 +113,16 @@ export function DeadLetterOpsPanel() {
       {error ? (
         <p className="mt-3 text-xs text-[#a0a0b8]">
           <span aria-label="Error">✕</span> {error.message}
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="mt-2 text-xs text-[#a0a0b8]" role="alert">
+          <span aria-label="Error">✕</span> {actionError}
+        </p>
+      ) : null}
+      {actionMsg ? (
+        <p className="mt-2 text-xs text-[#a0a0b8]" role="status">
+          {actionMsg}
         </p>
       ) : null}
 
@@ -106,9 +151,10 @@ export function DeadLetterOpsPanel() {
                   </span>
                   <button
                     type="button"
-                    className="text-[#D4AF37] underline"
+                    disabled={busy}
+                    className="text-[#D4AF37] underline disabled:opacity-50"
                     aria-label={`Re-queue ingest job ${j.id}`}
-                    onClick={() => void retry('requeue_ingest', j.id).catch(() => {})}
+                    onClick={() => void retry('requeue_ingest', j.id)}
                   >
                     Retry
                   </button>
@@ -122,8 +168,8 @@ export function DeadLetterOpsPanel() {
           )}
 
           {data.stuckOutbox.length > 0 ? (
-            <ul className="max-h-36 space-y-2 overflow-y-auto text-[11px]">
-              {data.stuckOutbox.slice(0, 8).map((o) => (
+            <ul className="max-h-48 space-y-2 overflow-y-auto text-[11px]">
+              {data.stuckOutbox.map((o) => (
                 <li
                   key={o.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-2 py-1.5"
@@ -134,23 +180,30 @@ export function DeadLetterOpsPanel() {
                   <span className="flex gap-2">
                     <button
                       type="button"
-                      className="text-[#D4AF37] underline"
+                      disabled={busy}
+                      className="text-[#D4AF37] underline disabled:opacity-50"
                       aria-label={`Republish outbox ${o.id}`}
-                      onClick={() => void retry('republish_outbox', o.id).catch(() => {})}
+                      onClick={() => void retry('republish_outbox', o.id)}
                     >
                       Republish
                     </button>
                     <button
                       type="button"
-                      className="text-[#5a5a78] underline"
+                      disabled={busy}
+                      className="text-[#a0a0b8] underline disabled:opacity-50"
                       aria-label={`Mark outbox ${o.id} delivered`}
-                      onClick={() => void retry('mark_outbox_delivered', o.id).catch(() => {})}
+                      onClick={() => void retry('mark_outbox_delivered', o.id)}
                     >
                       Ack
                     </button>
                   </span>
                 </li>
               ))}
+              {data.counts.stuckOutbox > data.stuckOutbox.length ? (
+                <li className="text-[10px] text-[#5a5a78]">
+                  Showing {data.stuckOutbox.length} of {data.counts.stuckOutbox} — use Ack all
+                </li>
+              ) : null}
             </ul>
           ) : null}
         </div>

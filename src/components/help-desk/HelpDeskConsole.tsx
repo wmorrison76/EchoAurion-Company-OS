@@ -276,8 +276,40 @@ export function HelpDeskConsole() {
       if (!body.success) throw new Error(body.error)
       await refresh()
       setFilter('awaiting')
+      const { approved, skipped, failed } = body.data
+      if (approved === 0 && skipped + failed > 0) {
+        setError(
+          `Approve all: 0 sent · ${skipped} skipped (no draft / locked gate) · ${failed} failed — use Clear stale SYSTEM for noise tickets`
+        )
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Approve all failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function clearStaleSystem() {
+    if (
+      !window.confirm(
+        'Resolve all open SYSTEM tickets (error noise)? FEATURE / billing / builds are not touched.'
+      )
+    ) {
+      return
+    }
+    setBusy('clear-system')
+    setError(null)
+    try {
+      const res = await fetch('/api/ops/clear-stale-system', { method: 'POST' })
+      const body = (await res.json()) as APIResponse<{ resolved: number }>
+      if (!body.success) throw new Error(body.error)
+      await refresh()
+      setFilter('open')
+      if (body.data.resolved === 0) {
+        setError('No open SYSTEM tickets to clear')
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Clear SYSTEM failed')
     } finally {
       setBusy(null)
     }
@@ -645,6 +677,15 @@ export function HelpDeskConsole() {
                 className="rounded-lg border border-[#D4AF37] bg-[#1a1a26] px-3 py-1.5 text-xs font-medium text-[#D4AF37] hover:bg-[#22223a] disabled:opacity-50"
               >
                 {busy === 'approve-all' ? 'Approving…' : '✓ Approve all awaiting'}
+              </button>
+              <button
+                type="button"
+                disabled={busy === 'clear-system'}
+                aria-label="Resolve all open SYSTEM error tickets"
+                onClick={() => void clearStaleSystem()}
+                className="rounded-lg border border-[#2a2a3f] px-3 py-1.5 text-xs text-[#a0a0b8] hover:bg-[#22223a] disabled:opacity-50"
+              >
+                {busy === 'clear-system' ? 'Clearing…' : '✕ Clear stale SYSTEM'}
               </button>
             </div>
           </div>
