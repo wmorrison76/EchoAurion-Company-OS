@@ -6,6 +6,7 @@ import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { closeReasonForApprove } from '@/lib/fix-disposition'
+import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
 export type HelpDeskApproveMode = 'reply' | 'approve_free' | 'send_quote'
@@ -35,7 +36,7 @@ function resolveAnswer(
     const latestKnight = ticket.messages.find((m) => m.role === 'KNIGHT')
     if (latestKnight) answer = latestKnight.body
   }
-  return answer.trim()
+  return sanitizeCustomerFacingAnswer(answer)
 }
 
 /**

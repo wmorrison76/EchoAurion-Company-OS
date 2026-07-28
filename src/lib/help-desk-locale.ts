@@ -179,11 +179,12 @@ export function multilingualPromptBlock(lang: HelpDeskLanguageResolution): strin
       ? `Pilot UI locale: ${lang.uiLocale}${LOCALE_LABELS[lang.uiLocale] ? ` (${LOCALE_LABELS[lang.uiLocale]})` : ''}`
       : 'Pilot UI locale: (not provided)',
     `Detected question language: ${lang.questionLocale} (${lang.replyLabel}) [source: ${lang.source}]`,
-    `Reply language: write the customer-facing draft in ${lang.replyLabel} (${lang.replyLocale}).`,
-    'If you need to reason about the product, do so internally in English — but the draft William will send must match the customer’s language.',
+    `Reply language: write the customer-facing reply in ${lang.replyLabel} (${lang.replyLocale}).`,
+    'Write only what the customer should read — no "Draft for William", no "---", no internal labels.',
+    'If you need to reason about the product, do so internally in English — the visible reply must match the customer’s language.',
     lang.nonEnglish
-      ? 'Also add one short English operator note in [brackets] at the end for William only (not for the customer body above the note).'
-      : 'Customer language appears English — draft in clear English.',
+      ? 'Optional: one short English summary in [brackets] at the very end for the operator (stripped before send — never put it above the customer body).'
+      : 'Customer language appears English — reply in clear English.',
   ]
   return lines.join('\n')
 }

@@ -356,6 +356,31 @@ async function seedHelpEvalCases() {
   console.log(`helpEvalCases: seeded ${created} new (${EVAL_CASE_SEEDS.length} total defined)`)
 }
 
+async function seedStandbyAutoSendPermit() {
+  const until = new Date(process.env.HELP_DESK_AUTO_SEND_UNTIL ?? '2026-08-31T23:59:59.999Z')
+  if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+    console.log('standby: auto-send permit seed skipped (invalid or past HELP_DESK_AUTO_SEND_UNTIL)')
+    return
+  }
+  await db.standbySettings.upsert({
+    where: { id: 'default' },
+    create: {
+      id: 'default',
+      mode: 'auto_answer_low_risk',
+      maxAutoPerHour: 10,
+      helpDeskAutoSendEnabled: true,
+      helpDeskAutoSendUntil: until,
+      updatedBy: 'computer_agent',
+    },
+    update: {
+      helpDeskAutoSendEnabled: true,
+      helpDeskAutoSendUntil: until,
+      updatedBy: 'computer_agent',
+    },
+  })
+  console.log(`standby: auto-send permit seeded until ${until.toISOString()}`)
+}
+
 async function main() {
   await seedBills()
   await seedPilot()
@@ -363,6 +388,7 @@ async function main() {
   await seedContacts()
   await seedHelpArticles()
   await seedHelpEvalCases()
+  await seedStandbyAutoSendPermit()
 }
 
 main()

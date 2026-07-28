@@ -8,6 +8,7 @@ import {
   publishOpenPanel,
 } from '@/lib/relay-outbox'
 import { isKnownPanelId } from '@/lib/help-panels'
+import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
 import type { Prisma } from '@prisma/client'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -39,7 +40,7 @@ export async function POST(
       resolve?: boolean
     }
 
-    const message = body.message?.trim()
+    const message = sanitizeCustomerFacingAnswer(body.message?.trim() ?? '')
     if (!message) {
       return Response.json({ success: false, error: 'message is required' }, { status: 400 })
     }

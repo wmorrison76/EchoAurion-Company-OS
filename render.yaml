@@ -78,6 +78,12 @@ services:
       # Set false when William wants dual-control Approve again.
       - key: HELP_DESK_AUTO_APPROVE
         value: "true"
+      # TECH/OTHER TEXT auto-send without manual permit click (BUILD/core stay locked).
+      - key: HELP_DESK_AUTO_SEND_TECH
+        value: "true"
+      # Bootstrap DB permit through end of August 2026 (also upserted on getStandbyConfig).
+      - key: HELP_DESK_AUTO_SEND_UNTIL
+        value: "2026-08-31T23:59:59.999Z"
       # Render self-correction: auto-rollback + real-time failure webhook
       - key: RENDER_AUTO_ROLLBACK
         value: "on"
