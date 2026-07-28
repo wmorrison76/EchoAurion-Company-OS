@@ -101,41 +101,41 @@ function sniffMime(buf: Buffer): AllowedMime | null {
 /** Strip JPEG APP1 (EXIF) markers. PNG/WebP typically have no EXIF after canvas re-encode. */
 export function stripJpegExif(buf: Buffer): Buffer {
   if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return buf
-  const out: number[] = [0xff, 0xd8]
+  const parts: Buffer[] = [Buffer.from([0xff, 0xd8])]
   let i = 2
   while (i + 3 < buf.length) {
     if (buf[i] !== 0xff) {
-      out.push(...buf.subarray(i))
+      parts.push(buf.subarray(i))
       break
     }
     const marker = buf[i + 1]
     if (marker === 0xda) {
-      // SOS — copy rest
-      out.push(...buf.subarray(i))
+      // SOS — copy rest (never spread large subarrays into push — stack overflow).
+      parts.push(buf.subarray(i))
       break
     }
     if (marker === 0xd9) {
-      out.push(0xff, 0xd9)
+      parts.push(Buffer.from([0xff, 0xd9]))
       break
     }
     // Standalone markers
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
-      out.push(0xff, marker)
+      parts.push(buf.subarray(i, i + 2))
       i += 2
       continue
     }
     const len = (buf[i + 2]! << 8) | buf[i + 3]!
     if (len < 2 || i + 2 + len > buf.length) {
-      out.push(...buf.subarray(i))
+      parts.push(buf.subarray(i))
       break
     }
     // Skip APP1 (EXIF / XMP)
     if (marker !== 0xe1) {
-      out.push(...buf.subarray(i, i + 2 + len))
+      parts.push(buf.subarray(i, i + 2 + len))
     }
     i += 2 + len
   }
-  return Buffer.from(out)
+  return Buffer.concat(parts)
 }
 
 function decodeBase64Payload(raw: string): Buffer | null {

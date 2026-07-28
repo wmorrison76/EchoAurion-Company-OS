@@ -274,7 +274,20 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const { question, context, locale, attachments: rawAttachments } = parsed.data
-    const parsedAtt = parseIncomingAttachments(rawAttachments)
+    let parsedAtt: ReturnType<typeof parseIncomingAttachments>
+    try {
+      parsedAtt = parseIncomingAttachments(rawAttachments)
+    } catch (err) {
+      console.error('[relay/questions] attachment parse failed', err)
+      return Response.json(
+        {
+          success: false,
+          error: 'Could not process screenshots — try one smaller capture',
+          code: 'ATTACHMENT_PROCESS',
+        },
+        { status: 400 }
+      )
+    }
     if (!parsedAtt.ok) {
       return Response.json(
         { success: false, error: parsedAtt.error, code: parsedAtt.code },
