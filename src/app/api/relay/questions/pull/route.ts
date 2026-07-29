@@ -4,6 +4,7 @@ import {
   parseRelayUserId,
   userIdContextEquals,
 } from '@/lib/relay-question-scope'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,18 @@ interface DeliverableAnswer {
   answer: string | null
   directive: unknown
   userId: string | null
+  createdAt: string
+  answeredAt: string | null
+  intakeGate: string | null
+  closeReason: string | null
+  disposition: string | null
+  fixSha: string | null
+  etaLabel: string | null
+  statusBadge: {
+    shape: string
+    label: string
+    level: 'ok' | 'warn' | 'unknown'
+  } | null
 }
 
 /**
@@ -61,18 +74,61 @@ export async function GET(req: Request): Promise<Response> {
         data: { delivered: true },
       })
     }
+
+    const tickets = await db.helpTicket.findMany({
+      where: { customerQuestionId: { in: pending.map((p) => p.id) } },
+      select: {
+        customerQuestionId: true,
+        closeReason: true,
+        status: true,
+        subject: true,
+        needsHumanCoreReview: true,
+        intakeGate: true,
+        messages: {
+          where: { role: { in: ['KNIGHT', 'ADMIN'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 4,
+          select: { body: true },
+        },
+      },
+    })
+    const ticketByQuestion = new Map(
+      tickets
+        .filter((t) => t.customerQuestionId)
+        .map((t) => [t.customerQuestionId!, t])
+    )
+
     const data: DeliverableAnswer[] = pending.map((p) => {
       const ctx =
         p.context && typeof p.context === 'object' && !Array.isArray(p.context)
           ? (p.context as Record<string, unknown>)
           : null
+      const ticket = ticketByQuestion.get(p.id)
+      const meta = buildCustomerThreadMeta({
+        intakeGate: p.intakeGate ?? ticket?.intakeGate ?? null,
+        questionStatus: p.status,
+        replyState: 'replied',
+        closeReason: ticket?.closeReason ?? null,
+        answer: p.answer,
+        subject: ticket?.subject ?? p.question,
+        needsHumanCoreReview: ticket?.needsHumanCoreReview ?? null,
+        ticketStatus: ticket?.status ?? null,
+        messageBodies: ticket?.messages.map((m) => m.body) ?? [],
+      })
       return {
         id: p.id,
         question: p.question,
         answer: p.answer,
         directive: p.directive,
-        userId:
-          typeof ctx?.userId === 'string' ? ctx.userId : userId,
+        userId: typeof ctx?.userId === 'string' ? ctx.userId : userId,
+        createdAt: p.createdAt.toISOString(),
+        answeredAt: p.answeredAt?.toISOString() ?? null,
+        intakeGate: p.intakeGate ?? null,
+        closeReason: meta.closeReason,
+        disposition: meta.disposition,
+        fixSha: meta.fixSha,
+        etaLabel: meta.etaLabel,
+        statusBadge: meta.statusBadge,
       }
     })
     return Response.json({

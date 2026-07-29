@@ -11,6 +11,7 @@ import {
 } from '@/lib/help-desk-knights'
 import { getStandbyConfig } from '@/lib/standby'
 import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
+import { supportEtaLabel } from '@/lib/support-eta'
 import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
 import {
   attachmentAuditMeta,
@@ -28,9 +29,13 @@ import {
   isEchoPanelWatchEnabled,
 } from '@/lib/echo-guardrails'
 import { isEchoAiContext } from '@/lib/echo-ticket-priority'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
+
+/** Customer-visible answer length — pilot thread scrolls; do not truncate aggressively. */
+const PILOT_THREAD_TEXT_MAX = 16_000
 
 /** Pilot Help Desk thread retention window (multi-device re-fetch). */
 const HELP_DESK_HISTORY_DAYS = 15
@@ -69,10 +74,19 @@ interface QuestionHistoryItem {
   answeredAt: string | null
   /** Waiting for reply | Replied — shape+label friendly for pilots. */
   replyState: 'waiting' | 'replied'
+  closeReason: string | null
+  disposition: string | null
+  fixSha: string | null
+  etaLabel: string | null
+  statusBadge: {
+    shape: string
+    label: string
+    level: 'ok' | 'warn' | 'unknown'
+  } | null
 }
 
 /** Strip emails / long digit runs from pilot-facing text (PII hygiene). */
-function redactPilotText(text: string, max = 4000): string {
+function redactPilotText(text: string, max = PILOT_THREAD_TEXT_MAX): string {
   return text
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
     .replace(/\b\d{10,}\b/g, '[digits]')
@@ -143,8 +157,43 @@ export async function GET(req: Request): Promise<Response> {
       },
     })
 
+    const tickets = await db.helpTicket.findMany({
+      where: { customerQuestionId: { in: rows.map((r) => r.id) } },
+      select: {
+        customerQuestionId: true,
+        closeReason: true,
+        status: true,
+        subject: true,
+        needsHumanCoreReview: true,
+        messages: {
+          where: { role: { in: ['KNIGHT', 'ADMIN'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 4,
+          select: { body: true },
+        },
+      },
+    })
+    const ticketByQuestion = new Map(
+      tickets
+        .filter((t) => t.customerQuestionId)
+        .map((t) => [t.customerQuestionId!, t])
+    )
+
     const data: QuestionHistoryItem[] = rows.map((r) => {
       const replied = Boolean(r.answer && r.status === 'ANSWERED')
+      const replyState: QuestionHistoryItem['replyState'] = replied ? 'replied' : 'waiting'
+      const ticket = ticketByQuestion.get(r.id)
+      const meta = buildCustomerThreadMeta({
+        intakeGate: r.intakeGate ?? null,
+        questionStatus: r.status,
+        replyState,
+        closeReason: ticket?.closeReason ?? null,
+        answer: r.answer,
+        subject: ticket?.subject ?? r.question,
+        needsHumanCoreReview: ticket?.needsHumanCoreReview ?? null,
+        ticketStatus: ticket?.status ?? null,
+        messageBodies: ticket?.messages.map((m) => m.body) ?? [],
+      })
       return {
         id: r.id,
         question: redactPilotText(r.question),
@@ -153,7 +202,12 @@ export async function GET(req: Request): Promise<Response> {
         intakeGate: r.intakeGate ?? null,
         createdAt: r.createdAt.toISOString(),
         answeredAt: r.answeredAt?.toISOString() ?? null,
-        replyState: replied ? 'replied' : 'waiting',
+        replyState,
+        closeReason: meta.closeReason,
+        disposition: meta.disposition,
+        fixSha: meta.fixSha,
+        etaLabel: meta.etaLabel,
+        statusBadge: meta.statusBadge,
       }
     })
 
@@ -435,6 +489,11 @@ export async function POST(req: Request): Promise<Response> {
 
     /** Pilot-facing expectation — customer-safe (no Company OS / Approve language). */
     let waitingHint: string
+    const etaLabel = supportEtaLabel({
+      intakeGate: intakeGate ?? null,
+      questionStatus: 'NEW',
+      replyState: 'waiting',
+    })
     if (intakeGate === 'BUILD') {
       waitingHint = 'queued for a paid build / quote — Aurion will follow up'
     } else if (intakeGate === 'BILLING') {
@@ -458,6 +517,7 @@ export async function POST(req: Request): Promise<Response> {
           waitingHint,
           autoSendUnlockedUntil,
           attachmentCount: attachmentMetas.length,
+          etaLabel,
         },
       } satisfies APIResponse<{
         id: string
@@ -467,6 +527,7 @@ export async function POST(req: Request): Promise<Response> {
         waitingHint: string
         autoSendUnlockedUntil: string | null
         attachmentCount: number
+        etaLabel: string | null
       }>,
       { status: 201 }
     )

@@ -107,7 +107,7 @@ export function fixDispositionBadge(opts: {
   if (disposition === 'resolved_fix') {
     return {
       level: 'ok',
-      label: sha ? `✓ Fixed in ${sha}` : '✓ Fixed in product (verify deploy)',
+      label: sha ? `✓ Issue fixed · ${sha}` : '✓ Issue fixed',
       disposition,
       sha,
     }
@@ -125,6 +125,37 @@ export function fixDispositionBadge(opts: {
     }
   }
   return null
+}
+
+/** Customer Help Desk thread badge (pilot chrome + relay history). */
+export function buildCustomerThreadMetaBadge(opts: {
+  status?: string | null
+  closeReason?: string | null
+  answer?: string | null
+  subject?: string | null
+  needsHumanCoreReview?: boolean | null
+  messageBodies?: Array<string | null | undefined>
+}): (FixDispositionBadge & { shape: string }) | null {
+  const internal = fixDispositionBadge(opts)
+  if (!internal) {
+    const replied =
+      opts.status === 'RESOLVED' ||
+      opts.status === 'CLOSED' ||
+      Boolean(opts.answer?.trim())
+    if (replied && opts.answer?.trim()) {
+      return {
+        level: 'ok',
+        label: '✓ Replied',
+        disposition: 'resolved_howto',
+        sha: null,
+        shape: '✓',
+      }
+    }
+    return null
+  }
+  const shape =
+    internal.level === 'ok' ? '✓' : internal.level === 'warn' ? '▲' : '?'
+  return { ...internal, shape }
 }
 
 /** closeReason to stamp on Approve & send (mode=reply). */

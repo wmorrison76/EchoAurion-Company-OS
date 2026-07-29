@@ -171,6 +171,16 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
                 : data.chefsBrainDetail ?? 'Probe failed — check URL path on luccca-web'
             }
           />
+          <div className="flex items-center justify-between gap-2 text-xs">
+            <span className="text-[#a0a0b8]">Echo panel watch</span>
+            <StatusBadge
+              level={data.echoPanelWatch?.level ?? 'unknown'}
+              label={
+                data.echoPanelWatch?.label ??
+                (data.echoPanelWatch?.enabled ? 'Echo panel watch on' : 'Echo panel watch off')
+              }
+            />
+          </div>
         </div>
 
         {showEchoHelp ? (

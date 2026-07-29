@@ -6,6 +6,7 @@ import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { closeReasonForApprove } from '@/lib/fix-disposition'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
 import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
@@ -80,6 +81,24 @@ export async function approveHelpTicket(
       },
     })
 
+    const disposition = closeReasonForApprove({
+      answer,
+      subject: ticket.subject,
+      needsHumanCoreReview: ticket.needsHumanCoreReview,
+      messageBodies: ticket.messages.map((m) => m.body),
+    })
+    const threadMeta = buildCustomerThreadMeta({
+      intakeGate: ticket.intakeGate ?? null,
+      questionStatus: 'ANSWERED',
+      replyState: 'replied',
+      closeReason: disposition,
+      answer,
+      subject: ticket.subject,
+      needsHumanCoreReview: ticket.needsHumanCoreReview,
+      ticketStatus: 'RESOLVED',
+      messageBodies: ticket.messages.map((m) => m.body),
+    })
+
     if (ticket.customerQuestionId) {
       const q = await db.customerQuestion.update({
         where: { id: ticket.customerQuestionId },
@@ -115,6 +134,11 @@ export async function approveHelpTicket(
               ? ctx.moduleHint
               : null,
         failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
+        closeReason: threadMeta.closeReason,
+        disposition: threadMeta.disposition,
+        fixSha: threadMeta.fixSha,
+        etaLabel: threadMeta.etaLabel,
+        intakeGate: ticket.intakeGate ?? null,
       })
       const live = await afterApproveDeliverLive({
         clientKey: q.clientKey,
@@ -154,6 +178,11 @@ export async function approveHelpTicket(
         answer,
         echoSilent: echoAi,
         ticketId: id,
+        closeReason: threadMeta.closeReason,
+        disposition: threadMeta.disposition,
+        fixSha: threadMeta.fixSha,
+        etaLabel: threadMeta.etaLabel,
+        intakeGate: ticket.intakeGate ?? null,
       })
       const live = await afterApproveDeliverLive({
         clientKey: ticket.clientKey,
@@ -181,12 +210,6 @@ export async function approveHelpTicket(
       })
     }
 
-    const disposition = closeReasonForApprove({
-      answer,
-      subject: ticket.subject,
-      needsHumanCoreReview: ticket.needsHumanCoreReview,
-      messageBodies: ticket.messages.map((m) => m.body),
-    })
     await db.helpMessage.create({
       data: {
         ticketId: id,

@@ -9,6 +9,8 @@ import {
 } from '@/lib/relay-outbox'
 import { isKnownPanelId } from '@/lib/help-panels'
 import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
+import { closeReasonForApprove } from '@/lib/fix-disposition'
 import type { Prisma } from '@prisma/client'
 import type { APIResponse } from '@/types'
 import type { HelpTicketDetail } from '@/types/help-desk'
@@ -65,6 +67,22 @@ export async function POST(
 
     const title = body.title?.trim() || 'Support reply'
 
+    const disposition = closeReasonForApprove({
+      answer: message,
+      subject: ticket.subject,
+      needsHumanCoreReview: ticket.needsHumanCoreReview,
+    })
+    const threadMeta = buildCustomerThreadMeta({
+      intakeGate: ticket.intakeGate ?? null,
+      questionStatus: 'ANSWERED',
+      replyState: 'replied',
+      closeReason: disposition,
+      answer: message,
+      subject: ticket.subject,
+      needsHumanCoreReview: ticket.needsHumanCoreReview,
+      ticketStatus: body.resolve ? 'RESOLVED' : ticket.status,
+    })
+
     await db.helpMessage.create({
       data: { ticketId: id, role: 'ADMIN', body: message },
     })
@@ -84,6 +102,19 @@ export async function POST(
       ticketId: id,
     })
 
+    let relayUserId: string | null = null
+    if (ticket.customerQuestionId) {
+      const qCtx = await db.customerQuestion.findUnique({
+        where: { id: ticket.customerQuestionId },
+        select: { context: true },
+      })
+      const ctx =
+        qCtx?.context && typeof qCtx.context === 'object' && !Array.isArray(qCtx.context)
+          ? (qCtx.context as Record<string, unknown>)
+          : null
+      relayUserId = typeof ctx?.userId === 'string' ? ctx.userId : null
+    }
+
     await publishAnswerReady({
       clientKey: ticket.clientKey,
       questionId: ticket.customerQuestionId ?? id,
@@ -92,6 +123,13 @@ export async function POST(
       directive: body.panelId
         ? { type: 'open_panel', panelId: body.panelId, params: body.panelParams ?? null }
         : { type: 'show_message', title, body: message, severity: body.severity ?? 'info' },
+      userId: relayUserId,
+      ticketId: id,
+      closeReason: threadMeta.closeReason,
+      disposition: threadMeta.disposition,
+      fixSha: threadMeta.fixSha,
+      etaLabel: threadMeta.etaLabel,
+      intakeGate: ticket.intakeGate ?? null,
     })
 
     if (body.panelId) {
@@ -126,7 +164,7 @@ export async function POST(
     const updated = await db.helpTicket.update({
       where: { id },
       data: body.resolve
-        ? { status: 'RESOLVED', resolvedAt: new Date() }
+        ? { status: 'RESOLVED', resolvedAt: new Date(), closeReason: disposition }
         : { status: ticket.status === 'OPEN' ? 'WAITING' : ticket.status },
       include: {
         messages: { orderBy: { createdAt: 'asc' } },

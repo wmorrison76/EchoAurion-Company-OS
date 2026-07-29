@@ -10,6 +10,7 @@ import {
   echoAiUrlConfigured,
   probeChefsBrain,
 } from '@/lib/echo-brain'
+import { isEchoPanelWatchEnabled } from '@/lib/echo-guardrails'
 import {
   getCostAnomalyChip,
   getDrainHealth,
@@ -264,6 +265,21 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
     const level = relayLevel
     const label = relayLabel
 
+    const echoWatchOn = isEchoPanelWatchEnabled()
+    const echoPanelWatch = echoWatchOn
+      ? {
+          enabled: true,
+          level: 'ok' as const,
+          shape: '✓',
+          label: 'Echo panel watch on',
+        }
+      : {
+          enabled: false,
+          level: 'warn' as const,
+          shape: '○',
+          label: 'Echo panel watch off',
+        }
+
     return {
       level,
       label,
@@ -288,6 +304,7 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
         ? now - lastQuestion.createdAt.getTime()
         : null,
       pendingOutbox,
+      echoPanelWatch,
     }
   } catch (error) {
     const chefsProbe = await probeChefsBrain().catch(() => ({
@@ -330,6 +347,14 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       lastHeartbeatAgeMs: null,
       lastQuestionAgeMs: null,
       pendingOutbox: 0,
+      echoPanelWatch: {
+        enabled: isEchoPanelWatchEnabled(),
+        level: isEchoPanelWatchEnabled() ? 'ok' : 'warn',
+        shape: isEchoPanelWatchEnabled() ? '✓' : '○',
+        label: isEchoPanelWatchEnabled()
+          ? 'Echo panel watch on'
+          : 'Echo panel watch off',
+      },
       error: error instanceof Error ? error.message : 'Pilot connection query failed',
     }
   }

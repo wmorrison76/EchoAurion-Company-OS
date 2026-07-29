@@ -15,6 +15,7 @@ import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
 import { closeReasonForApprove } from '@/lib/fix-disposition'
 
 /** Customer-facing ack when Echo TECH needs a code change (BUILD stays locked). */
@@ -1135,6 +1136,26 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   let deliveredContext: unknown = null
   let deliveredUserId: string | null = null
 
+  const disposition = codeChangePending
+    ? ('reply_sent_code_pending' as const)
+    : closeReasonForApprove({
+        answer,
+        subject: ticket.subject,
+        needsHumanCoreReview: ticket.needsHumanCoreReview,
+        messageBodies: knightBodies.map((k) => k.body),
+      })
+  const threadMeta = buildCustomerThreadMeta({
+    intakeGate: ticket.intakeGate ?? null,
+    questionStatus: 'ANSWERED',
+    replyState: 'replied',
+    closeReason: disposition,
+    answer,
+    subject: ticket.subject,
+    needsHumanCoreReview: ticket.needsHumanCoreReview,
+    ticketStatus: 'RESOLVED',
+    messageBodies: knightBodies.map((k) => k.body),
+  })
+
   if (questionId) {
     const q = await db.customerQuestion.update({
       where: { id: questionId },
@@ -1172,6 +1193,11 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
             ? ctx.moduleHint
             : null,
       failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
+      closeReason: threadMeta.closeReason,
+      disposition: threadMeta.disposition,
+      fixSha: threadMeta.fixSha,
+      etaLabel: threadMeta.etaLabel,
+      intakeGate: ticket.intakeGate ?? null,
     })
   } else if (ticket.clientKey) {
     const created = await db.customerQuestion.create({
@@ -1202,6 +1228,11 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       standbyApproved: true,
       echoSilent: echoAi,
       ticketId,
+      closeReason: threadMeta.closeReason,
+      disposition: threadMeta.disposition,
+      fixSha: threadMeta.fixSha,
+      etaLabel: threadMeta.etaLabel,
+      intakeGate: ticket.intakeGate ?? null,
     })
   }
 
@@ -1231,15 +1262,6 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       },
     })
   }
-
-  const disposition = codeChangePending
-    ? ('reply_sent_code_pending' as const)
-    : closeReasonForApprove({
-        answer,
-        subject: ticket.subject,
-        needsHumanCoreReview: ticket.needsHumanCoreReview,
-        messageBodies: knightBodies.map((k) => k.body),
-      })
 
   await db.helpMessage.create({
     data: {
