@@ -18,6 +18,7 @@ export type MoleKnightsAudit = {
     cronWiredInRepo: true
     deskMolesCronWired: true
     nightCleanerCronWired: false
+    scannersWiredInRepo: false
     gaps: string[]
   }
   knights: {

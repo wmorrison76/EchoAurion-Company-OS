@@ -56,6 +56,11 @@ The Support console shows the same guidance as chips on each question/request.
 fine for v1. Cross-region latency is not a deploy blocker. Same-region is optional
 later if you want to shave a few ms off DB round-trips.
 
+**Connection limit:** Neon shows `connection_limit` in project settings. Prisma
+uses a small pool per process — keep **web + all crons** under the limit (leave 2
+slots headroom). Under fleet load see `docs/SCALE_AND_THROTTLE.md` (knight queue
+reduces long-held connections on the web hot path).
+
 **Build note:** `render.yaml` uses `npm install --include=dev` so Next can compile
 even when Render sets `NODE_ENV=production` during install (otherwise `tailwindcss`
 and other build-time packages are skipped).

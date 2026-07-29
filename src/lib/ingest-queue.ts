@@ -16,10 +16,12 @@ export type IngestJobKind =
   | 'echo_learn_from_runbook'
   | 'echo_learn_from_pattern'
   | 'echo_learn_from_help'
+  | 'text_knights'
 
 export type IngestJobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'
 
 const DEFAULT_BATCH = 8
+const KNIGHT_DEFAULT_BATCH = Number(process.env.KNIGHT_WORKER_BATCH ?? 5)
 const MAX_ATTEMPTS = 5
 
 export async function enqueueIngestJob(input: {
@@ -112,6 +114,13 @@ async function runOne(job: {
         reason: 'embeddings_not_enabled',
         chunkId: payload.chunkId ?? null,
       })
+    } else if (job.kind === 'text_knights') {
+      const ticketId = String(payload.ticketId ?? '')
+      const questionId = payload.questionId ? String(payload.questionId) : undefined
+      if (!ticketId) throw new Error('missing ticketId')
+      const { runInboundKnights } = await import('@/lib/help-desk-knights')
+      const { withKnightSlot } = await import('@/lib/knight-concurrency')
+      await withKnightSlot(() => runInboundKnights({ ticketId, questionId }))
     } else {
       throw new Error(`unknown kind ${job.kind}`)
     }
@@ -175,15 +184,66 @@ export async function processIngestJobs(limit = DEFAULT_BATCH): Promise<{
   return { processed: due.length, done, failed }
 }
 
+/**
+ * Drain TEXT knight jobs only — called by dedicated knight worker cron.
+ * Bounded by KNIGHT_WORKER_BATCH (default 5) per run.
+ */
+export async function processKnightJobs(
+  limit = KNIGHT_DEFAULT_BATCH
+): Promise<{ processed: number; done: number; failed: number }> {
+  const now = new Date()
+  const due = await db.ingestJob.findMany({
+    where: {
+      kind: 'text_knights',
+      status: 'PENDING',
+      runAfter: { lte: now },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: Math.min(limit, 15),
+  })
+
+  let done = 0
+  let failed = 0
+
+  for (const job of due) {
+    const claimed = await db.ingestJob.updateMany({
+      where: { id: job.id, status: 'PENDING' },
+      data: { status: 'RUNNING', lockedAt: now },
+    })
+    if (claimed.count === 0) continue
+
+    const before = await db.ingestJob.findUnique({ where: { id: job.id } })
+    await runOne({
+      id: job.id,
+      kind: job.kind,
+      payload: job.payload,
+      attempts: before?.attempts ?? job.attempts,
+    })
+    const after = await db.ingestJob.findUnique({ where: { id: job.id } })
+    if (after?.status === 'DONE') done += 1
+    else if (after?.status === 'FAILED' || after?.status === 'PENDING') failed += 1
+  }
+
+  await audit('computer_agent', 'ingest_queue.knight_process', undefined, {
+    claimed: due.length,
+    done,
+    failed,
+  }).catch(() => {})
+
+  return { processed: due.length, done, failed }
+}
+
 export async function ingestQueueStats(): Promise<{
   pending: number
   running: number
   failed: number
+  knightPending: number
 }> {
-  const [pending, running, failed] = await Promise.all([
+  const [pending, running, failed, knightPending] = await Promise.all([
     db.ingestJob.count({ where: { status: 'PENDING' } }),
     db.ingestJob.count({ where: { status: 'RUNNING' } }),
     db.ingestJob.count({ where: { status: 'FAILED' } }),
+    db.ingestJob.count({ where: { status: 'PENDING', kind: 'text_knights' } }),
   ])
-  return { pending, running, failed }
+  return { pending, running, failed, knightPending }
 }

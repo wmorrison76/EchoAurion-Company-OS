@@ -151,8 +151,15 @@ function envMode(): StandbyMode {
 }
 
 function envMaxAuto(): number {
-  const n = Number(process.env.STANDBY_MAX_AUTO_PER_HOUR ?? '10')
-  if (!Number.isFinite(n) || n < 0) return 10
+  const n = Number(process.env.STANDBY_MAX_AUTO_PER_HOUR ?? '60')
+  if (!Number.isFinite(n) || n < 0) return 60
+  return Math.floor(n)
+}
+
+/** Per-clientKey hourly cap — prevents one property from consuming the global standby budget. */
+function envMaxAutoPerClient(): number {
+  const n = Number(process.env.STANDBY_MAX_AUTO_PER_CLIENT_PER_HOUR ?? '8')
+  if (!Number.isFinite(n) || n < 0) return 8
   return Math.floor(n)
 }
 
@@ -455,6 +462,41 @@ async function countAutoThisHour(): Promise<number> {
   })
 }
 
+async function countAutoThisHourForClient(clientKey: string): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000)
+  return db.customerQuestion.count({
+    where: {
+      clientKey,
+      standbyApproved: true,
+      answeredAt: { gte: since },
+    },
+  })
+}
+
+async function standbyRateLimitExceeded(input: {
+  clientKey: string | null
+  maxGlobal: number
+}): Promise<{ exceeded: boolean; reason?: string }> {
+  const globalCount = await countAutoThisHour()
+  if (globalCount >= input.maxGlobal) {
+    return {
+      exceeded: true,
+      reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${input.maxGlobal}`,
+    }
+  }
+  if (input.clientKey) {
+    const perClientMax = envMaxAutoPerClient()
+    const clientCount = await countAutoThisHourForClient(input.clientKey)
+    if (clientCount >= perClientMax) {
+      return {
+        exceeded: true,
+        reason: `Rate limit STANDBY_MAX_AUTO_PER_CLIENT_PER_HOUR=${perClientMax}`,
+      }
+    }
+  }
+  return { exceeded: false }
+}
+
 /**
  * Echo AI silent-radio delivery: ADMIN note + answer_ready (silent) + echo_repair_ready.
  * When resolveTicket=false (code-change / core review), leave AWAITING_APPROVAL for William.
@@ -687,18 +729,21 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       return { autoApproved: false, reason: 'Greeting draft empty after sanitize' }
     }
 
-    const autoCount = await countAutoThisHour()
-    if (autoCount >= config.maxAutoPerHour) {
+    const rate = await standbyRateLimitExceeded({
+      clientKey: ticket.clientKey,
+      maxGlobal: config.maxAutoPerHour,
+    })
+    if (rate.exceeded) {
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body: `Greeting auto-send rate-limited (${config.maxAutoPerHour}/hour). Left AWAITING_APPROVAL.`,
+          body: `Greeting auto-send rate-limited (${config.maxAutoPerHour}/hour global). Left AWAITING_APPROVAL.`,
         },
       })
       return {
         autoApproved: false,
-        reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+        reason: rate.reason ?? `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
       }
     }
 
@@ -1068,18 +1113,21 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
 
   // Dev / Echo testing fast-paths bypass the hourly standby cap so queues clear.
   if (!devForceSend && !echoForceSend && !echoAuto) {
-    const autoCount = await countAutoThisHour()
-    if (autoCount >= config.maxAutoPerHour) {
+    const rate = await standbyRateLimitExceeded({
+      clientKey: ticket.clientKey,
+      maxGlobal: config.maxAutoPerHour,
+    })
+    if (rate.exceeded) {
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body: `Standby rate limit: ${config.maxAutoPerHour}/hour reached. Left for William.`,
+          body: `Standby rate limit reached (${config.maxAutoPerHour}/hour global · ${envMaxAutoPerClient()}/hour per client). Left for William.`,
         },
       })
       return {
         autoApproved: false,
-        reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+        reason: rate.reason ?? `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
       }
     }
   }

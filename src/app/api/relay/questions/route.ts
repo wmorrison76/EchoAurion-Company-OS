@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized, relayGuard, requireClientKey } from '@/lib/relay-auth'
+import { relayAuthorized, relayQuestionsThrottle, relayRateLimited, relayThrottleResponse, requireClientKey } from '@/lib/relay-auth'
 import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import {
   processInboundQuestion,
@@ -246,11 +246,18 @@ export async function GET(req: Request): Promise<Response> {
  * draft in the background. Standby may auto-approve low-risk TEXT only.
  */
 export async function POST(req: Request): Promise<Response> {
-  const a = relayGuard(req, 'questions')
-  if (!a.ok) {
+  const auth = relayAuthorized(req)
+  if (!auth.ok) {
     return Response.json(
-      { success: false, error: a.error, code: a.code },
-      { status: a.status }
+      { success: false, error: auth.error, code: auth.code },
+      { status: auth.status }
+    )
+  }
+  const ipLimit = relayRateLimited(req, 'questions')
+  if (!ipLimit.ok) {
+    return Response.json(
+      { success: false, error: ipLimit.error, code: ipLimit.code },
+      { status: ipLimit.status }
     )
   }
   try {
@@ -267,6 +274,11 @@ export async function POST(req: Request): Promise<Response> {
         { success: false, error: key.error, code: key.code },
         { status: key.status }
       )
+    }
+
+    const clientThrottle = await relayQuestionsThrottle(key.clientKey)
+    if (!clientThrottle.ok && !clientThrottle.throttle.ok) {
+      return relayThrottleResponse(clientThrottle.throttle)
     }
 
     const echoCtx = parsed.data.context ?? null
@@ -438,24 +450,24 @@ export async function POST(req: Request): Promise<Response> {
     const autoKnights =
       shouldAutoKnightsOnQuestion() && (gateMeta?.autoKnightsOk ?? true)
 
-    void processInboundQuestion(created.id)
-      .then((r) => {
-        if (!autoKnights) return
-        console.info(
-          `[relay/questions] processed ${created.id} → ticket ${r.ticketId} knights=${r.knightsRan} auto=${r.autoApproved} gate=${intakeGate ?? 'unset'} attachments=${attachmentMetas.length}`
-        )
+    const inbound = await processInboundQuestion(created.id).catch((err) => {
+      console.error('[relay/questions] processInboundQuestion failed', err)
+      void raiseAlert({
+        kind: 'question',
+        severity: 'CRITICAL',
+        title: 'Inbound question processing failed',
+        body: question.slice(0, 140),
+        entityRef: created.id,
+        url: '/help-desk',
       })
-      .catch((err) => {
-        console.error('[relay/questions] processInboundQuestion failed', err)
-        void raiseAlert({
-          kind: 'question',
-          severity: 'CRITICAL',
-          title: 'Inbound question processing failed',
-          body: question.slice(0, 140),
-          entityRef: created.id,
-          url: '/help-desk',
-        })
-      })
+      return { ticketId: '', knightsRan: false, autoApproved: false, queued: false }
+    })
+
+    if (inbound.ticketId) {
+      console.info(
+        `[relay/questions] processed ${created.id} → ticket ${inbound.ticketId} queued=${inbound.queued ?? false} auto=${inbound.autoApproved} gate=${intakeGate ?? 'unset'} attachments=${attachmentMetas.length}`
+      )
+    }
 
     const alertTitle =
       intakeGate === 'BUILD'
@@ -512,6 +524,7 @@ export async function POST(req: Request): Promise<Response> {
         data: {
           id: created.id,
           autoKnights,
+          knightsQueued: inbound.queued ?? false,
           intakeGate,
           routeHint: gateMeta?.routeHint ?? null,
           waitingHint,
@@ -522,6 +535,7 @@ export async function POST(req: Request): Promise<Response> {
       } satisfies APIResponse<{
         id: string
         autoKnights: boolean
+        knightsQueued: boolean
         intakeGate: string | null
         routeHint: string | null
         waitingHint: string

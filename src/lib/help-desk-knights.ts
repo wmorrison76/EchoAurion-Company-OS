@@ -29,6 +29,7 @@ import {
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import type { Seat } from '@/types/board-room'
 import type { HelpTicketDetail } from '@/types/help-desk'
+import { withKnightSlot } from '@/lib/knight-concurrency'
 
 export { shouldAutoKnightsOnQuestion } from '@/lib/help-desk-auto-flags'
 
@@ -51,6 +52,13 @@ export interface KnightsDispatchResult {
  * Appends KNIGHT messages, sets AWAITING_APPROVAL, then maybe standby auto-approve.
  */
 export async function dispatchKnightsOnTicket(
+  ticketId: string,
+  opts?: { actor?: 'william_morrison' | 'computer_agent' }
+): Promise<KnightsDispatchResult> {
+  return withKnightSlot(() => dispatchKnightsOnTicketInner(ticketId, opts))
+}
+
+async function dispatchKnightsOnTicketInner(
   ticketId: string,
   opts?: { actor?: 'william_morrison' | 'computer_agent' }
 ): Promise<KnightsDispatchResult> {
@@ -482,17 +490,41 @@ export async function dispatchKnightsOnTicket(
 }
 
 /**
- * After relay receives a customer question: ensure HelpTicket TEXT + optional Knights.
- * Fire-and-forget safe — errors are logged via SYSTEM messages / alerts.
+ * Queue TEXT knight dispatch on ingest_jobs — fast intake, worker drain.
+ * Dedupe: one pending job per ticket.
  */
-export async function processInboundQuestion(
+export async function enqueueInboundKnights(input: {
   questionId: string
-): Promise<{ ticketId: string; knightsRan: boolean; autoApproved: boolean }> {
+  ticketId: string
+}): Promise<{ jobId: string; queued: boolean }> {
+  const { enqueueIngestJob } = await import('@/lib/ingest-queue')
+  const result = await enqueueIngestJob({
+    kind: 'text_knights',
+    dedupeKey: `knights:${input.ticketId}`,
+    payload: { ticketId: input.ticketId, questionId: input.questionId },
+  })
+  if (result.created) {
+    await audit('computer_agent', 'help_desk.knights.enqueue', input.ticketId, {
+      questionId: input.questionId,
+      jobId: result.id,
+    })
+  }
+  return { jobId: result.id, queued: result.created }
+}
+
+export interface InboundQuestionPrep {
+  ticketId: string
+  shouldRunKnights: boolean
+  detail: HelpTicketDetail
+}
+
+/**
+ * Sync path after relay intake: ensure HelpTicket TEXT, decide if Knights should run.
+ */
+export async function prepareInboundQuestion(questionId: string): Promise<InboundQuestionPrep> {
   const detail = await ensureTicketFromInbox({ kind: 'question', id: questionId })
   const ticketId = detail.id
 
-  // BUILD / BILLING hard-skip auto-Knights. TECH + OTHER (+ unset) always eligible when flag ON.
-  // Echo-priority TECH always auto-convenes (silent radio) even if AUTO_KNIGHTS_ON_QUESTION=false.
   const gate = detail.intakeGate
   const gateBlocksKnights = gate === 'BILLING' || gate === 'BUILD'
   const techOtherOk = gate == null || gate === 'TECH' || gate === 'OTHER'
@@ -518,7 +550,6 @@ export async function processInboundQuestion(
         },
       })
     } else if (!techOtherOk) {
-      // Defensive — unknown future gates stay human.
       await db.helpMessage.create({
         data: {
           ticketId,
@@ -537,7 +568,7 @@ export async function processInboundQuestion(
       entityRef: ticketId,
       url: `/help-desk?ticket=${ticketId}`,
     })
-    return { ticketId, knightsRan: false, autoApproved: false }
+    return { ticketId, shouldRunKnights: false, detail }
   }
 
   if (!pickDraftSeat()) {
@@ -548,20 +579,31 @@ export async function processInboundQuestion(
         body: 'Auto-Knights skipped — no AI seat configured. William can Ask Knights from Help Desk.',
       },
     })
-    // Still auto-send simple greetings (TECH/OTHER) so presence pings don't sit forever.
     if (techOtherOk && isSimpleGreeting(detail.subject)) {
       const greeting = await maybeStandbyAutoApprove(ticketId)
       if (greeting.autoApproved) {
-        return { ticketId, knightsRan: false, autoApproved: true }
+        return { ticketId, shouldRunKnights: false, detail }
       }
     }
-    return { ticketId, knightsRan: false, autoApproved: false }
+    return { ticketId, shouldRunKnights: false, detail }
   }
 
+  return { ticketId, shouldRunKnights: true, detail }
+}
+
+/**
+ * Worker path: run Knights + standby on an existing ticket (after enqueue).
+ */
+export async function runInboundKnights(input: {
+  ticketId: string
+  questionId?: string
+}): Promise<{ knightsRan: boolean; autoApproved: boolean }> {
+  const { ticketId } = input
   try {
     const result = await dispatchKnightsOnTicket(ticketId, { actor: 'computer_agent' })
     if (!result.autoApproved) {
-      const payrollRefused = result.reason?.startsWith('payroll') || result.reason?.includes('compensation')
+      const payrollRefused =
+        result.reason?.startsWith('payroll') || result.reason?.includes('compensation')
       await db.helpMessage.create({
         data: {
           ticketId,
@@ -577,13 +619,12 @@ export async function processInboundQuestion(
         title: payrollRefused
           ? 'Payroll refuse — awaiting review'
           : 'Knights drafted — awaiting approval',
-        body: detail.subject.slice(0, 140),
+        body: result.ticket.subject.slice(0, 140),
         entityRef: ticketId,
         url: `/help-desk?ticket=${ticketId}`,
       })
     }
     return {
-      ticketId,
       knightsRan: true,
       autoApproved: result.autoApproved,
     }
@@ -603,6 +644,41 @@ export async function processInboundQuestion(
       entityRef: ticketId,
       url: `/help-desk?ticket=${ticketId}`,
     })
-    return { ticketId, knightsRan: false, autoApproved: false }
+    return { knightsRan: false, autoApproved: false }
+  }
+}
+
+/**
+ * After relay receives a customer question: ensure HelpTicket TEXT + queue Knights job.
+ * Returns immediately after enqueue — knights drain on worker cron.
+ */
+export async function processInboundQuestion(
+  questionId: string
+): Promise<{ ticketId: string; knightsRan: boolean; autoApproved: boolean; queued?: boolean }> {
+  const prep = await prepareInboundQuestion(questionId)
+  if (!prep.shouldRunKnights) {
+    return { ticketId: prep.ticketId, knightsRan: false, autoApproved: false }
+  }
+
+  const enq = await enqueueInboundKnights({
+    questionId,
+    ticketId: prep.ticketId,
+  })
+
+  await db.helpMessage.create({
+    data: {
+      ticketId: prep.ticketId,
+      role: 'SYSTEM',
+      body: enq.queued
+        ? 'Knights queued — drafting off the web request path. Pilot reply follows when the worker drains this ticket.'
+        : 'Knights already queued for this ticket — prior job still pending.',
+    },
+  })
+
+  return {
+    ticketId: prep.ticketId,
+    knightsRan: false,
+    autoApproved: false,
+    queued: enq.queued,
   }
 }

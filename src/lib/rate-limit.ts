@@ -2,7 +2,9 @@
  * In-memory sliding-window rate limit (per Render instance).
  * Shared by forgot-password, relay ingest, CI/deploy, knowledge paths.
  * Designed for ~5k-tenant bursts — see docs/SCALE_AND_THROTTLE.md.
- * Multi-instance: upgrade to Redis/Upstash (documented, not blocking).
+ *
+ * Multi-instance: set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN for
+ * shared counters (allowDualBudget tries Redis first, falls back to memory).
  */
 
 type Bucket = { count: number; resetAt: number }
@@ -29,6 +31,12 @@ export const INGEST_BUDGETS = {
   renderWebhook: Number(process.env.RATE_RENDER_WEBHOOK ?? 60),
   /** Ops poll / minute (cron) */
   opsPoll: Number(process.env.RATE_OPS_POLL ?? 6),
+  /** Relay questions per clientKey / minute */
+  questionsPerClient: Number(process.env.RATE_QUESTIONS_PER_CLIENT ?? 20),
+  /** Relay questions global / minute (all tenants) */
+  questionsGlobal: Number(process.env.RATE_QUESTIONS_GLOBAL ?? 600),
+  /** Relay questions per source IP / minute (abuse if secret leaks) */
+  questionsPerIp: Number(process.env.RATE_QUESTIONS_PER_IP ?? 60),
 } as const
 
 const WINDOW_MS = 60_000
@@ -84,7 +92,51 @@ export type ThrottleResult =
       label: string
     }
 
-/** Dual budget: per-clientKey + global. Both must pass. */
+async function allowDualBudget(input: {
+  globalKey: string
+  globalMax: number
+  globalLabel: string
+  clientKey?: string | null
+  clientMax?: number
+  clientLabel?: string
+}): Promise<ThrottleResult> {
+  const windowSec = 60
+
+  const globalRedis = await import('@/lib/rate-limit-redis').then((m) =>
+    m.allowRedisRateLimit(input.globalKey, input.globalMax, windowSec)
+  )
+  const global =
+    globalRedis ??
+    allowRateLimit(input.globalKey, input.globalMax, WINDOW_MS)
+  if (!global.ok) {
+    return {
+      ok: false,
+      retryAfterSec: global.retryAfterSec,
+      code: 'RATE_LIMITED',
+      label: input.globalLabel,
+    }
+  }
+
+  if (input.clientKey && input.clientMax != null && input.clientLabel) {
+    const ckKey = `${input.globalKey}:ck:${input.clientKey}`
+    const clientRedis = await import('@/lib/rate-limit-redis').then((m) =>
+      m.allowRedisRateLimit(ckKey, input.clientMax!, windowSec)
+    )
+    const per = clientRedis ?? allowRateLimit(ckKey, input.clientMax, WINDOW_MS)
+    if (!per.ok) {
+      return {
+        ok: false,
+        retryAfterSec: per.retryAfterSec,
+        code: 'RATE_LIMITED',
+        label: input.clientLabel,
+      }
+    }
+  }
+
+  return { ok: true }
+}
+
+/** Dual budget: per-clientKey + global. Both must pass. Sync — memory only. */
 export function allowIngestThrottle(input: {
   scope:
     | 'error'
@@ -94,6 +146,7 @@ export function allowIngestThrottle(input: {
     | 'railway_webhook'
     | 'render_webhook'
     | 'ops_poll'
+    | 'relay_questions'
   clientKey?: string | null
 }): ThrottleResult {
   if (input.scope === 'error') {
@@ -208,6 +261,38 @@ export function allowIngestThrottle(input: {
     return { ok: true }
   }
 
+  if (input.scope === 'relay_questions') {
+    const global = allowRateLimit(
+      'ingest:questions:global',
+      INGEST_BUDGETS.questionsGlobal,
+      WINDOW_MS
+    )
+    if (!global.ok) {
+      return {
+        ok: false,
+        retryAfterSec: global.retryAfterSec,
+        code: 'RATE_LIMITED',
+        label: '⚠ Throttled — global question budget',
+      }
+    }
+    if (input.clientKey) {
+      const per = allowRateLimit(
+        `ingest:questions:ck:${input.clientKey}`,
+        INGEST_BUDGETS.questionsPerClient,
+        WINDOW_MS
+      )
+      if (!per.ok) {
+        return {
+          ok: false,
+          retryAfterSec: per.retryAfterSec,
+          code: 'RATE_LIMITED',
+          label: '⚠ Throttled — client question budget',
+        }
+      }
+    }
+    return { ok: true }
+  }
+
   const r = allowRateLimit('ingest:ops_poll', INGEST_BUDGETS.opsPoll, WINDOW_MS)
   if (!r.ok) {
     return {
@@ -216,6 +301,27 @@ export function allowIngestThrottle(input: {
       code: 'RATE_LIMITED',
       label: '⚠ Throttled — ops poll budget',
     }
+  }
+  return { ok: true }
+}
+
+/**
+ * Async dual budget with optional Upstash Redis (relay hot paths).
+ * Falls back to in-memory when Redis unset or unreachable.
+ */
+export async function allowIngestThrottleAsync(input: {
+  scope: 'relay_questions'
+  clientKey?: string | null
+}): Promise<ThrottleResult> {
+  if (input.scope === 'relay_questions') {
+    return allowDualBudget({
+      globalKey: 'ingest:questions:global',
+      globalMax: INGEST_BUDGETS.questionsGlobal,
+      globalLabel: '⚠ Throttled — global question budget',
+      clientKey: input.clientKey,
+      clientMax: INGEST_BUDGETS.questionsPerClient,
+      clientLabel: '⚠ Throttled — client question budget',
+    })
   }
   return { ok: true }
 }
