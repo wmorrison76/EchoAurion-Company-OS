@@ -182,6 +182,8 @@ curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
   https://<company-os-host>/api/dr-os/render-config
 ```
 
+**`CRON_SECRET` is not an allowlisted single-service key.** It is shared between web and every cron, so a one-service write guarantees 401 loops. Setting it through `env` alone returns `FANOUT_REQUIRED`; rotation must go through the fleet-wide path (`confirmRotateCronSecret: true`), which discovers all holders from the Render API and aborts before touching web if any cron write fails. `computer_agent` cannot rotate it without a human setting `CRON_SECRET_ROTATION_ALLOW_AGENT=true` **and** an `approvedBy`. See `docs/CRON_SECRET_SETUP.md`.
+
 Dr. OS **Config debt** panel: **Apply suggested ECHO_AI_URL via Render** when the key is present; otherwise shows **set RENDER_API_KEY first**.
 
 Audit action: `dr_os.render_config.*` — payload has **key names only**, never values. **Never print secret values.**

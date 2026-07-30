@@ -13,7 +13,6 @@ const RENDER_API = 'https://api.render.com/v1'
 
 /** Keys agents/admin may set via /api/dr-os/render-config (values never logged). */
 export const RENDER_OPS_ALLOWED_KEYS = [
-  'CRON_SECRET',
   'ECHO_AI_URL',
   'ECHO_AI_KEY',
   'SUPPORT_INGEST_SECRET',
@@ -34,6 +33,14 @@ export const RENDER_OPS_ALLOWED_KEYS = [
 export type RenderOpsAllowedKey = (typeof RENDER_OPS_ALLOWED_KEYS)[number]
 
 const ALLOWED = new Set<string>(RENDER_OPS_ALLOWED_KEYS)
+
+/**
+ * Keys that must never be written to one service at a time. Writing CRON_SECRET
+ * to a single holder guarantees a 401 loop on every other holder, so it is kept
+ * out of the generic allowlist and only reachable through
+ * `rotateCronSecretEverywhere` in `@/lib/cron-secret-rotation`.
+ */
+const FANOUT_ONLY_KEYS = new Set<string>(['CRON_SECRET'])
 
 export function isRenderApiConfigured(): boolean {
   return Boolean(process.env.RENDER_API_KEY?.trim())
@@ -70,6 +77,13 @@ export class RenderOpsError extends Error {
 }
 
 export function assertAllowedEnvKeys(keys: string[]): void {
+  const fanoutOnly = keys.filter((k) => FANOUT_ONLY_KEYS.has(k))
+  if (fanoutOnly.length > 0) {
+    throw new RenderOpsError(
+      `${fanoutOnly.join(', ')} cannot be set on a single service — rotate it across every holder with confirmRotateCronSecret (see docs/CRON_SECRET_SETUP.md)`,
+      'FANOUT_REQUIRED'
+    )
+  }
   const bad = keys.filter((k) => !ALLOWED.has(k))
   if (bad.length > 0) {
     throw new RenderOpsError(
@@ -130,6 +144,19 @@ export async function upsertRenderEnvVar(
   value: string
 ): Promise<void> {
   assertAllowedEnvKeys([key])
+  await upsertRenderEnvVarUnchecked(serviceId, key, value)
+}
+
+/**
+ * Allowlist-free single-service write. Only `@/lib/cron-secret-rotation` may
+ * call this, and only as one leg of a full fan-out — anything else must go
+ * through `upsertRenderEnvVar` so `FANOUT_ONLY_KEYS` stays enforced.
+ */
+export async function upsertRenderEnvVarUnchecked(
+  serviceId: string,
+  key: string,
+  value: string
+): Promise<void> {
   if (typeof value !== 'string' || value.length === 0) {
     throw new RenderOpsError(`Empty value for ${key}`, 'EMPTY_VALUE')
   }
