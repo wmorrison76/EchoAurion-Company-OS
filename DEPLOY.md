@@ -169,6 +169,30 @@ Unset integrations show as **Not configured** / Unknown — the app still boots.
 These are **env pastes for William** (see `docs/DR_OS_COMPLETE.md` Panel → env checklist),
 not exception-flywheel work for Knights.
 
+### Upstash Redis (optional — not required to deploy)
+
+| Variable | Required | Notes |
+|---|---|---|
+| `UPSTASH_REDIS_REST_URL` | no | Upstash **Redis** REST URL (`https://…upstash.io`) |
+| `UPSTASH_REDIS_REST_TOKEN` | no | REST token from same Upstash database |
+
+**Deploy works without these.** When unset, rate limits and relay SSE use in-memory
+per-instance fallbacks. Wire Upstash on **echoaurion-company-os web only** (crons
+do not need Redis) before scaling to 2+ web instances.
+
+Step-by-step (ELI5): **`docs/UPSTASH_SETUP.md`**. Verify after paste:
+
+```bash
+curl -sS https://echoaurion-company-os.onrender.com/api/health
+# "redisFanout": "configured" when wired; "memory-only" when unset (both OK)
+```
+
+### Render plan (do not downgrade)
+
+`render.yaml` sets **`plan: pro`**. Next.js production builds often OOM on Standard
+(512MB). If you manually upgraded to Pro in the dashboard, Blueprint sync must not
+force `plan: standard` — that was the likely cause of the `c34d930` deploy failure.
+
 ### Forgot password (email) — Resend setup (get mail today)
 
 **Root cause of “success but no email”:** if `RESEND_API_KEY` / `EMAIL_FROM` are

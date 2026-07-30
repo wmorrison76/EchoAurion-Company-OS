@@ -63,7 +63,7 @@ Render has no separate "background worker" service type — **this cron is the w
 
 | Item | Blueprint / doc |
 |---|---|
-| Web plan | **`plan: standard`** (512MB) — Starter OOMs under knight + SSE + admin |
+| Web plan | **`plan: pro`** in `render.yaml` — Standard (512MB) OOMs on `next build`; Pro confirmed on Render |
 | Knight env | `KNIGHT_WORKER_BATCH=8`, `KNIGHT_WORKER_CONCURRENCY=4` |
 | Question env | `RATE_QUESTIONS_*` in `render.yaml` |
 | Neon pool | `connection_limit=10` on pooled URL; see DEPLOY.md §1 + `.env.example` |
@@ -97,7 +97,7 @@ Reports 201 vs 429 + p95 intake latency. Does **not** validate knight completion
 | Upstash unset | In-process bus only (single-instance OK) |
 | Reconnect safety | `/api/relay/stream` still flushes undelivered `RelayOutbox` on connect |
 
-**Requires William:** Create Upstash Redis → paste REST URL + token on web env **before** scaling web to 2+ instances.
+**Requires William:** Create Upstash Redis → paste REST URL + token on web env **before** scaling web to 2+ instances. See **`docs/UPSTASH_SETUP.md`** (optional for deploy; required for multi-instance).
 
 ### 2. Load / burst harness
 

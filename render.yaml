@@ -14,12 +14,12 @@ services:
   - type: web
     name: echoaurion-company-os
     runtime: node
-    # Standard (512MB / 0.5 CPU) — required headroom for Help Desk + Dr. OS under fleet load.
-    # Starter exhausts memory when knights queue + SSE + admin UI coincide.
-    plan: standard
+    # Pro (4GB) — Next.js build OOMs on Standard (512MB). Do NOT downgrade to standard
+    # via Blueprint sync; c34d930 failed when plan: standard overwrote manual Pro upgrade.
+    plan: pro
     # --include=dev: Render sets NODE_ENV=production during install, which would
     # skip devDependencies (tailwindcss, postcss, typescript, etc.) that Next needs to build.
-    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    buildCommand: NODE_OPTIONS=--max-old-space-size=3072 npm install --include=dev && npx prisma generate && NODE_OPTIONS=--max-old-space-size=3072 npm run build
     # predeploy-snapshot: best-effort Neon branch rollback point before any
     # migration runs — always exits 0, never blocks the deploy.
     startCommand: node scripts/predeploy-snapshot.mjs && npx prisma migrate deploy && npm start
