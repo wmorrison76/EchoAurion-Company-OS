@@ -78,10 +78,22 @@ export function DeadLetterDrainChip() {
             level={data.pending > 50 ? 'warn' : 'ok'}
             label={`Pending: ${data.pending}`}
           />
+          <StatusBadge
+            level={data.knightPending > 50 ? 'warn' : data.knightPending > 0 ? 'unknown' : 'ok'}
+            label={`Knights queued: ${data.knightPending}`}
+          />
+          <StatusBadge
+            level={data.knightRunning > 0 ? 'ok' : 'unknown'}
+            label={`Knights running: ${data.knightRunning}`}
+          />
           <span className="font-mono text-[10px] tabular-nums text-[#5a5a78]">
             {data.minutesSinceLastDrain == null
               ? 'Last drain: never'
               : `Last drain: ${data.minutesSinceLastDrain}m ago`}
+            {' · '}
+            {data.minutesSinceKnightDrain == null
+              ? 'Knight drain: never'
+              : `Knight drain: ${data.minutesSinceKnightDrain}m ago`}
           </span>
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { EventEmitter } from 'events'
 import { db } from '@/lib/db'
+import { ensureRelayFanoutPoller, publishRelayFanout } from '@/lib/relay-pubsub-redis'
 
 export type RelayEventType =
   | 'answer_ready'
@@ -35,6 +36,9 @@ export function subscribeRelay(
   clientKey: string,
   listener: (event: RelayEvent) => void
 ): () => void {
+  ensureRelayFanoutPoller((ev) => {
+    bus.emit(CHANNEL(ev.clientKey), ev)
+  })
   const ch = CHANNEL(clientKey)
   bus.on(ch, listener)
   return () => {
@@ -44,6 +48,7 @@ export function subscribeRelay(
 
 function emitLive(event: RelayEvent): void {
   bus.emit(CHANNEL(event.clientKey), event)
+  void publishRelayFanout(event)
 }
 
 /**

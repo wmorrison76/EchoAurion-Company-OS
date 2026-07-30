@@ -56,10 +56,26 @@ The Support console shows the same guidance as chips on each question/request.
 fine for v1. Cross-region latency is not a deploy blocker. Same-region is optional
 later if you want to shave a few ms off DB round-trips.
 
-**Connection limit:** Neon shows `connection_limit` in project settings. Prisma
-uses a small pool per process — keep **web + all crons** under the limit (leave 2
-slots headroom). Under fleet load see `docs/SCALE_AND_THROTTLE.md` (knight queue
-reduces long-held connections on the web hot path).
+**Connection limit:** Neon shows `connection_limit` in project settings (often
+**100** on paid tiers, lower on free). Prisma opens a small pool **per process**
+— size it explicitly on the pooled URL:
+
+```text
+postgresql://…/neondb?pgbouncer=true&connection_limit=10
+```
+
+| Process | Typical pool | Notes |
+|---|---|---|
+| Web (Standard, 1 instance) | **10** | Dr. OS reads `connection_limit` for the Neon panel |
+| Each cron | **1–2** | Short-lived; bursts during migrate deploy |
+| Horizontal web (2+ replicas) | **≤8 each** | Requires Upstash for rate limits + relay SSE — see `docs/SCALE_AND_THROTTLE.md` |
+
+**Rule:** `(web_instances × pool) + active_crons ≤ Neon limit − 2`. Knight queue
+keeps LLM work off the web hot path so connections are not held for minutes.
+
+**Prisma:** App uses the default client in `src/lib/db.ts` — no per-request
+clients. Migrations use `DATABASE_URL_UNPOOLED` via `schema.prisma` `directUrl`.
+Never raise `connection_limit` without checking Neon dashboard headroom.
 
 **Build note:** `render.yaml` uses `npm install --include=dev` so Next can compile
 even when Render sets `NODE_ENV=production` during install (otherwise `tailwindcss`

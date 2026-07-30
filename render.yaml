@@ -101,10 +101,10 @@ services:
         value: "8"
       # Knight worker — bounded LLM concurrency off web request path
       - key: KNIGHT_WORKER_BATCH
-        value: "5"
+        value: "8"
       - key: KNIGHT_WORKER_CONCURRENCY
-        value: "3"
-      # Optional: shared rate limits across Render instances (Upstash Redis REST)
+        value: "4"
+      # Optional: shared rate limits + relay SSE fan-out across Render instances
       # - key: UPSTASH_REDIS_REST_URL
       #   sync: false
       # - key: UPSTASH_REDIS_REST_TOKEN
@@ -189,12 +189,13 @@ services:
       - key: CRON_SECRET
         sync: false
 
-  # Every 2 minutes: drain TEXT knight ingest jobs (Help Desk relay path).
+  # Every 1 minute: drain TEXT knight ingest jobs (Help Desk relay path).
+  # This cron IS the knight background worker — no separate Render worker type needed.
   # See docs/SCALE_AND_THROTTLE.md — keeps POST /api/relay/questions fast.
   - type: cron
     name: echoaurion-company-os-knight-drain
     runtime: node
-    schedule: "*/2 * * * *"
+    schedule: "*/1 * * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-knight-drain.mjs
     envVars:

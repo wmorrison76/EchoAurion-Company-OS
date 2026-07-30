@@ -12,7 +12,7 @@ export const maxDuration = 120
  * Drain pending text_knights ingest jobs (Help Desk relay path).
  * Auth: Bearer $CRON_SECRET
  *
- * Dedicated worker — runs every 2 minutes via echoaurion-company-os-knight-drain cron.
+ * Dedicated worker — runs every 1 minute via echoaurion-company-os-knight-drain cron.
  */
 export async function POST(req: Request): Promise<Response> {
   if (!verifyCronBearer(req)) {
