@@ -6,6 +6,8 @@ import { publishAnswerReady, publishWorkStatus } from '@/lib/relay-outbox'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { closeReasonForApprove } from '@/lib/fix-disposition'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
+import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
 import type { HelpTicketDetail } from '@/types/help-desk'
 
 export type HelpDeskApproveMode = 'reply' | 'approve_free' | 'send_quote'
@@ -20,8 +22,7 @@ export type ApproveHelpTicketInput = {
 }
 
 export type ApproveHelpTicketResult =
-  | { ok: true; detail: HelpTicketDetail }
-  | { ok: false; error: string; status: number }
+  { ok: true; detail: HelpTicketDetail } | { ok: false; error: string; status: number }
 
 function resolveAnswer(
   ticket: { messages: Array<{ id: string; role: string; body: string }> },
@@ -29,16 +30,14 @@ function resolveAnswer(
 ): string {
   let answer = input.answer?.trim() ?? ''
   if (!answer && input.knightMessageId) {
-    const km = ticket.messages.find(
-      (m) => m.id === input.knightMessageId && m.role === 'KNIGHT'
-    )
+    const km = ticket.messages.find((m) => m.id === input.knightMessageId && m.role === 'KNIGHT')
     if (km) answer = km.body
   }
   if (!answer && (input.mode ?? 'reply') === 'reply') {
     const latestKnight = ticket.messages.find((m) => m.role === 'KNIGHT')
     if (latestKnight) answer = latestKnight.body
   }
-  return answer.trim()
+  return sanitizeCustomerFacingAnswer(answer)
 }
 
 /**
@@ -82,6 +81,24 @@ export async function approveHelpTicket(
       },
     })
 
+    const disposition = closeReasonForApprove({
+      answer,
+      subject: ticket.subject,
+      needsHumanCoreReview: ticket.needsHumanCoreReview,
+      messageBodies: ticket.messages.map((m) => m.body),
+    })
+    const threadMeta = buildCustomerThreadMeta({
+      intakeGate: ticket.intakeGate ?? null,
+      questionStatus: 'ANSWERED',
+      replyState: 'replied',
+      closeReason: disposition,
+      answer,
+      subject: ticket.subject,
+      needsHumanCoreReview: ticket.needsHumanCoreReview,
+      ticketStatus: 'RESOLVED',
+      messageBodies: ticket.messages.map((m) => m.body),
+    })
+
     if (ticket.customerQuestionId) {
       const q = await db.customerQuestion.update({
         where: { id: ticket.customerQuestionId },
@@ -117,6 +134,11 @@ export async function approveHelpTicket(
               ? ctx.moduleHint
               : null,
         failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
+        closeReason: threadMeta.closeReason,
+        disposition: threadMeta.disposition,
+        fixSha: threadMeta.fixSha,
+        etaLabel: threadMeta.etaLabel,
+        intakeGate: ticket.intakeGate ?? null,
       })
       const live = await afterApproveDeliverLive({
         clientKey: q.clientKey,
@@ -156,6 +178,11 @@ export async function approveHelpTicket(
         answer,
         echoSilent: echoAi,
         ticketId: id,
+        closeReason: threadMeta.closeReason,
+        disposition: threadMeta.disposition,
+        fixSha: threadMeta.fixSha,
+        etaLabel: threadMeta.etaLabel,
+        intakeGate: ticket.intakeGate ?? null,
       })
       const live = await afterApproveDeliverLive({
         clientKey: ticket.clientKey,
@@ -183,12 +210,6 @@ export async function approveHelpTicket(
       })
     }
 
-    const disposition = closeReasonForApprove({
-      answer,
-      subject: ticket.subject,
-      needsHumanCoreReview: ticket.needsHumanCoreReview,
-      messageBodies: ticket.messages.map((m) => m.body),
-    })
     await db.helpMessage.create({
       data: {
         ticketId: id,
@@ -361,6 +382,9 @@ export type BulkApproveAwaitingResult = {
 /**
  * Approve every ticket in AWAITING_APPROVAL using the real reply path.
  * Skips tickets with no knight draft (nothing to send).
+ * Honors the same safety locks as maybeStandbyAutoApprove:
+ * FEATURE channel, BUILD/BILLING gates, and needsHumanCoreReview stay locked
+ * for individual Approve & send (dual control).
  */
 export async function approveAllAwaitingApproval(opts?: {
   actor?: HelpDeskApproveActor
@@ -387,6 +411,37 @@ export async function approveAllAwaitingApproval(opts?: {
   let failed = 0
 
   for (const ticket of tickets) {
+    if (ticket.channel === 'FEATURE') {
+      skipped += 1
+      results.push({
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        outcome: 'skipped',
+        error: 'FEATURE / WorkRequest never bulk-approved — dual control required',
+      })
+      continue
+    }
+    if (ticket.intakeGate === 'BUILD' || ticket.intakeGate === 'BILLING') {
+      skipped += 1
+      results.push({
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        outcome: 'skipped',
+        error: `${ticket.intakeGate} gate never bulk-approved — Approve & send required`,
+      })
+      continue
+    }
+    if (ticket.needsHumanCoreReview) {
+      skipped += 1
+      results.push({
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        outcome: 'skipped',
+        error: 'NEEDS_HUMAN_CORE_REVIEW — dual control required',
+      })
+      continue
+    }
+
     const draft = ticket.messages[0]?.body?.trim()
     if (!draft) {
       skipped += 1

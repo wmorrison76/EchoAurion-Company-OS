@@ -1,6 +1,7 @@
 # Board Room — Architect seat (Claude Code).
-# Triggered via workflow_dispatch from /api/board-room/architect so the
-# Architect can implement decisions, review PRs, and build modules on the repo.
+# Triggered via workflow_dispatch from /api/board-room/architect.
+# Constitution (docs/CONSTITUTION.md, docs/PR_FROM_BUILD.md): draft PR only —
+# never merge; core-path deny-list stays human dual-control.
 name: Board Room Architect
 
 on:
@@ -11,6 +12,9 @@ on:
         required: true
         type: string
 
+# Scope GITHUB_TOKEN to draft-PR work only.
+# Pass github_token explicitly so the action uses this scoped token, not a
+# broader GitHub App installation token.
 permissions:
   contents: write
   pull-requests: write
@@ -22,8 +26,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Claude Code
+      - name: Run Claude Code (draft PR only)
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: ${{ inputs.task }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch_prefix: 'architect/'
+          prompt: |
+            You are the Architect seat for EchoAurion Company OS.
+
+            HARD CONSTRAINTS (constitution — non-negotiable):
+            1. Draft PR only. Create or update PRs with draft=true. NEVER merge, NEVER approve, NEVER enable auto-merge, NEVER mark ready for review.
+            2. NEVER force-push, NEVER rewrite protected branch history, NEVER push commits directly to main or master.
+            3. Work only on a new branch under architect/. Open at most one draft PR against the default branch.
+            4. Do NOT modify core paths: src/lib/auth, middleware, src/lib/relay-auth, src/lib/constitution, .env*, render.yaml, prisma/migrations, secrets manager config, or any destructive migrate (DROP / migrate reset / force-reset). If the task requires those, stop and report NEEDS_HUMAN_CORE_REVIEW — make no such changes.
+            5. Human/CI merges after review. Agents never merge.
+
+            Task from Board Room:
+            ${{ inputs.task }}
+          claude_args: >-
+            --append-system-prompt "Draft PR only. Never merge. Never force-push. Never push to main/master. Never edit auth, middleware, relay-auth, constitution, .env, render.yaml, or prisma/migrations."
+            --disallowedTools "Bash(gh pr merge *)" "Bash(gh pr ready *)" "Bash(git push --force *)" "Bash(git push -f *)" "Bash(git push * main)" "Bash(git push * master)"

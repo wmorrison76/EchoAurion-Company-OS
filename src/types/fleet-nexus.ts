@@ -32,6 +32,12 @@ export interface FleetDeployHistoryItem {
   durationSeconds: number | null
 }
 
+export interface FleetConfigDebtItem {
+  panel: string
+  reason: string
+  envVars: string[]
+}
+
 export interface FleetNodeMeta {
   region?: string
   serviceType?: string
@@ -46,6 +52,12 @@ export interface FleetNodeMeta {
   queueDepth?: number
   errorCount?: number
   lastSeenAt?: string | null
+  lastHeartbeatAt?: string | null
+  /** Why health is Unknown — shape+label companion in detail panel. */
+  unknownReason?: string | null
+  /** Open Help Desk tickets for this clientKey. */
+  openTickets?: number
+  openSystemTickets?: number
   /** Support client health as text label (GREEN / AMBER / RED / UNKNOWN). */
   clientHealthLabel?: string | null
   /** Property reliability composite 0–100 (shape+label in UI). */
@@ -102,6 +114,8 @@ export interface FleetNexusPayload {
     render: boolean
     support: boolean
     demo: boolean
+    /** Latest product nexus snapshot ingested (Deployment/Chain enrichment). */
+    productNexus: boolean
   }
   counts: {
     renderServices: number
@@ -111,7 +125,12 @@ export interface FleetNexusPayload {
     supportRed: number
     /** Support clients with AMBER health. */
     supportAmber: number
+    /** Clients with UNKNOWN health (no recent heartbeat/diagnostics). */
+    supportUnknown: number
+    productNexusSnapshots: number
   }
+  /** Actionable env pastes when Render/product ingest is missing. */
+  configDebt: FleetConfigDebtItem[]
   graphs: Record<FleetScope, FleetGraph>
   generatedAt: string
 }

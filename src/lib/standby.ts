@@ -14,6 +14,9 @@ import {
 import { GREETING_AUTO_REPLY, isSimpleGreeting } from '@/lib/help-desk-greetings'
 import { isEchoAiTicket } from '@/lib/echo-ticket-priority'
 import { afterApproveDeliverLive } from '@/lib/live-repair-delivery'
+import { sanitizeCustomerFacingAnswer } from '@/lib/help-desk-customer-copy'
+import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
+import { closeReasonForApprove } from '@/lib/fix-disposition'
 
 /** Customer-facing ack when Echo TECH needs a code change (BUILD stays locked). */
 const ECHO_CODE_CHANGE_ACK =
@@ -23,14 +26,65 @@ const ECHO_CODE_CHANGE_ACK =
 const ECHO_CORE_REVIEW_ACK =
   'Repair in progress — try again when live. This ticket needs human core review (dual control); Echo was notified silently.'
 
+/** Soft ack when Maestro flags code change under HELP_DESK_AUTO_APPROVE dev fast-path. */
+const DEV_CODE_CHANGE_CUSTOMER_ACK =
+  'Thanks for flagging this — our team is reviewing it and will follow up when the update is live. No action needed on your side right now.'
+
+/** Default timed permit — env override; bootstrap extends through end of August 2026. */
+export function defaultHelpDeskAutoSendUntil(): Date {
+  const raw =
+    process.env.HELP_DESK_AUTO_SEND_UNTIL?.trim() || '2026-08-31T23:59:59.999Z'
+  const d = new Date(raw)
+  return Number.isNaN(d.getTime()) ? new Date('2026-08-31T23:59:59.999Z') : d
+}
+
+/**
+ * Durable permit: when HELP_DESK_AUTO_SEND_UNTIL is set (or default Aug 31 2026),
+ * upsert standby_settings so William does not re-click Unlock in Help Desk.
+ */
+async function ensureDefaultAutoSendPermit(): Promise<void> {
+  try {
+    const targetUntil = defaultHelpDeskAutoSendUntil()
+    if (targetUntil.getTime() <= Date.now()) return
+
+    const row = await db.standbySettings.findUnique({ where: { id: 'default' } })
+    if (
+      row?.helpDeskAutoSendEnabled &&
+      row.helpDeskAutoSendUntil &&
+      isHelpDeskAutoSendActive(row) &&
+      row.helpDeskAutoSendUntil.getTime() >= targetUntil.getTime()
+    ) {
+      return
+    }
+
+    await db.standbySettings.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        mode: row?.mode ?? envMode(),
+        maxAutoPerHour: row?.maxAutoPerHour ?? envMaxAuto(),
+        helpDeskAutoSendEnabled: true,
+        helpDeskAutoSendUntil: targetUntil,
+        updatedBy: 'computer_agent',
+      },
+      update: {
+        helpDeskAutoSendEnabled: true,
+        helpDeskAutoSendUntil: targetUntil,
+        updatedBy: 'computer_agent',
+      },
+    })
+    await audit('computer_agent', 'help_desk.auto_send.bootstrap', 'default', {
+      until: targetUntil.toISOString(),
+      previousUntil: row?.helpDeskAutoSendUntil?.toISOString() ?? null,
+    })
+  } catch {
+    // migrate / race — non-fatal
+  }
+}
+
 /** Legacy standby modes + elite autonomy dial strings (stored in same column). */
 export type StandbyMode =
-  | 'off'
-  | 'draft_only'
-  | 'auto_answer_low_risk'
-  | 'assist'
-  | 'standby'
-  | 'autopilot'
+  'off' | 'draft_only' | 'auto_answer_low_risk' | 'assist' | 'standby' | 'autopilot'
 
 export const STANDBY_MODES: StandbyMode[] = [
   'off',
@@ -97,8 +151,15 @@ function envMode(): StandbyMode {
 }
 
 function envMaxAuto(): number {
-  const n = Number(process.env.STANDBY_MAX_AUTO_PER_HOUR ?? '10')
-  if (!Number.isFinite(n) || n < 0) return 10
+  const n = Number(process.env.STANDBY_MAX_AUTO_PER_HOUR ?? '60')
+  if (!Number.isFinite(n) || n < 0) return 60
+  return Math.floor(n)
+}
+
+/** Per-clientKey hourly cap — prevents one property from consuming the global standby budget. */
+function envMaxAutoPerClient(): number {
+  const n = Number(process.env.STANDBY_MAX_AUTO_PER_CLIENT_PER_HOUR ?? '8')
+  if (!Number.isFinite(n) || n < 0) return 8
   return Math.floor(n)
 }
 
@@ -116,10 +177,7 @@ function emptyAutoSend(): Pick<
 function mapAutoSend(row: {
   helpDeskAutoSendEnabled: boolean
   helpDeskAutoSendUntil: Date | null
-}): Pick<
-  StandbyConfig,
-  'helpDeskAutoSendEnabled' | 'helpDeskAutoSendUntil' | 'autoSendActive'
-> {
+}): Pick<StandbyConfig, 'helpDeskAutoSendEnabled' | 'helpDeskAutoSendUntil' | 'autoSendActive'> {
   const active = isHelpDeskAutoSendActive({
     helpDeskAutoSendEnabled: row.helpDeskAutoSendEnabled,
     helpDeskAutoSendUntil: row.helpDeskAutoSendUntil,
@@ -159,6 +217,7 @@ async function clearExpiredAutoSendPermit(): Promise<void> {
 export async function getStandbyConfig(): Promise<StandbyConfig> {
   try {
     await clearExpiredAutoSendPermit()
+    await ensureDefaultAutoSendPermit()
     const row = await db.standbySettings.findUnique({ where: { id: 'default' } })
     if (row) {
       const mode = STANDBY_MODES.includes(row.mode as StandbyMode)
@@ -284,9 +343,7 @@ export async function setHelpDeskAutoSendPermit(input: {
   })
 
   return {
-    mode: (STANDBY_MODES.includes(row.mode as StandbyMode)
-      ? row.mode
-      : envMode()) as StandbyMode,
+    mode: (STANDBY_MODES.includes(row.mode as StandbyMode) ? row.mode : envMode()) as StandbyMode,
     maxAutoPerHour: row.maxAutoPerHour,
     source: 'db',
     updatedAt: row.updatedAt.toISOString(),
@@ -389,7 +446,8 @@ export function evaluateStandbyEligibility(input: {
 
   return {
     eligible: true,
-    reason: 'TEXT how-to/triage · FREE_ANSWER · ≥2 knights · Maestro synthesis · no code-change signal',
+    reason:
+      'TEXT how-to/triage · FREE_ANSWER · ≥2 knights · Maestro synthesis · no code-change signal',
     forceAwaitingHuman: false,
   }
 }
@@ -402,6 +460,41 @@ async function countAutoThisHour(): Promise<number> {
       answeredAt: { gte: since },
     },
   })
+}
+
+async function countAutoThisHourForClient(clientKey: string): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000)
+  return db.customerQuestion.count({
+    where: {
+      clientKey,
+      standbyApproved: true,
+      answeredAt: { gte: since },
+    },
+  })
+}
+
+async function standbyRateLimitExceeded(input: {
+  clientKey: string | null
+  maxGlobal: number
+}): Promise<{ exceeded: boolean; reason?: string }> {
+  const globalCount = await countAutoThisHour()
+  if (globalCount >= input.maxGlobal) {
+    return {
+      exceeded: true,
+      reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${input.maxGlobal}`,
+    }
+  }
+  if (input.clientKey) {
+    const perClientMax = envMaxAutoPerClient()
+    const clientCount = await countAutoThisHourForClient(input.clientKey)
+    if (clientCount >= perClientMax) {
+      return {
+        exceeded: true,
+        reason: `Rate limit STANDBY_MAX_AUTO_PER_CLIENT_PER_HOUR=${perClientMax}`,
+      }
+    }
+  }
+  return { exceeded: false }
 }
 
 /**
@@ -423,8 +516,7 @@ async function deliverEchoAiAutoProgress(input: {
   auditAction: string
   auditExtra?: Record<string, unknown>
 }): Promise<{ autoApproved: true; reason: string }> {
-  const { ticketId, ticket, answer, systemNote, resolveTicket, auditAction, auditExtra } =
-    input
+  const { ticketId, ticket, answer, systemNote, resolveTicket, auditAction, auditExtra } = input
 
   await db.helpMessage.create({
     data: {
@@ -612,17 +704,13 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   /** Dev fast-path — all TEXT TECH/OTHER, not Echo-only. Core review still blocked below. */
   const devAutoUnlock = helpDeskAutoApprove && techOtherGate && ticket.channel === 'TEXT'
 
-  const customerBodies = ticket.messages
-    .filter((m) => m.role === 'CUSTOMER')
-    .map((m) => m.body)
+  const customerBodies = ticket.messages.filter((m) => m.role === 'CUSTOMER').map((m) => m.body)
   const greetingText = [ticket.subject, ...customerBodies].find((t) => isSimpleGreeting(t))
-  const isGreeting =
-    ticket.channel === 'TEXT' && techOtherGate && Boolean(greetingText)
+  const isGreeting = ticket.channel === 'TEXT' && techOtherGate && Boolean(greetingText)
 
   // Normal path requires AWAITING_APPROVAL. Greetings may still be OPEN if Knights skipped.
   if (ticket.status !== 'AWAITING_APPROVAL') {
-    const greetingOpen =
-      isGreeting && (ticket.status === 'OPEN' || ticket.status === 'WAITING')
+    const greetingOpen = isGreeting && (ticket.status === 'OPEN' || ticket.status === 'WAITING')
     if (!greetingOpen) {
       return { autoApproved: false, reason: `Ticket status is ${ticket.status}` }
     }
@@ -636,20 +724,26 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         .filter((m) => m.role === 'KNIGHT')
         .map((m) => m.body.trim())
         .find((b) => b.length > 0) ?? null
-    const answer = (knightDraft || GREETING_AUTO_REPLY).trim()
+    const answer = sanitizeCustomerFacingAnswer((knightDraft || GREETING_AUTO_REPLY).trim())
+    if (!answer) {
+      return { autoApproved: false, reason: 'Greeting draft empty after sanitize' }
+    }
 
-    const autoCount = await countAutoThisHour()
-    if (autoCount >= config.maxAutoPerHour) {
+    const rate = await standbyRateLimitExceeded({
+      clientKey: ticket.clientKey,
+      maxGlobal: config.maxAutoPerHour,
+    })
+    if (rate.exceeded) {
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body: `Greeting auto-send rate-limited (${config.maxAutoPerHour}/hour). Left AWAITING_APPROVAL.`,
+          body: `Greeting auto-send rate-limited (${config.maxAutoPerHour}/hour global). Left AWAITING_APPROVAL.`,
         },
       })
       return {
         autoApproved: false,
-        reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+        reason: rate.reason ?? `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
       }
     }
 
@@ -886,7 +980,10 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     policyKind: 'QUESTION',
   })
 
+  let codeChangePending = false
+
   if (maestroBody && /NEEDS_CODE_CHANGE/i.test(maestroBody)) {
+    codeChangePending = true
     if (echoAuto) {
       // Auto-ack Echo; leave ticket for William / Architect draft PR path. No BUILD merge.
       return deliverEchoAiAutoProgress({
@@ -900,7 +997,16 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         auditExtra: { needsCodeChange: true },
       })
     }
-    if (!devAutoUnlock) {
+    if (devAutoUnlock) {
+      await db.helpMessage.create({
+        data: {
+          ticketId,
+          role: 'SYSTEM',
+          body: 'HELP_DESK_AUTO_APPROVE — Maestro NEEDS_CODE_CHANGE. Sending sanitized knight draft or triage ack. BUILD/core merge stays locked.',
+        },
+      })
+      maestroBody = null
+    } else {
       await db.helpMessage.create({
         data: {
           ticketId,
@@ -915,18 +1021,12 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
         reason: 'Maestro says needs code change — force AWAITING_HUMAN',
       }
     }
-    await db.helpMessage.create({
-      data: {
-        ticketId,
-        role: 'SYSTEM',
-        body: 'HELP_DESK_AUTO_APPROVE — Maestro NEEDS_CODE_CHANGE. Dev fast-path sending best knight draft. BUILD/merge stays locked.',
-      },
-    })
   }
 
   const combinedDrafts = knightBodies.map((k) => k.body).join('\n')
   const hasCodeSignal =
     CODE_CHANGE_SIGNAL.test(combinedDrafts) || CODE_CHANGE_SIGNAL.test(ticket.subject)
+  if (hasCodeSignal) codeChangePending = true
   if (echoAuto && hasCodeSignal) {
     return deliverEchoAiAutoProgress({
       ticketId,
@@ -939,16 +1039,25 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       auditExtra: { needsCodeChange: true, viaSignal: true },
     })
   }
+  if (hasCodeSignal && !echoAuto && !devAutoUnlock) {
+    await db.helpMessage.create({
+      data: {
+        ticketId,
+        role: 'SYSTEM',
+        body: 'Standby blocked — Architect/code-change signal detected. Left AWAITING_APPROVAL for William (HELP_DESK_AUTO_APPROVE does not bypass code-change).',
+      },
+    })
+    return {
+      autoApproved: false,
+      reason: 'Architect/code-change signal detected — force AWAITING_HUMAN',
+    }
+  }
 
-  const echoSoftOk =
-    echoUnlock &&
-    knightBodies.length > 0 &&
-    !hasCodeSignal
+  const echoSoftOk = echoUnlock && knightBodies.length > 0 && !hasCodeSignal
 
   /** Policy-seat payroll refuse is safe to auto-send (refuse text, not figures). */
   const policyRefuseOnly =
-    knightBodies.length > 0 &&
-    knightBodies.every((k) => (k.seat ?? '').toLowerCase() === 'policy')
+    knightBodies.length > 0 && knightBodies.every((k) => (k.seat ?? '').toLowerCase() === 'policy')
 
   /** ECHO_AUTO_APPROVE: send any soft TEXT / refuse draft (not code/core/BUILD). */
   const echoForceSend =
@@ -957,7 +1066,7 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     !hasCodeSignal &&
     (!isPayrollStandbyBlocked(ticket.subject, [combinedDrafts]) || policyRefuseOnly)
 
-  /** HELP_DESK_AUTO_APPROVE: dev fast-path — send knight draft without Maestro/≥2-seat gates. */
+  /** HELP_DESK_AUTO_APPROVE: TEXT TECH/OTHER — sends clean reply; BUILD/core merge stay locked. */
   const devForceSend =
     devAutoUnlock &&
     knightBodies.length > 0 &&
@@ -991,39 +1100,42 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     })
   }
 
-  const maestroNeedsCode =
-    Boolean(maestroBody) && /NEEDS_CODE_CHANGE/i.test(maestroBody ?? '')
-  const nonMaestroDraft = knightBodies
-    .filter((k) => (k.seat ?? '').toLowerCase() !== 'maestro')
-    .map((k) => k.body.trim())
-    .find((b) => b.length > 0)
-  const answerSource =
-    devForceSend && maestroNeedsCode && nonMaestroDraft
-      ? nonMaestroDraft
-      : maestroBody ?? knightBodies[knightBodies.length - 1]?.body
+  let answerSource = maestroBody ?? knightBodies[knightBodies.length - 1]?.body
+  if (devForceSend && (!answerSource?.trim() || /NEEDS_CODE_CHANGE/i.test(answerSource))) {
+    answerSource =
+      knightBodies
+        .filter((k) => k.body?.trim() && !/NEEDS_CODE_CHANGE/i.test(k.body))
+        .slice(-1)[0]?.body ?? DEV_CODE_CHANGE_CUSTOMER_ACK
+  }
   if (!answerSource?.trim()) {
     return { autoApproved: false, reason: 'No knight draft body to auto-approve' }
   }
 
   // Dev / Echo testing fast-paths bypass the hourly standby cap so queues clear.
   if (!devForceSend && !echoForceSend && !echoAuto) {
-    const autoCount = await countAutoThisHour()
-    if (autoCount >= config.maxAutoPerHour) {
+    const rate = await standbyRateLimitExceeded({
+      clientKey: ticket.clientKey,
+      maxGlobal: config.maxAutoPerHour,
+    })
+    if (rate.exceeded) {
       await db.helpMessage.create({
         data: {
           ticketId,
           role: 'SYSTEM',
-          body: `Standby rate limit: ${config.maxAutoPerHour}/hour reached. Left for William.`,
+          body: `Standby rate limit reached (${config.maxAutoPerHour}/hour global · ${envMaxAutoPerClient()}/hour per client). Left for William.`,
         },
       })
       return {
         autoApproved: false,
-        reason: `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
+        reason: rate.reason ?? `Rate limit STANDBY_MAX_AUTO_PER_HOUR=${config.maxAutoPerHour}`,
       }
     }
   }
 
-  const answer = answerSource.trim()
+  const answer = sanitizeCustomerFacingAnswer(answerSource.trim())
+  if (!answer) {
+    return { autoApproved: false, reason: 'Knight draft empty after customer-copy sanitize' }
+  }
   const draftSnapshot = {
     ticketId,
     subject: ticket.subject,
@@ -1072,6 +1184,26 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
   let deliveredContext: unknown = null
   let deliveredUserId: string | null = null
 
+  const disposition = codeChangePending
+    ? ('reply_sent_code_pending' as const)
+    : closeReasonForApprove({
+        answer,
+        subject: ticket.subject,
+        needsHumanCoreReview: ticket.needsHumanCoreReview,
+        messageBodies: knightBodies.map((k) => k.body),
+      })
+  const threadMeta = buildCustomerThreadMeta({
+    intakeGate: ticket.intakeGate ?? null,
+    questionStatus: 'ANSWERED',
+    replyState: 'replied',
+    closeReason: disposition,
+    answer,
+    subject: ticket.subject,
+    needsHumanCoreReview: ticket.needsHumanCoreReview,
+    ticketStatus: 'RESOLVED',
+    messageBodies: knightBodies.map((k) => k.body),
+  })
+
   if (questionId) {
     const q = await db.customerQuestion.update({
       where: { id: questionId },
@@ -1109,6 +1241,11 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
             ? ctx.moduleHint
             : null,
       failedStep: typeof ctx?.failedStep === 'string' ? ctx.failedStep : null,
+      closeReason: threadMeta.closeReason,
+      disposition: threadMeta.disposition,
+      fixSha: threadMeta.fixSha,
+      etaLabel: threadMeta.etaLabel,
+      intakeGate: ticket.intakeGate ?? null,
     })
   } else if (ticket.clientKey) {
     const created = await db.customerQuestion.create({
@@ -1139,6 +1276,11 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       standbyApproved: true,
       echoSilent: echoAi,
       ticketId,
+      closeReason: threadMeta.closeReason,
+      disposition: threadMeta.disposition,
+      fixSha: threadMeta.fixSha,
+      etaLabel: threadMeta.etaLabel,
+      intakeGate: ticket.intakeGate ?? null,
     })
   }
 
@@ -1169,9 +1311,22 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
     })
   }
 
+  await db.helpMessage.create({
+    data: {
+      ticketId,
+      role: 'SYSTEM',
+      body:
+        disposition === 'reply_sent_code_pending'
+          ? 'Disposition: reply sent · code not deployed. Auto-approve pushes chat/echo_repair_ready only — merge Architect draft PR onto laughing-noether for UI fixes.'
+          : disposition === 'resolved_fix'
+            ? 'Disposition: marked as product fix — verify commit is on the luccca-web deploy branch before treating as done.'
+            : 'Disposition: how-to / config reply (no code deploy expected).',
+    },
+  })
+
   await db.helpTicket.update({
     where: { id: ticketId },
-    data: { status: 'RESOLVED', resolvedAt: new Date() },
+    data: { status: 'RESOLVED', resolvedAt: new Date(), closeReason: disposition },
   })
 
   await audit('computer_agent', 'standby.question.auto_answer', ticketId, {
@@ -1186,6 +1341,8 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
       : echoAuto
         ? 'ECHO_AUTO_APPROVE'
         : undefined,
+    closeReason: disposition,
+    codeChangePending,
   })
 
   await raiseAlert({
@@ -1203,13 +1360,14 @@ export async function maybeStandbyAutoApprove(ticketId: string): Promise<{
 
   return {
     autoApproved: true,
-    reason: devForceSend && !echoAuto
-      ? 'Help Desk auto-approved & sent (HELP_DESK_AUTO_APPROVE)'
-      : echoAuto
-        ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
-        : echoAi
-          ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
-          : 'Auto-answered under standby safeguards',
+    reason:
+      devForceSend && !echoAuto
+        ? 'Help Desk auto-approved & sent (HELP_DESK_AUTO_APPROVE)'
+        : echoAuto
+          ? 'Echo AI auto-approved & sent (ECHO_AUTO_APPROVE)'
+          : echoAi
+            ? 'Echo-priority TECH auto-progressed under unlock / low-risk safeguards'
+            : 'Auto-answered under standby safeguards',
   }
 }
 

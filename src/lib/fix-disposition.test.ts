@@ -39,13 +39,13 @@ describe('fix-disposition', () => {
     expect(b?.level).toBe('warn')
   })
 
-  it('badge shows Fixed in SHA', () => {
+  it('badge shows Issue fixed with SHA', () => {
     const b = fixDispositionBadge({
       status: 'RESOLVED',
       closeReason: 'resolved_fix',
       answer: 'Fixed in 3f51a8f02 on laughing-noether',
     })
-    expect(b?.label).toBe('✓ Fixed in 3f51a8f02')
+    expect(b?.label).toBe('✓ Issue fixed · 3f51a8f02')
     expect(b?.level).toBe('ok')
   })
 })

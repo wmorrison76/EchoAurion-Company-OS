@@ -152,9 +152,22 @@ Night cleaners don’t only write “✕ broken.” They also note what still fe
 | Playwright guest/operator 390px smoke | ✕ Stub / outline only |
 | EKG export → report mapper | ✕ Not wired yet |
 | Dr. OS “last night” chip | ✓ Built (`NightCleanerChip` on `/dr-os`, from `ops.night_cleaner.ingest`) |
-| Render nightly cron | ✕ William click — see `OPEN_OPS_CHECKLIST.md` / `DR_OS_COMPLETE.md` |
+| Render nightly cron | ✕ **Not in `render.yaml`** (as of 2026-07-28) — ops-poll / help-eval / cost-anomaly exist; mole cron missing |
+| Dr. OS mole·Knights audit | ✓ `GET /api/ops/mole-knights-audit` + panel on `/dr-os` |
 
 Until scanners run, ingest still accepts a hand-built or dry-run report — useful for contract testing, not a full floor walk.
+
+**Audit verdict (2026-07-28):** moles are **not** yet finding issues before morning open on a schedule. Browser EKG sweep only runs while EKG is mounted. Wire pilot runner → `POST /api/ops/night-cleaner-report` + Render cron before trusting the Night Cleaner chip.
+
+### Desk moles (Company OS — complementary)
+
+Three single-duty moles (workflow clicks/duplication, UX consistency, i18n) run via:
+
+- `POST /api/ops/desk-moles-run` (session or `CRON_SECRET`)
+- Dr. OS → Mole · Knights audit → Desk moles dry-run / File ticket
+- Optional Render cron `echoaurion-company-os-desk-moles` (daily)
+
+They file the same Help Desk TASK shape. **Report only — William decides.** See `docs/COMPANY_OS_HEALTH_AUDIT.md`.
 
 ### Suggested improvements (examples — not just breaks)
 

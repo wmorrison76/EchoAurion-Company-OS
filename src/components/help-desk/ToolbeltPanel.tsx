@@ -12,10 +12,13 @@ export function ToolbeltPanel({
   clientKey,
   ticketId,
   workRequestId,
+  compact = false,
 }: {
   clientKey: string | null
   ticketId: string
   workRequestId: string | null
+  /** When true, sit inside the Help Desk action dock (Approve + Dry-run together). */
+  compact?: boolean
 }) {
   const [tool, setTool] = useState<SafeTool>('show_message')
   const [dryRun, setDryRun] = useState(true)
@@ -89,11 +92,34 @@ export function ToolbeltPanel({
   }
 
   return (
-    <div className="rounded-xl border border-[#2a2a3f] bg-[#0a0a0f] p-3">
-      <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Safe toolbelt</p>
-      <p className="mt-1 text-[11px] text-[#5a5a78]">
-        Dry-run default · no RDP · execute needs standby/autopilot
-      </p>
+    <div
+      className={
+        compact
+          ? 'rounded-lg border border-[#2a2a3f] bg-[#12121a] p-2'
+          : 'rounded-xl border border-[#2a2a3f] bg-[#0a0a0f] p-3'
+      }
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-widest text-[#D4AF37]">
+          {compact ? 'Safe tools · Dry-run here' : 'Safe toolbelt'}
+        </p>
+        <label className="flex items-center gap-1.5 rounded-full border border-[#2a2a3f] px-2 py-1 text-xs text-[#a0a0b8]">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+            aria-label="Dry run — checked means no live client directive"
+          />
+          <span className={dryRun ? 'text-[#22c55e]' : 'text-[#f59e0b]'}>
+            {dryRun ? '✓ Dry-run on' : '▲ Live execute'}
+          </span>
+        </label>
+      </div>
+      {!compact ? (
+        <p className="mt-1 text-[11px] text-[#5a5a78]">
+          Dry-run default · no RDP · execute needs standby/autopilot
+        </p>
+      ) : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <label className="sr-only" htmlFor="toolbelt-tool">
           Tool
@@ -103,7 +129,7 @@ export function ToolbeltPanel({
           value={tool}
           onChange={(e) => setTool(e.target.value as SafeTool)}
           aria-label="Select safe tool"
-          className="rounded-lg border border-[#2a2a3f] bg-[#12121a] px-2 py-1.5 text-xs text-white"
+          className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-2 py-1.5 text-xs text-white"
         >
           {SAFE_TOOLS.map((t) => (
             <option key={t} value={t}>
@@ -111,15 +137,6 @@ export function ToolbeltPanel({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 text-xs text-[#a0a0b8]">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => setDryRun(e.target.checked)}
-            aria-label="Dry run"
-          />
-          Dry-run
-        </label>
         <button
           type="button"
           disabled={busy}
@@ -144,9 +161,9 @@ export function ToolbeltPanel({
       <textarea
         value={paramsJson}
         onChange={(e) => setParamsJson(e.target.value)}
-        rows={2}
+        rows={compact ? 1 : 2}
         aria-label="Tool params JSON"
-        className="mt-2 w-full rounded-lg border border-[#2a2a3f] bg-[#12121a] px-2 py-1.5 font-mono text-[11px] text-white"
+        className="mt-2 w-full rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-2 py-1.5 font-mono text-[11px] text-white"
       />
       {error ? (
         <p className="mt-1 text-xs text-[#a0a0b8]">

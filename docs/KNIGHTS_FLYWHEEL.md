@@ -27,7 +27,7 @@ Customer / Company OS crash
         ├─ Architect draft PR plan (merge forbidden)
         └─ Knights dispatch (partial seats OK)
                 │
-                ├─► Load PROMOTED/DRAFT runbooks for fingerprint
+                ├─► Load PROMOTED runbooks only (DRAFT never teaches — anti-hallucination)
                 ├─► Skip UNAVAILABLE seats (billing/outage) — continue
                 └─► Core-path guard → NEEDS_HUMAN_CORE_REVIEW
         │

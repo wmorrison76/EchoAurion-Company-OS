@@ -411,6 +411,59 @@ export async function learningPlaneStats(): Promise<{
   }
 }
 
+/** Admin browse: redacted chunk bodies only (already scrubbed at ingest). */
+export async function listLearningChunks(opts?: {
+  limit?: number
+  section?: string
+}): Promise<
+  {
+    id: string
+    section: string
+    domain: string | null
+    sourceType: string
+    sourceRef: string | null
+    shareScope: string
+    productLine: string | null
+    contentPreview: string
+    contentLength: number
+    updatedAt: string
+    createdAt: string
+  }[]
+> {
+  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100)
+  const section = opts?.section?.trim()
+  const rows = await db.echoKnowledgeChunk.findMany({
+    where: section ? { section } : undefined,
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: {
+      id: true,
+      section: true,
+      domain: true,
+      sourceType: true,
+      sourceRef: true,
+      shareScope: true,
+      productLine: true,
+      contentRedacted: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+  })
+  return rows.map((r) => ({
+    id: r.id,
+    section: r.section,
+    domain: r.domain,
+    sourceType: r.sourceType,
+    sourceRef: r.sourceRef,
+    shareScope: r.shareScope,
+    productLine: r.productLine,
+    contentPreview: r.contentRedacted.slice(0, 4000),
+    contentLength: r.contentRedacted.length,
+    updatedAt: r.updatedAt.toISOString(),
+    createdAt: r.createdAt.toISOString(),
+  }))
+}
+
 /** After runbook promote / pattern resolve — queue learning ingest (non-blocking). */
 export async function queueLearnFromRunbook(runbookId: string): Promise<void> {
   await enqueueIngestJob({

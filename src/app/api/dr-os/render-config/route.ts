@@ -20,6 +20,10 @@ import {
   triggerRenderDeploy,
   upsertRenderEnvVars,
 } from '@/lib/render-ops'
+import {
+  gateCronSecretRotation,
+  rotateCronSecretEverywhere,
+} from '@/lib/cron-secret-rotation'
 import type { APIResponse } from '@/types'
 import { verifyCronBearer } from '@/lib/verify-bearer'
 
@@ -124,6 +128,13 @@ type PostBody = {
   applySuggestedEchoAiUrl?: boolean
   /** Trigger deploy after upsert (default true for apply; false for raw env unless set). */
   redeploy?: boolean
+  /**
+   * Required to rotate CRON_SECRET. Rotation always fans out to every holder
+   * (web + all echoaurion-company-os crons) — `service` is ignored for that key.
+   */
+  confirmRotateCronSecret?: boolean
+  /** Human who approved the rotation. Required when the actor is computer_agent. */
+  approvedBy?: string
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -212,6 +223,100 @@ export async function POST(req: Request): Promise<Response> {
       sanitized[k] = v
     }
 
+    // CRON_SECRET is never written to one service — it fans out to every
+    // holder or fails loudly. Handled before the single-service upsert below.
+    const cronSecretValue = sanitized.CRON_SECRET
+    let rotation: Awaited<ReturnType<typeof rotateCronSecretEverywhere>> | null = null
+
+    if (typeof cronSecretValue === 'string') {
+      const rotationGate = gateCronSecretRotation({
+        actor: gate.actor,
+        confirmed: body.confirmRotateCronSecret === true,
+        approvedBy: body.approvedBy,
+        agentRotationAllowed: process.env.CRON_SECRET_ROTATION_ALLOW_AGENT === 'true',
+      })
+
+      if (!rotationGate.allowed) {
+        console.error(
+          `[cron-secret] ROTATION DENIED actor=${gate.actor} code=${rotationGate.code} — ${rotationGate.reason}`
+        )
+        await audit(gate.actor, 'dr_os.render_config.cron_secret_rotation_denied', undefined, {
+          code: rotationGate.code,
+          reason: rotationGate.reason,
+          approvedBy: body.approvedBy ?? null,
+          requestedService: body.service ?? null,
+        }).catch(() => {})
+        return Response.json(
+          {
+            success: false,
+            error: rotationGate.reason,
+            code: rotationGate.code,
+          } satisfies APIResponse<never>,
+          { status: 403 }
+        )
+      }
+
+      rotation = await rotateCronSecretEverywhere({
+        value: cronSecretValue,
+        actor: gate.actor,
+        approvedBy: body.approvedBy,
+        redeployWeb: body.redeploy !== false,
+      })
+      delete sanitized.CRON_SECRET
+
+      await audit(
+        gate.actor,
+        rotation.ok
+          ? 'dr_os.render_config.cron_secret_rotate'
+          : 'dr_os.render_config.cron_secret_rotate_partial',
+        undefined,
+        {
+          phase: rotation.phase,
+          approvedBy: body.approvedBy ?? null,
+          updated: rotation.updated,
+          failed: rotation.failed,
+          notAttempted: rotation.notAttempted,
+          webDeployId: rotation.webDeployId,
+        }
+      )
+
+      if (!rotation.ok) {
+        return Response.json(
+          {
+            success: false,
+            error: rotation.label,
+            code: rotation.phase === 'web_failed' ? 'ROTATION_PARTIAL' : 'ROTATION_ABORTED',
+            data: {
+              label: rotation.label,
+              phase: rotation.phase,
+              updated: rotation.updated,
+              failed: rotation.failed,
+              notAttempted: rotation.notAttempted,
+            },
+          },
+          { status: 500 }
+        )
+      }
+    }
+
+    const remainingKeys = Object.keys(sanitized)
+    if (rotation && remainingKeys.length === 0) {
+      return Response.json({
+        success: true,
+        data: {
+          label: rotation.label,
+          keysSet: ['CRON_SECRET'],
+          rotation: {
+            phase: rotation.phase,
+            updated: rotation.updated,
+            failed: rotation.failed,
+            webDeployId: rotation.webDeployId,
+          },
+        },
+        meta: { lastUpdated: new Date().toISOString() },
+      })
+    }
+
     const resolved = await resolveRenderServiceId(body.service)
     const keysSet = await upsertRenderEnvVars(resolved.id, sanitized)
     let deployId: string | null = null
@@ -229,11 +334,21 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({
       success: true,
       data: {
-        label: `✓ Updated ${keysSet.length} env var(s) via Render`,
+        label: rotation
+          ? `${rotation.label} · ✓ Updated ${keysSet.length} other env var(s) on ${resolved.name}`
+          : `✓ Updated ${keysSet.length} env var(s) via Render`,
         serviceId: resolved.id,
         serviceName: resolved.name,
-        keysSet,
+        keysSet: rotation ? [...keysSet, 'CRON_SECRET'] : keysSet,
         deployId,
+        rotation: rotation
+          ? {
+              phase: rotation.phase,
+              updated: rotation.updated,
+              failed: rotation.failed,
+              webDeployId: rotation.webDeployId,
+            }
+          : null,
       },
       meta: { lastUpdated: new Date().toISOString() },
     })

@@ -459,6 +459,18 @@ model SystemSnapshot {
   @@map("system_snapshots")
 }
 
+/// Product internal service map (topology only — no PII). Ingested via POST /api/relay/nexus-snapshot.
+model ProductNexusSnapshot {
+  id         String   @id @default(cuid())
+  clientKey  String
+  appVersion String?
+  payload    Json
+  createdAt  DateTime @default(now())
+
+  @@index([clientKey, createdAt])
+  @@map("product_nexus_snapshots")
+}
+
 model SupportSession {
   id        String               @id @default(cuid())
   clientId  String?

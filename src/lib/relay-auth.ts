@@ -1,5 +1,12 @@
 import { createHmac, timingSafeEqual } from 'crypto'
-import { allowRateLimit, clientIp } from '@/lib/rate-limit'
+import {
+  allowIngestThrottleAsync,
+  allowRateLimit,
+  clientIp,
+  INGEST_BUDGETS,
+  throttleResponse,
+  type ThrottleResult,
+} from '@/lib/rate-limit'
 
 export type RelayAuth =
   | { ok: true; clientKeyFromToken?: string }
@@ -58,7 +65,7 @@ export function relayRateLimited(
 ): RelayAuth {
   const limits: Record<typeof kind, { max: number; windowMs: number }> = {
     heartbeat: { max: 120, windowMs: 60_000 },
-    questions: { max: 30, windowMs: 60_000 },
+    questions: { max: INGEST_BUDGETS.questionsPerIp, windowMs: 60_000 },
     work: { max: 20, windowMs: 60_000 },
     diagnostics: { max: 60, windowMs: 60_000 },
     default: { max: 90, windowMs: 60_000 },
@@ -77,7 +84,7 @@ export function relayRateLimited(
   return { ok: true }
 }
 
-/** Auth then rate-limit. */
+/** Auth then IP rate-limit (legacy guard when clientKey unknown). */
 export function relayGuard(
   req: Request,
   kind: 'heartbeat' | 'questions' | 'work' | 'diagnostics' | 'default',
@@ -89,6 +96,29 @@ export function relayGuard(
   if (!r.ok) return r
   return a
 }
+
+/**
+ * Per-clientKey + global question budget (async — tries Upstash when configured).
+ * Call after auth + body parse. IP limit should still run via relayRateLimited.
+ */
+export async function relayQuestionsThrottle(clientKey: string): Promise<
+  | { ok: true }
+  | { ok: false; status: number; error: string; code: string; throttle: ThrottleResult }
+> {
+  const t = await allowIngestThrottleAsync({ scope: 'relay_questions', clientKey })
+  if (!t.ok) {
+    return {
+      ok: false,
+      status: 429,
+      error: t.label,
+      code: t.code,
+      throttle: t,
+    }
+  }
+  return { ok: true }
+}
+
+export { throttleResponse as relayThrottleResponse }
 
 /** Require clientKey query/body presence with a clear pilot-debug code. */
 export function requireClientKey(value: string | null | undefined): {

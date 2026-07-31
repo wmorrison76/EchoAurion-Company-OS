@@ -19,6 +19,26 @@ export function googleAiApiKey(): string | undefined {
   return resolveEnv(GOOGLE_AI_KEY_ENVS)
 }
 
+/** Per-seat model env overrides (first match wins). */
+const SEAT_MODEL_ENVS: Partial<Record<Seat, readonly string[]>> = {
+  scout: ['SCOUT_MODEL', 'GOOGLE_AI_MODEL', 'GEMINI_MODEL'],
+  strategist: ['STRATEGIST_MODEL'],
+  analyst: ['ANALYST_MODEL'],
+  maestro: ['MAESTRO_MODEL'],
+  architect: ['ARCHITECT_MODEL'],
+  chefs_brain: ['CHEFS_BRAIN_MODEL', 'ECHO_AI_MODEL'],
+}
+
+/** Apply env model overrides without mutating ROSTER. */
+export function resolveKnightConfig(config: KnightConfig): KnightConfig {
+  const envNames =
+    SEAT_MODEL_ENVS[config.seat] ??
+    ([`${config.seat.toUpperCase()}_MODEL`] as const)
+  const override = resolveEnv(envNames)
+  if (override) return { ...config, model: override }
+  return config
+}
+
 // The roster — seats, roles, and the env var that activates each (spec §"The
 // Knights"). Models default to the spec's recommendations and can be overridden
 // by env later. The Maestro (Perplexity) is the conductor: it routes and
@@ -46,8 +66,8 @@ export const ROSTER: Record<Seat, KnightConfig> = {
   scout: {
     seat: 'scout',
     name: 'The Scout',
-    // gemini-1.5-pro is deprecated on Generative Language API; flash is current.
-    model: 'gemini-2.0-flash',
+    // gemini-2.0-flash retired on Generative Language API; override via SCOUT_MODEL.
+    model: 'gemini-2.5-flash',
     provider: 'google',
     role: 'Real-time web intelligence and competitive monitoring',
     apiKeyEnv: 'GOOGLE_AI_API_KEY',

@@ -56,6 +56,27 @@ The Support console shows the same guidance as chips on each question/request.
 fine for v1. Cross-region latency is not a deploy blocker. Same-region is optional
 later if you want to shave a few ms off DB round-trips.
 
+**Connection limit:** Neon shows `connection_limit` in project settings (often
+**100** on paid tiers, lower on free). Prisma opens a small pool **per process**
+— size it explicitly on the pooled URL:
+
+```text
+postgresql://…/neondb?pgbouncer=true&connection_limit=10
+```
+
+| Process | Typical pool | Notes |
+|---|---|---|
+| Web (Standard, 1 instance) | **10** | Dr. OS reads `connection_limit` for the Neon panel |
+| Each cron | **1–2** | Short-lived; bursts during migrate deploy |
+| Horizontal web (2+ replicas) | **≤8 each** | Requires Upstash for rate limits + relay SSE — see `docs/SCALE_AND_THROTTLE.md` |
+
+**Rule:** `(web_instances × pool) + active_crons ≤ Neon limit − 2`. Knight queue
+keeps LLM work off the web hot path so connections are not held for minutes.
+
+**Prisma:** App uses the default client in `src/lib/db.ts` — no per-request
+clients. Migrations use `DATABASE_URL_UNPOOLED` via `schema.prisma` `directUrl`.
+Never raise `connection_limit` without checking Neon dashboard headroom.
+
 **Build note:** `render.yaml` uses `npm install --include=dev` so Next can compile
 even when Render sets `NODE_ENV=production` during install (otherwise `tailwindcss`
 and other build-time packages are skipped).
@@ -131,7 +152,7 @@ After deploy, set `SUPPORT_INGEST_SECRET` on Render before any pilot connects.
 
 **Scout note:** If you set `GEMINI_API_KEY` on Render but not `GOOGLE_AI_API_KEY`,
 that is fine after this deploy — both names are accepted. Prefer
-`GOOGLE_AI_API_KEY`. Scout model is `gemini-2.0-flash` (Generative Language API).
+`GOOGLE_AI_API_KEY`. Scout model defaults to `gemini-2.5-flash` (override with `SCOUT_MODEL`).
 Restart the web service after changing env vars, then hard-refresh Board Room.
 ### Env vars (live panels)
 
@@ -147,6 +168,30 @@ faked as live in production).
 Unset integrations show as **Not configured** / Unknown — the app still boots.
 These are **env pastes for William** (see `docs/DR_OS_COMPLETE.md` Panel → env checklist),
 not exception-flywheel work for Knights.
+
+### Upstash Redis (optional — not required to deploy)
+
+| Variable | Required | Notes |
+|---|---|---|
+| `UPSTASH_REDIS_REST_URL` | no | Upstash **Redis** REST URL (`https://…upstash.io`) |
+| `UPSTASH_REDIS_REST_TOKEN` | no | REST token from same Upstash database |
+
+**Deploy works without these.** When unset, rate limits and relay SSE use in-memory
+per-instance fallbacks. Wire Upstash on **echoaurion-company-os web only** (crons
+do not need Redis) before scaling to 2+ web instances.
+
+Step-by-step (ELI5): **`docs/UPSTASH_SETUP.md`**. Verify after paste:
+
+```bash
+curl -sS https://echoaurion-company-os.onrender.com/api/health
+# "redisFanout": "configured" when wired; "memory-only" when unset (both OK)
+```
+
+### Render plan (do not downgrade)
+
+`render.yaml` sets **`plan: pro`**. Next.js production builds often OOM on Standard
+(512MB). If you manually upgraded to Pro in the dashboard, Blueprint sync must not
+force `plan: standard` — that was the likely cause of the `c34d930` deploy failure.
 
 ### Forgot password (email) — Resend setup (get mail today)
 

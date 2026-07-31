@@ -103,6 +103,36 @@ export function KnowledgePlaneConsole() {
     }>,
     { refreshInterval: 60_000 }
   )
+  const [chunkSection, setChunkSection] = useState<string>('all')
+  const chunksKey =
+    chunkSection === 'all'
+      ? '/api/knowledge/chunks?limit=50'
+      : `/api/knowledge/chunks?limit=50&section=${encodeURIComponent(chunkSection)}`
+  const {
+    data: chunkData,
+    error: chunksError,
+    mutate: mutateChunks,
+  } = useSWR(
+    chunksKey,
+    jsonFetcher<{
+      chunks: {
+        id: string
+        section: string
+        domain: string | null
+        sourceType: string
+        sourceRef: string | null
+        shareScope: string
+        productLine: string | null
+        contentPreview: string
+        contentLength: number
+        updatedAt: string
+        createdAt: string
+      }[]
+      count: number
+    }>,
+    { refreshInterval: 60_000 }
+  )
+  const [expandedChunkId, setExpandedChunkId] = useState<string | null>(null)
 
   const [vendorName, setVendorName] = useState('')
   const [useCase, setUseCase] = useState('')
@@ -158,6 +188,7 @@ export function KnowledgePlaneConsole() {
       setBackfillMsg(body.data.label)
       await Promise.all([
         mutateLearning(),
+        mutateChunks(),
         mutate('/api/knowledge/signals'),
         mutate('/api/knowledge/insights'),
       ])
@@ -183,6 +214,33 @@ export function KnowledgePlaneConsole() {
           Property → territory → network. Vendors require a second scrutiny gate. See{' '}
           <code className="text-[#D4AF37]">docs/AURION_KNOWLEDGE_PLANE.md</code>.
         </p>
+      </div>
+
+      <div
+        className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4"
+        role="status"
+        aria-label="Why learning looks quiet"
+      >
+        <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Why this looks quiet</p>
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-[#a0a0b8]">
+          <li>
+            <span className="text-white">Embeddings deferred</span> is expected — keyword retrieve
+            is live until Neon pgvector + embed jobs ship.
+          </li>
+          <li>
+            <span className="text-white">Insights = 0</span> until Maestro/Perplexity assembles
+            summaries from signals (not automatic yet).
+          </li>
+          <li>
+            Learning fills from <span className="text-white">PROMOTED runbooks</span>,{' '}
+            <span className="text-white">GLOBAL/COHORT error patterns</span>, and{' '}
+            <span className="text-white">ops/public help</span> — not every chat turn.
+          </li>
+          <li>
+            Recent signals are mostly <span className="text-white">knowledge_meta</span> from
+            chunk ingest; live property Echo AI³ edge telemetry is a separate wire-up.
+          </li>
+        </ul>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -288,6 +346,102 @@ export function KnowledgePlaneConsole() {
             </div>
           </KPICard>
         </div>
+      </section>
+
+      <section
+        className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4"
+        aria-label="What Echo has learned"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xs uppercase tracking-widest text-[#D4AF37]">
+              What Echo has learned
+            </h2>
+            <p className="mt-1 text-xs text-[#a0a0b8]">
+              Redacted chunk text (already PII-scrubbed). Expand a row to read the procedure /
+              pattern Echo can teach other instances.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-[#a0a0b8]">
+            <span className="sr-only">Filter by section</span>
+            <select
+              value={chunkSection}
+              onChange={(e) => {
+                setChunkSection(e.target.value)
+                setExpandedChunkId(null)
+              }}
+              aria-label="Filter learned chunks by section"
+              className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-2 py-1.5 text-xs text-white"
+            >
+              <option value="all">All sections</option>
+              <option value="runbook">runbook</option>
+              <option value="error_pattern">error_pattern</option>
+              <option value="help">help</option>
+              <option value="ops">ops</option>
+              <option value="procedure">procedure</option>
+              <option value="hospitality">hospitality</option>
+              <option value="domain">domain</option>
+            </select>
+          </label>
+        </div>
+        {chunksError ? (
+          <p className="mt-3 text-sm text-[#a0a0b8]">
+            <span aria-label="Error">✕</span> Error: {chunksError.message}
+          </p>
+        ) : !chunkData ? (
+          <p className="mt-3 animate-pulse text-sm text-[#5a5a78]">Loading learned chunks…</p>
+        ) : chunkData.chunks.length === 0 ? (
+          <p className="mt-3 text-sm text-[#a0a0b8]">
+            No chunks yet — click <span className="text-[#D4AF37]">Backfill learning</span>, promote
+            a Knight runbook, or resolve a SYSTEM ticket so GLOBAL patterns / ops help ingest.
+          </p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2">
+            {chunkData.chunks.map((c) => {
+              const open = expandedChunkId === c.id
+              return (
+                <li
+                  key={c.id}
+                  className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-3"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedChunkId(open ? null : c.id)}
+                    aria-expanded={open}
+                    aria-label={`${open ? 'Collapse' : 'Expand'} learned chunk ${c.section} ${c.sourceType}`}
+                    className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <StatusBadge level="ok" label={c.section} />
+                      <StatusBadge
+                        level={c.shareScope === 'GLOBAL' ? 'ok' : 'unknown'}
+                        label={c.shareScope}
+                      />
+                      <span className="font-mono text-[11px] text-[#a0a0b8]">{c.sourceType}</span>
+                      {c.domain ? (
+                        <span className="text-[11px] text-[#5a5a78]">{c.domain}</span>
+                      ) : null}
+                    </div>
+                    <span className="font-mono text-[10px] tabular-nums text-[#5a5a78]">
+                      {c.contentLength} chars · {ago(c.updatedAt)} · {open ? '▾' : '▸'}
+                    </span>
+                  </button>
+                  {!open ? (
+                    <p className="mt-2 line-clamp-2 text-xs text-[#a0a0b8]">
+                      {c.contentPreview.slice(0, 180)}
+                      {c.contentPreview.length > 180 ? '…' : ''}
+                    </p>
+                  ) : (
+                    <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded border border-[#2a2a3f] bg-[#12121a] p-3 font-mono text-[11px] leading-relaxed text-[#a0a0b8]">
+                      {c.contentPreview}
+                      {c.contentLength > c.contentPreview.length ? '\n…(truncated)' : ''}
+                    </pre>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </section>
 
       <section className="rounded-xl border border-[#2a2a3f] bg-[#12121a] p-4">

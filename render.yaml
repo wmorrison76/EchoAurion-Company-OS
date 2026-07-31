@@ -14,9 +14,12 @@ services:
   - type: web
     name: echoaurion-company-os
     runtime: node
+    # Pro (4GB) — Next.js build OOMs on Standard (512MB). Do NOT downgrade to standard
+    # via Blueprint sync; c34d930 failed when plan: standard overwrote manual Pro upgrade.
+    plan: pro
     # --include=dev: Render sets NODE_ENV=production during install, which would
     # skip devDependencies (tailwindcss, postcss, typescript, etc.) that Next needs to build.
-    buildCommand: npm install --include=dev && npx prisma generate && npm run build
+    buildCommand: NODE_OPTIONS=--max-old-space-size=3072 npm install --include=dev && npx prisma generate && NODE_OPTIONS=--max-old-space-size=3072 npm run build
     # predeploy-snapshot: best-effort Neon branch rollback point before any
     # migration runs — always exits 0, never blocks the deploy.
     startCommand: node scripts/predeploy-snapshot.mjs && npx prisma migrate deploy && npm start
@@ -78,6 +81,34 @@ services:
       # Set false when William wants dual-control Approve again.
       - key: HELP_DESK_AUTO_APPROVE
         value: "true"
+      # TECH/OTHER TEXT auto-send without manual permit click (BUILD/core stay locked).
+      - key: HELP_DESK_AUTO_SEND_TECH
+        value: "true"
+      # Bootstrap DB permit through end of August 2026 (also upserted on getStandbyConfig).
+      - key: HELP_DESK_AUTO_SEND_UNTIL
+        value: "2026-08-31T23:59:59.999Z"
+      # Help Desk scale — per-clientKey + global question budgets (see docs/SCALE_AND_THROTTLE.md)
+      - key: RATE_QUESTIONS_PER_CLIENT
+        value: "20"
+      - key: RATE_QUESTIONS_GLOBAL
+        value: "600"
+      - key: RATE_QUESTIONS_PER_IP
+        value: "60"
+      # Standby auto-send caps (HELP_DESK_AUTO_APPROVE through Aug 31 2026)
+      - key: STANDBY_MAX_AUTO_PER_HOUR
+        value: "60"
+      - key: STANDBY_MAX_AUTO_PER_CLIENT_PER_HOUR
+        value: "8"
+      # Knight worker — bounded LLM concurrency off web request path
+      - key: KNIGHT_WORKER_BATCH
+        value: "8"
+      - key: KNIGHT_WORKER_CONCURRENCY
+        value: "4"
+      # Optional: shared rate limits + relay SSE fan-out across Render instances
+      # - key: UPSTASH_REDIS_REST_URL
+      #   sync: false
+      # - key: UPSTASH_REDIS_REST_TOKEN
+      #   sync: false
       # Render self-correction: auto-rollback + real-time failure webhook
       - key: RENDER_AUTO_ROLLBACK
         value: "on"
@@ -158,6 +189,24 @@ services:
       - key: CRON_SECRET
         sync: false
 
+  # Every 1 minute: drain TEXT knight ingest jobs (Help Desk relay path).
+  # This cron IS the knight background worker — no separate Render worker type needed.
+  # See docs/SCALE_AND_THROTTLE.md — keeps POST /api/relay/questions fast.
+  - type: cron
+    name: echoaurion-company-os-knight-drain
+    runtime: node
+    schedule: "*/1 * * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-knight-drain.mjs
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
   # Every 5 minutes: Render/GitHub failure → SYSTEM tickets + drain ingest queue.
   # See docs/SCALE_AND_THROTTLE.md, docs/ERROR_CAPTURE_AND_SCOPE.md
   - type: cron
@@ -235,6 +284,23 @@ services:
     schedule: "*/10 * * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-http-post.mjs /api/ops/echo-oncall
+    envVars:
+      - key: WEB_SERVICE_URL
+        fromService:
+          name: echoaurion-company-os
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: CRON_SECRET
+        sync: false
+
+  # Daily 11:00 UTC — three desk moles (workflow / UX / i18n) → Help Desk TASK ticket.
+  # Report only — William decides. Does not replace pilot Night Cleaner floor walk.
+  - type: cron
+    name: echoaurion-company-os-desk-moles
+    runtime: node
+    schedule: "0 11 * * *"
+    buildCommand: "true"
+    startCommand: node scripts/cron-http-post.mjs /api/ops/desk-moles-run
     envVars:
       - key: WEB_SERVICE_URL
         fromService:

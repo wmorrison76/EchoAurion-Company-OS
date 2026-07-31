@@ -103,7 +103,15 @@ export interface PilotConnectionHealth {
   suggestedEchoAiUrl?: string
   lastHeartbeatAgeMs: number | null
   lastQuestionAgeMs: number | null
+  /** Pending relay outbox rows for pilot delivery. */
   pendingOutbox: number
+  /** Echo panel-watch guardrail — auto SYSTEM tickets when on. */
+  echoPanelWatch: {
+    level: StatusLevel
+    shape: string
+    label: string
+    enabled: boolean
+  }
   error?: string
 }
 

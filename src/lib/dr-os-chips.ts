@@ -43,7 +43,7 @@ function str(v: unknown): string | null {
 export async function getDrainHealth(): Promise<DrainHealthSnapshot> {
   const stuckCutoff = new Date(Date.now() - 5 * 60_000)
 
-  const [stats, stuckOutbox, lastPoll, lastDrain] = await Promise.all([
+  const [stats, stuckOutbox, lastPoll, lastDrain, lastKnightDrain] = await Promise.all([
     ingestQueueStats(),
     db.relayOutbox.count({
       where: { deliveredAt: null, createdAt: { lt: stuckCutoff } },
@@ -58,12 +58,28 @@ export async function getDrainHealth(): Promise<DrainHealthSnapshot> {
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     }),
+    db.auditLog.findFirst({
+      where: { action: 'ops.drain_knight_queue' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    }),
   ])
+
+  const knightRunning = await db.ingestJob.count({
+    where: { status: 'RUNNING', kind: 'text_knights' },
+  })
 
   const lastDrainAt = lastDrain?.createdAt ?? null
   const minutesSinceLastDrain = minutesSince(lastDrainAt)
-  const stale = minutesSinceLastDrain == null || minutesSinceLastDrain > 20
-  const backlog = stats.pending > 50 || stats.failed > 0 || stuckOutbox > 0
+  const lastKnightDrainAt = lastKnightDrain?.createdAt ?? null
+  const minutesSinceKnightDrain = minutesSince(lastKnightDrainAt)
+  const systemDrainStale = minutesSinceLastDrain == null || minutesSinceLastDrain > 20
+  const knightDrainStale = minutesSinceKnightDrain == null || minutesSinceKnightDrain > 3
+  const backlog =
+    stats.pending > 50 ||
+    stats.failed > 0 ||
+    stuckOutbox > 0 ||
+    stats.knightPending > 50
 
   let level: StatusLevel = 'ok'
   let shape = '✓'
@@ -72,7 +88,18 @@ export async function getDrainHealth(): Promise<DrainHealthSnapshot> {
     level = 'error'
     shape = '✕'
     label = 'Dead-letter backlog'
-  } else if (stale) {
+  } else if (knightDrainStale && stats.knightPending > 0) {
+    level = 'warn'
+    shape = '⚠'
+    label =
+      minutesSinceKnightDrain == null
+        ? 'Knight drain never ran'
+        : 'Knight drain stale · backlog'
+  } else if (stats.knightPending > 50) {
+    level = 'warn'
+    shape = '⚠'
+    label = `Knight backlog · ${stats.knightPending} pending`
+  } else if (systemDrainStale) {
     level = 'warn'
     shape = '⚠'
     label = minutesSinceLastDrain == null ? 'Drain never ran' : 'Drain cron stale'
@@ -87,9 +114,13 @@ export async function getDrainHealth(): Promise<DrainHealthSnapshot> {
     running: stats.running,
     failed: stats.failed,
     stuckOutbox,
+    knightPending: stats.knightPending,
+    knightRunning,
     lastPollAt: lastPoll?.createdAt.toISOString() ?? null,
     lastDrainAt: lastDrainAt?.toISOString() ?? null,
     minutesSinceLastDrain,
+    lastKnightDrainAt: lastKnightDrainAt?.toISOString() ?? null,
+    minutesSinceKnightDrain,
     level,
     shape,
     label,

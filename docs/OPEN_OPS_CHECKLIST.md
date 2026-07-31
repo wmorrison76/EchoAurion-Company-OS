@@ -182,9 +182,31 @@ curl -sS -X POST -H "Authorization: Bearer $CRON_SECRET" \
   https://<company-os-host>/api/dr-os/render-config
 ```
 
+**`CRON_SECRET` is not an allowlisted single-service key.** It is shared between web and every cron, so a one-service write guarantees 401 loops. Setting it through `env` alone returns `FANOUT_REQUIRED`; rotation must go through the fleet-wide path (`confirmRotateCronSecret: true`), which discovers all holders from the Render API and aborts before touching web if any cron write fails. `computer_agent` cannot rotate it without a human setting `CRON_SECRET_ROTATION_ALLOW_AGENT=true` **and** an `approvedBy`. See `docs/CRON_SECRET_SETUP.md`.
+
 Dr. OS **Config debt** panel: **Apply suggested ECHO_AI_URL via Render** when the key is present; otherwise shows **set RENDER_API_KEY first**.
 
 Audit action: `dr_os.render_config.*` — payload has **key names only**, never values. **Never print secret values.**
+
+---
+
+## 6b. Fleet Nexus (`/fleet-nexus`) — Render + product topology
+
+| Symptom | Fix |
+|---|---|
+| Banner **Render not configured** · `0 svc` | Paste on **echoaurion-company-os** Render Environment: `RENDER_API_KEY` (personal API key — lists all account services) and `RENDER_SERVICE_ID` (primary web service id for Deployment lens). Save → redeploy → hard-refresh `/fleet-nexus`. |
+| 3 clients all **Unknown** (`?`) | Heartbeats without diagnostics only set `lastHealth` — ensure pilot POSTs `/api/support/diagnostics` (full bundle) or verify `SUPPORT_INGEST_SECRET` matches luccca-web `COMPANY_OS_INGEST_SECRET`. Detail panel shows **Why unknown**. |
+| Deployment/Chain scopes thin | Product must POST topology to Company OS: `POST /api/relay/nexus-snapshot` with Bearer `SUPPORT_INGEST_SECRET`. Body: `{ clientKey, nodes: [{ id, label, kind, deps? }], edges? }`. Kinds: `edge`, `service`, `datastore`, `external`, `chain-deployment`. |
+| Support-only blast radius (no Render yet) | Fleet scope still shows **Company OS** hub + **Help Desk** node when open tickets exist; clients link via edges. Chain groups by `property`. |
+
+**Verify after paste:**
+
+1. `/fleet-nexus` banner moves from PARTIAL toward LIVE (Render services count &gt; 0).
+2. Fleet graph shows Render service nodes + client edges (not isolated gray dots).
+3. Click a client → detail shows last heartbeat, ticket counts, unknown reason if applicable.
+4. After product ingest: Deployment scope shows internal services (Neon, API, etc.) from snapshot.
+
+See `DEPLOY.md` · `docs/CONNECT_PILOT_TO_COMPANY_OS.md`.
 
 ---
 

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import { EventEmitter } from 'events'
 import { db } from '@/lib/db'
+import { ensureRelayFanoutPoller, publishRelayFanout } from '@/lib/relay-pubsub-redis'
 
 export type RelayEventType =
   | 'answer_ready'
@@ -35,6 +36,9 @@ export function subscribeRelay(
   clientKey: string,
   listener: (event: RelayEvent) => void
 ): () => void {
+  ensureRelayFanoutPoller((ev) => {
+    bus.emit(CHANNEL(ev.clientKey), ev)
+  })
   const ch = CHANNEL(clientKey)
   bus.on(ch, listener)
   return () => {
@@ -44,6 +48,7 @@ export function subscribeRelay(
 
 function emitLive(event: RelayEvent): void {
   bus.emit(CHANNEL(event.clientKey), event)
+  void publishRelayFanout(event)
 }
 
 /**
@@ -111,6 +116,11 @@ export async function publishAnswerReady(input: {
   failedStep?: string | null
   /** Per-user isolation — pilot chrome ignores events for other users. */
   userId?: string | null
+  closeReason?: string | null
+  disposition?: string | null
+  fixSha?: string | null
+  etaLabel?: string | null
+  intakeGate?: string | null
 }): Promise<void> {
   await publishRelayEvent(input.clientKey, 'answer_ready', {
     questionId: input.questionId,
@@ -125,6 +135,11 @@ export async function publishAnswerReady(input: {
     panelId: input.panelId ?? null,
     failedStep: input.failedStep ?? null,
     userId: input.userId ?? null,
+    closeReason: input.closeReason ?? null,
+    disposition: input.disposition ?? null,
+    fixSha: input.fixSha ?? null,
+    etaLabel: input.etaLabel ?? null,
+    intakeGate: input.intakeGate ?? null,
   })
   if (input.directive != null && !input.echoSilent) {
     await publishRelayEvent(input.clientKey, 'directive', {

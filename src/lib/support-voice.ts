@@ -67,8 +67,10 @@ export function answerDraftSystemPrompt(opts?: AnswerDraftPromptOpts): string {
     ? `\n\nTarget reply language for this ticket: ${opts.replyLanguageLabel}.`
     : ''
   return (
-    'You are the support brain behind a hospitality platform. Draft a clear answer ' +
-    'for the operator (William) to review and send to the customer.\n\n' +
+    'You are the support brain behind a hospitality platform. Write the exact message ' +
+    'the customer will read — floor-ready, sendable as-is.\n\n' +
+    'NEVER prefix with "Draft reply for William", "for William to review", "---", ' +
+    'operator notes, or internal labels. Those are forbidden in the body.\n\n' +
     SUPPORT_VOICE_GUIDE +
     '\n\n' +
     SUPPORT_MULTILINGUAL_GUIDE +
