@@ -84,8 +84,9 @@ async function dispatchKnightsOnTicketInner(
     questionContext = cq?.context ?? undefined
     questionText = cq?.question
   }
+  const customerMessages = ticket.messages.filter((m) => m.role === 'CUSTOMER')
   const customerText =
-    ticket.messages.find((m) => m.role === 'CUSTOMER')?.body ??
+    customerMessages[customerMessages.length - 1]?.body ??
     questionText ??
     ticket.subject
 

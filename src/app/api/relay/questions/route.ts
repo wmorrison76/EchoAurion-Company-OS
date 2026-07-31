@@ -30,6 +30,7 @@ import {
 } from '@/lib/echo-guardrails'
 import { isEchoAiContext } from '@/lib/echo-ticket-priority'
 import { buildCustomerThreadMeta } from '@/lib/customer-thread-meta'
+import { processRelayFollowUp } from '@/lib/relay-question-followup'
 import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -43,6 +44,8 @@ const HELP_DESK_HISTORY_DAYS = 15
 const schema = z.object({
   clientKey: z.string().min(1).max(200),
   question: z.string().min(1).max(4000),
+  /** Existing thread — HelpTicket id or CustomerQuestion id (pilot thread key). */
+  ticketId: z.string().min(1).max(128).optional(),
   context: z.record(z.unknown()).optional(),
   /** Pilot UI language code (en, es, ar, …) — merged into context.locale for Knights. */
   locale: z.string().min(2).max(16).optional(),
@@ -64,8 +67,15 @@ const schema = z.object({
     .optional(),
 })
 
+interface ThreadFollowUp {
+  body: string
+  createdAt: string
+}
+
 interface QuestionHistoryItem {
   id: string
+  /** HelpTicket id — use for same-thread Reply. */
+  ticketId: string | null
   question: string
   answer: string | null
   status: string
@@ -78,6 +88,8 @@ interface QuestionHistoryItem {
   disposition: string | null
   fixSha: string | null
   etaLabel: string | null
+  /** Customer follow-ups after the first message on this thread. */
+  followUps: ThreadFollowUp[]
   statusBadge: {
     shape: string
     label: string
@@ -160,16 +172,15 @@ export async function GET(req: Request): Promise<Response> {
     const tickets = await db.helpTicket.findMany({
       where: { customerQuestionId: { in: rows.map((r) => r.id) } },
       select: {
+        id: true,
         customerQuestionId: true,
         closeReason: true,
         status: true,
         subject: true,
         needsHumanCoreReview: true,
         messages: {
-          where: { role: { in: ['KNIGHT', 'ADMIN'] } },
-          orderBy: { createdAt: 'desc' },
-          take: 4,
-          select: { body: true },
+          orderBy: { createdAt: 'asc' },
+          select: { role: true, body: true, createdAt: true },
         },
       },
     })
@@ -183,6 +194,17 @@ export async function GET(req: Request): Promise<Response> {
       const replied = Boolean(r.answer && r.status === 'ANSWERED')
       const replyState: QuestionHistoryItem['replyState'] = replied ? 'replied' : 'waiting'
       const ticket = ticketByQuestion.get(r.id)
+      const staffBodies =
+        ticket?.messages
+          .filter((m) => m.role === 'KNIGHT' || m.role === 'ADMIN')
+          .map((m) => m.body)
+          .slice(-4) ?? []
+      const customerMsgs =
+        ticket?.messages.filter((m) => m.role === 'CUSTOMER') ?? []
+      const followUps: ThreadFollowUp[] = customerMsgs.slice(1).map((m) => ({
+        body: redactPilotText(m.body),
+        createdAt: m.createdAt.toISOString(),
+      }))
       const meta = buildCustomerThreadMeta({
         intakeGate: r.intakeGate ?? null,
         questionStatus: r.status,
@@ -192,11 +214,14 @@ export async function GET(req: Request): Promise<Response> {
         subject: ticket?.subject ?? r.question,
         needsHumanCoreReview: ticket?.needsHumanCoreReview ?? null,
         ticketStatus: ticket?.status ?? null,
-        messageBodies: ticket?.messages.map((m) => m.body) ?? [],
+        messageBodies: staffBodies,
       })
       return {
         id: r.id,
-        question: redactPilotText(r.question),
+        ticketId: ticket?.id ?? null,
+        question: redactPilotText(
+          customerMsgs[0]?.body ?? r.question
+        ),
         answer: r.answer ? redactPilotText(r.answer) : null,
         status: r.status,
         intakeGate: r.intakeGate ?? null,
@@ -207,6 +232,7 @@ export async function GET(req: Request): Promise<Response> {
         disposition: meta.disposition,
         fixSha: meta.fixSha,
         etaLabel: meta.etaLabel,
+        followUps,
         statusBadge: meta.statusBadge,
       }
     })
@@ -339,7 +365,8 @@ export async function POST(req: Request): Promise<Response> {
       )
     }
 
-    const { question, context, locale, attachments: rawAttachments } = parsed.data
+    const { question, context, locale, attachments: rawAttachments, ticketId: followUpRef } =
+      parsed.data
     let parsedAtt: ReturnType<typeof parseIncomingAttachments>
     try {
       parsedAtt = parseIncomingAttachments(rawAttachments)
@@ -383,6 +410,102 @@ export async function POST(req: Request): Promise<Response> {
       typeof mergedContext.uiLocale === 'string'
     ) {
       mergedContext.locale = mergedContext.uiLocale
+    }
+
+    const relayUserId = parseRelayUserId(
+      typeof mergedContext.userId === 'string' ? mergedContext.userId : null
+    )
+
+    /** Same-thread follow-up — append to existing ticket, do not spawn a new one. */
+    if (followUpRef?.trim()) {
+      if (!relayUserId) {
+        return Response.json(
+          {
+            success: false,
+            error: 'userId required for thread reply',
+            code: 'USER_REQUIRED',
+          },
+          { status: 400 }
+        )
+      }
+      try {
+        const followUp = await processRelayFollowUp({
+          ticketRef: followUpRef.trim(),
+          clientKey: key.clientKey,
+          userId: relayUserId,
+          body: question,
+          context: mergedContext,
+          intakeGate: intakeGate ?? null,
+          attachments:
+            parsedAtt.ok && parsedAtt.prepared.length > 0
+              ? parsedAtt.prepared
+              : undefined,
+        })
+
+        const gateMetaFollow = intakeGate ? INTAKE_GATE_META[intakeGate] : null
+        const etaLabelFollow = supportEtaLabel({
+          intakeGate: intakeGate ?? null,
+          questionStatus: 'NEW',
+          replyState: 'waiting',
+        })
+
+        return Response.json(
+          {
+            success: true,
+            data: {
+              id: followUp.questionId,
+              ticketId: followUp.ticketId,
+              followUp: true,
+              reopened: followUp.reopened,
+              autoKnights: followUp.autoKnights,
+              knightsQueued: followUp.knightsQueued,
+              intakeGate,
+              routeHint: gateMetaFollow?.routeHint ?? null,
+              waitingHint: '✓ Sent — waiting for Aurion',
+              attachmentCount: parsedAtt.ok ? parsedAtt.prepared.length : 0,
+              etaLabel: etaLabelFollow,
+            },
+          } satisfies APIResponse<{
+            id: string
+            ticketId: string
+            followUp: boolean
+            reopened: boolean
+            autoKnights: boolean
+            knightsQueued: boolean
+            intakeGate: string | null
+            routeHint: string | null
+            waitingHint: string
+            attachmentCount: number
+            etaLabel: string | null
+          }>,
+          { status: 200 }
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Follow-up failed'
+        if (msg === 'TICKET_NOT_FOUND') {
+          return Response.json(
+            { success: false, error: 'Thread not found', code: 'TICKET_NOT_FOUND' },
+            { status: 404 }
+          )
+        }
+        if (msg === 'TICKET_FORBIDDEN') {
+          return Response.json(
+            { success: false, error: 'Thread not found', code: 'TICKET_FORBIDDEN' },
+            { status: 403 }
+          )
+        }
+        if (msg === 'TICKET_NOT_REPLYABLE') {
+          return Response.json(
+            {
+              success: false,
+              error: 'This thread cannot accept replies',
+              code: 'TICKET_NOT_REPLYABLE',
+            },
+            { status: 400 }
+          )
+        }
+        throw err
+      }
     }
 
     const client = await upsertSupportClientByKey(key.clientKey)

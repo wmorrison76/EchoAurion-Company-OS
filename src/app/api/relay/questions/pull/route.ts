@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic'
 
 interface DeliverableAnswer {
   id: string
+  ticketId: string | null
   question: string
   answer: string | null
   directive: unknown
@@ -22,6 +23,7 @@ interface DeliverableAnswer {
   disposition: string | null
   fixSha: string | null
   etaLabel: string | null
+  followUps: Array<{ body: string; createdAt: string }>
   statusBadge: {
     shape: string
     label: string
@@ -78,6 +80,7 @@ export async function GET(req: Request): Promise<Response> {
     const tickets = await db.helpTicket.findMany({
       where: { customerQuestionId: { in: pending.map((p) => p.id) } },
       select: {
+        id: true,
         customerQuestionId: true,
         closeReason: true,
         status: true,
@@ -85,10 +88,8 @@ export async function GET(req: Request): Promise<Response> {
         needsHumanCoreReview: true,
         intakeGate: true,
         messages: {
-          where: { role: { in: ['KNIGHT', 'ADMIN'] } },
-          orderBy: { createdAt: 'desc' },
-          take: 4,
-          select: { body: true },
+          orderBy: { createdAt: 'asc' },
+          select: { role: true, body: true, createdAt: true },
         },
       },
     })
@@ -104,6 +105,17 @@ export async function GET(req: Request): Promise<Response> {
           ? (p.context as Record<string, unknown>)
           : null
       const ticket = ticketByQuestion.get(p.id)
+      const staffBodies =
+        ticket?.messages
+          .filter((m) => m.role === 'KNIGHT' || m.role === 'ADMIN')
+          .map((m) => m.body)
+          .slice(-4) ?? []
+      const customerMsgs =
+        ticket?.messages.filter((m) => m.role === 'CUSTOMER') ?? []
+      const followUps = customerMsgs.slice(1).map((m) => ({
+        body: m.body,
+        createdAt: m.createdAt.toISOString(),
+      }))
       const meta = buildCustomerThreadMeta({
         intakeGate: p.intakeGate ?? ticket?.intakeGate ?? null,
         questionStatus: p.status,
@@ -113,11 +125,12 @@ export async function GET(req: Request): Promise<Response> {
         subject: ticket?.subject ?? p.question,
         needsHumanCoreReview: ticket?.needsHumanCoreReview ?? null,
         ticketStatus: ticket?.status ?? null,
-        messageBodies: ticket?.messages.map((m) => m.body) ?? [],
+        messageBodies: staffBodies,
       })
       return {
         id: p.id,
-        question: p.question,
+        ticketId: ticket?.id ?? null,
+        question: customerMsgs[0]?.body ?? p.question,
         answer: p.answer,
         directive: p.directive,
         userId: typeof ctx?.userId === 'string' ? ctx.userId : userId,
@@ -128,6 +141,7 @@ export async function GET(req: Request): Promise<Response> {
         disposition: meta.disposition,
         fixSha: meta.fixSha,
         etaLabel: meta.etaLabel,
+        followUps,
         statusBadge: meta.statusBadge,
       }
     })
