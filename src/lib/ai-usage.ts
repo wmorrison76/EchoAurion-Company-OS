@@ -36,6 +36,7 @@ const PRICES: Array<{ prefix: string; inPerM: number; outPerM: number }> = [
   { prefix: 'claude-haiku', inPerM: 0.8, outPerM: 4 },
   { prefix: 'claude-3-5-haiku', inPerM: 0.8, outPerM: 4 },
   { prefix: 'gemini-1.5-flash', inPerM: 0.15, outPerM: 0.6 },
+  { prefix: 'gemini-2.5-flash', inPerM: 0.3, outPerM: 2.5 },
   { prefix: 'gemini-2.0-flash', inPerM: 0.1, outPerM: 0.4 },
   { prefix: 'gemini', inPerM: 1.25, outPerM: 5 },
   { prefix: 'sonar', inPerM: 1, outPerM: 1 },

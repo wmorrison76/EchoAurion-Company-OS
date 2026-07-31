@@ -331,7 +331,7 @@ async function dispatchKnightsOnTicketInner(
         return {
           seat,
           body: null as string | null,
-          status: result.status,
+          status: result.status === 'UNAVAILABLE' ? 'UNAVAILABLE' : result.status,
           error: result.error,
         }
       })

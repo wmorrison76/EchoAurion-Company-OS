@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { dispatch } from './connectors'
-import { ROSTER, MAESTRO, KNIGHT_SEATS } from './knights'
+import { ROSTER, MAESTRO, KNIGHT_SEATS, resolveKnightConfig } from './knights'
 import { buildKnightContext, getCompanySnapshot, type CompanySnapshot } from './context'
 import type { BoardRoomSessionDTO, KnightResponseDTO, Seat } from '@/types/board-room'
 
@@ -37,7 +37,7 @@ async function runKnight(
   problem: string,
   snap: CompanySnapshot
 ): Promise<void> {
-  const config = ROSTER[seat]
+  const config = resolveKnightConfig(ROSTER[seat])
   const result = await dispatch(
     config,
     {
@@ -127,7 +127,7 @@ export async function convene(
       responses: {
         create: KNIGHT_SEATS.map((seat) => ({
           seat,
-          model: ROSTER[seat].model,
+          model: resolveKnightConfig(ROSTER[seat]).model,
           status: 'PENDING',
         })),
       },

@@ -152,7 +152,7 @@ After deploy, set `SUPPORT_INGEST_SECRET` on Render before any pilot connects.
 
 **Scout note:** If you set `GEMINI_API_KEY` on Render but not `GOOGLE_AI_API_KEY`,
 that is fine after this deploy — both names are accepted. Prefer
-`GOOGLE_AI_API_KEY`. Scout model is `gemini-2.0-flash` (Generative Language API).
+`GOOGLE_AI_API_KEY`. Scout model defaults to `gemini-2.5-flash` (override with `SCOUT_MODEL`).
 Restart the web service after changing env vars, then hard-refresh Board Room.
 ### Env vars (live panels)
 

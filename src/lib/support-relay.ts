@@ -1,5 +1,5 @@
 import { dispatch } from '@/lib/board-room/connectors'
-import { ROSTER, knightConfigured } from '@/lib/board-room/knights'
+import { ROSTER, knightConfigured, resolveKnightConfig } from '@/lib/board-room/knights'
 import { answerDraftSystemPrompt, planDraftSystemPrompt } from '@/lib/support-voice'
 import type { Seat } from '@/types/board-room'
 
@@ -29,10 +29,11 @@ export async function draftAnswer(
   context?: unknown,
   opts?: { replyLanguageLabel?: string | null }
 ): Promise<DraftResult> {
-  const seat = pickDraftSeat()
-  if (!seat) return { seat: null, answer: null, error: 'No AI seat is configured' }
+  const seats = DRAFT_PREFERENCE.filter((s) => knightConfigured(ROSTER[s]))
+  if (seats.length === 0) {
+    return { seat: null, answer: null, error: 'No AI seat is configured' }
+  }
 
-  const config = ROSTER[seat]
   // Echo AI failure tickets carry systemCheck + steps — allow a larger slice.
   const ctxLimit =
     context &&
@@ -45,19 +46,23 @@ export async function draftAnswer(
   const ctx = context
     ? `\n\nDeployment context:\n${JSON.stringify(context).slice(0, ctxLimit)}`
     : ''
-  const result = await dispatch(
-    config,
-    {
-      system: answerDraftSystemPrompt({ replyLanguageLabel: opts?.replyLanguageLabel }),
-      user: `Customer question:\n${question}${ctx}`,
-    },
-    { feature: 'support_relay' }
-  )
+  const system = answerDraftSystemPrompt({ replyLanguageLabel: opts?.replyLanguageLabel })
+  const user = `Customer question:\n${question}${ctx}`
 
-  if (result.status === 'RESPONDED' && result.content) {
-    return { seat, answer: result.content, error: null }
+  let lastError: string | null = null
+  for (const seat of seats) {
+    const result = await dispatch(
+      resolveKnightConfig(ROSTER[seat]),
+      { system, user },
+      { feature: 'support_relay' }
+    )
+    if (result.status === 'RESPONDED' && result.content) {
+      return { seat, answer: result.content, error: null }
+    }
+    lastError = result.error ?? result.status
   }
-  return { seat, answer: null, error: result.error ?? result.status }
+
+  return { seat: seats[0], answer: null, error: lastError }
 }
 
 /**
@@ -69,21 +74,26 @@ export async function draftPlan(
   detail: string,
   kind: 'FIX' | 'ADDON'
 ): Promise<DraftResult> {
-  const seat = pickDraftSeat()
-  if (!seat) return { seat: null, answer: null, error: 'No AI seat is configured' }
-
-  const config = ROSTER[seat]
-  const result = await dispatch(
-    config,
-    {
-      system: planDraftSystemPrompt(),
-      user: `Request type: ${kind}\nTitle: ${title}\nDetail:\n${detail}`,
-    },
-    { feature: 'work_plan' }
-  )
-
-  if (result.status === 'RESPONDED' && result.content) {
-    return { seat, answer: result.content, error: null }
+  const seats = DRAFT_PREFERENCE.filter((s) => knightConfigured(ROSTER[s]))
+  if (seats.length === 0) {
+    return { seat: null, answer: null, error: 'No AI seat is configured' }
   }
-  return { seat, answer: null, error: result.error ?? result.status }
+
+  const system = planDraftSystemPrompt()
+  const user = `Request type: ${kind}\nTitle: ${title}\nDetail:\n${detail}`
+
+  let lastError: string | null = null
+  for (const seat of seats) {
+    const result = await dispatch(
+      resolveKnightConfig(ROSTER[seat]),
+      { system, user },
+      { feature: 'work_plan' }
+    )
+    if (result.status === 'RESPONDED' && result.content) {
+      return { seat, answer: result.content, error: null }
+    }
+    lastError = result.error ?? result.status
+  }
+
+  return { seat: seats[0], answer: null, error: lastError }
 }

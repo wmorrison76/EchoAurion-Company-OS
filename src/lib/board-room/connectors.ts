@@ -1,5 +1,5 @@
 import type { KnightConfig, KnightProvider } from '@/types/board-room'
-import { googleAiApiKey } from './knights'
+import { googleAiApiKey, resolveKnightConfig } from './knights'
 import { recordAiUsage, aiCallAllowed, type AiAttribution, type AiUsage } from '@/lib/ai-usage'
 
 const KNIGHT_TIMEOUT_MS = 25_000 // 25s per knight — leave headroom under Render maxDuration
@@ -207,12 +207,17 @@ export interface DispatchResult {
  * Records real token usage per provider/model/tenant (ai-usage.ts) and honors
  * the owner AI budget hard stop when enabled.
  */
+function isModelUnavailableError(message: string): boolean {
+  return /404|no longer available|not found|model.*not.*supported/i.test(message)
+}
+
 export async function dispatch(
   config: KnightConfig,
   prompt: Prompt,
   attribution?: AiAttribution
 ): Promise<DispatchResult> {
   const started = Date.now()
+  const resolved = resolveKnightConfig(config)
 
   const budget = await aiCallAllowed()
   if (!budget.ok) {
@@ -226,14 +231,14 @@ export async function dispatch(
 
   try {
     const reply = await route(
-      config.provider,
-      config.model,
+      resolved.provider,
+      resolved.model,
       prompt,
       AbortSignal.timeout(KNIGHT_TIMEOUT_MS)
     )
     void recordAiUsage({
-      provider: config.provider,
-      model: config.model,
+      provider: resolved.provider,
+      model: resolved.model,
       usage: reply.usage ?? estimateUsage(prompt, reply.content),
       attribution,
     })
@@ -251,10 +256,14 @@ export async function dispatch(
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       return { status: 'TIMEOUT', content: null, error: 'Knight timed out (25s)', latencyMs }
     }
+    const message = error instanceof Error ? error.message : 'Knight call failed'
+    if (isModelUnavailableError(message)) {
+      return { status: 'UNAVAILABLE', content: null, error: message, latencyMs }
+    }
     return {
       status: 'ERROR',
       content: null,
-      error: error instanceof Error ? error.message : 'Knight call failed',
+      error: message,
       latencyMs,
     }
   }
