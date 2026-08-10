@@ -47,7 +47,11 @@ export async function PATCH(
         directive: updated.directive,
       })
     } else {
-      await db.customerQuestion.update({ where: { id }, data: { status: 'DISMISSED' } })
+      // Clear standbyApproved so dismissed items leave the Pilot Links review queue.
+      await db.customerQuestion.update({
+        where: { id },
+        data: { status: 'DISMISSED', standbyApproved: false },
+      })
       await audit('william_morrison', 'support.question.dismiss', id)
     }
     return Response.json({ success: true, data: { id } } satisfies APIResponse<{ id: string }>)

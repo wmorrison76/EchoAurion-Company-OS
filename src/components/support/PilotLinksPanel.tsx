@@ -41,7 +41,7 @@ export function PilotLinksPanel() {
     jsonFetcher<StandbyConfig>,
     { refreshInterval: 60_000 }
   )
-  const { data: queue } = useSWR(
+  const { data: queue, mutate: mutateQueue } = useSWR(
     '/api/support/standby/queue',
     jsonFetcher<StandbyReviewItem[]>,
     { refreshInterval: 60_000 }
@@ -62,6 +62,26 @@ export function PilotLinksPanel() {
       setBusy(false)
     }
   }
+
+  async function ackReview(id?: string) {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/support/standby/queue', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(id ? { action: 'ack', id } : { action: 'ack_all' }),
+      })
+      const body = (await res.json()) as APIResponse<{ cleared: number }>
+      if (!body.success) throw new Error(body.error)
+      await Promise.all([mutateQueue(), mutate()])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const offlineDeliveryRisk =
+    (data?.onlineCount ?? 0) === 0 ||
+    (data?.clients ?? []).some((c) => c.pendingOutbox > 0 && !c.streamConnected)
 
   return (
     <div className="flex flex-col gap-4">
@@ -149,10 +169,28 @@ export function PilotLinksPanel() {
         >
           <KPIValue
             value={isLoading ? '…' : String(data?.standbyReviewCount ?? 0)}
-            sub="auto-answers (7d)"
+            sub="awaiting Ack (7d)"
           />
         </KPICard>
       </div>
+
+      {offlineDeliveryRisk ? (
+        <div
+          role="status"
+          className="rounded-xl border border-[#f59e0b] bg-[#1a1a26] px-4 py-3"
+          aria-label="Pilot delivery risk — stream offline or outbox pending"
+        >
+          <p className="text-xs font-medium uppercase tracking-widest text-[#D4AF37]">
+            Delivery risk — pilot offline / outbox pending
+          </p>
+          <p className="mt-1 text-sm text-[#a0a0b8]">
+            Autopilot can mark tickets answered in Company OS, but{' '}
+            <span className="text-white">answer_ready / echo_repair_ready</span> only reach
+            the pilot when SSE reconnects and drains the outbox. Offline + outbox backlog
+            looks like “not fixed” from the property.
+          </p>
+        </div>
+      ) : null}
 
       {(queue?.length ?? 0) > 0 ? (
         <div
@@ -160,16 +198,48 @@ export function PilotLinksPanel() {
           className="rounded-xl border border-[#f59e0b] bg-[#1a1a26] px-4 py-3"
           aria-label="Standby approved — review queue"
         >
-          <p className="text-xs font-medium uppercase tracking-widest text-[#D4AF37]">
-            Standby approved — review queue
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-widest text-[#D4AF37]">
+                Standby approved — review queue
+              </p>
+              <p className="mt-1 text-xs text-[#a0a0b8]">
+                Autopilot already auto-answered these (chat + echo_repair_ready) — this is an
+                audit list, not a failure queue. Autopilot never merges or deploys product
+                code. Ack after you review; UI “fixed” only when the SHA is on laughing-noether.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              aria-label="Acknowledge all standby review items"
+              onClick={() => void ackReview()}
+              className="shrink-0 rounded-lg border border-[#D4AF37] px-3 py-1.5 text-xs text-[#D4AF37] disabled:opacity-40"
+            >
+              Ack all (7d)
+            </button>
+          </div>
           <ul className="mt-2 space-y-2">
             {queue!.slice(0, 8).map((item) => (
-              <li key={item.id} className="text-sm text-[#a0a0b8]">
-                <span className="font-mono text-xs text-[#5a5a78]">{item.clientKey}</span>
-                <span className="mx-2 text-[#5a5a78]">·</span>
-                <span className="text-white">{item.question.slice(0, 80)}</span>
-                <span className="ml-2 text-xs text-[#5a5a78]">{ago(item.answeredAt)}</span>
+              <li
+                key={item.id}
+                className="flex flex-wrap items-start justify-between gap-2 text-sm text-[#a0a0b8]"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono text-xs text-[#5a5a78]">{item.clientKey}</span>
+                  <span className="mx-2 text-[#5a5a78]">·</span>
+                  <span className="text-white">{item.question.slice(0, 80)}</span>
+                  <span className="ml-2 text-xs text-[#5a5a78]">{ago(item.answeredAt)}</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Acknowledge review item ${item.id}`}
+                  onClick={() => void ackReview(item.id)}
+                  className="shrink-0 rounded border border-[#2a2a3f] px-2 py-1 text-xs text-[#a0a0b8] hover:bg-[#22223a] disabled:opacity-40"
+                >
+                  Ack
+                </button>
               </li>
             ))}
           </ul>

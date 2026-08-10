@@ -147,6 +147,44 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
             : ''}
         </p>
 
+        {data.pendingOutbox > 0 && data.streamCount === 0 ? (
+          <div
+            role="status"
+            aria-label="Delivery risk — outbox pending, no SSE stream"
+            className="rounded-lg border border-[#f59e0b] bg-[#0a0a0f] px-2.5 py-2"
+          >
+            <p className="text-[11px] font-medium text-[#D4AF37]">
+              ⚠ Delivery risk — outbox {data.pendingOutbox} · stream idle
+            </p>
+            <p className="mt-0.5 text-[10px] text-[#a0a0b8]">
+              Autopilot can mark tickets answered here, but the pilot only receives
+              replies when heartbeat + SSE reconnect and drain the outbox. Open{' '}
+              <a href="/support/pilot-links" className="text-[#D4AF37] underline">
+                Pilot links
+              </a>{' '}
+              → Ack review queue after audit.
+            </p>
+          </div>
+        ) : null}
+
+        {(data.standbyMode === 'autopilot' || data.standbyMode === 'standby') &&
+        data.standbyReviewCount > 0 ? (
+          <div
+            role="note"
+            aria-label="Autopilot does not merge or deploy"
+            className="rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] px-2.5 py-2"
+          >
+            <p className="text-[11px] text-[#a0a0b8]">
+              <span className="text-white">Autopilot ≠ code fix.</span> Mode{' '}
+              <span className="font-mono text-[#D4AF37]">{data.standbyMode}</span> auto-TEXT
+              only — never merge/deploy. Review count ({data.standbyReviewCount}) is an
+              audit backlog of successes, not open bugs. Badge{' '}
+              <span className="text-white">▲ Chat replied · Code not deployed</span> means
+              ship SHA on laughing-noether.
+            </p>
+          </div>
+        ) : null}
+
         <div className="mt-1 flex flex-col gap-1.5 border-t border-[#2a2a3f] pt-2">
           <BoolRow
             ok={data.supportIngestSecretConfigured}

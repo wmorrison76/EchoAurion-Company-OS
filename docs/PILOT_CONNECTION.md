@@ -160,7 +160,18 @@ See also `docs/RELAY_CONTRACTS.md`.
 ## 5. Knights standby (when William unavailable)
 
 Operator UI: **Support → Pilot links** or Help Desk standby toggle.  
-Modes: `off` | `draft_only` | `auto_answer_low_risk`.
+Modes: `off` | `draft_only` | `auto_answer_low_risk` | elite dial `assist` | `standby` | `autopilot`.
+
+### What Autopilot / standby does vs does NOT do
+
+| Does | Does NOT |
+|---|---|
+| Auto-answer low-risk TEXT after Knights + safeguards | Merge PRs or deploy `luccca-web` |
+| Push `answer_ready` (+ `echo_repair_ready` for Echo) into relay outbox | Soft-reload the pilot (default OFF) |
+| Stamp tickets RESOLVED with disposition (`reply_sent_code_pending` / how-to) | Clear the product bug until SHA is on `laughing-noether` |
+| Leave items in **Standby approved — review queue** for William audit | Auto-dismiss that queue (William must **Ack** or wait 7d window) |
+
+If the pilot is **offline** / **SSE disconnected** / **outbox pending**, Autopilot may still “succeed” in Company OS while the property never receives the reply — reconnect the pilot stream to drain outbox.
 
 ### Accuracy safeguards (enforced in `src/lib/standby.ts`)
 
@@ -168,7 +179,7 @@ Modes: `off` | `draft_only` | `auto_answer_low_risk`.
 2. **≥2 knight seats RESPONDED + Maestro synthesis** — Architect/code-change language → force AWAITING_HUMAN  
 3. **Policy gate** — `QUOTE_REQUIRED` or complimentary-fix-needing-code → never auto-approve  
 4. **Audit** — every auto-action is `actor: computer_agent` with full draft snapshot  
-5. **UI** — “Standby approved — review queue” for William  
+5. **UI** — “Standby approved — review queue” for William (Ack / Ack all clears `standbyApproved`)  
 6. **Rate limit** — `STANDBY_MAX_AUTO_PER_HOUR` (DB or env)
 
 Work requests: Knights may **draft + suggest quote** in standby; only William **Execute**.

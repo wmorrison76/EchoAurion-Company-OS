@@ -200,6 +200,7 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
       db.customerQuestion.count({
         where: {
           standbyApproved: true,
+          status: { not: 'DISMISSED' },
           answeredAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) },
         },
       }),

@@ -45,7 +45,11 @@ export async function GET(): Promise<Response> {
       db.supportClient.findMany({ orderBy: { updatedAt: 'desc' } }),
       getStandbyConfig(),
       db.customerQuestion.count({
-        where: { standbyApproved: true, answeredAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) } },
+        where: {
+          standbyApproved: true,
+          status: { not: 'DISMISSED' },
+          answeredAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) },
+        },
       }),
       db.relayOutbox.groupBy({
         by: ['clientKey'],
