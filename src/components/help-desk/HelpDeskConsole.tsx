@@ -1334,7 +1334,7 @@ export function HelpDeskConsole() {
                   >
                     <option value="resolved_howto">Resolved · how-to</option>
                     <option value="resolved_config">Resolved · config</option>
-                    <option value="resolved_fix">Resolved · fix (on deploy branch)</option>
+                    <option value="resolved_fix">Resolved · product fix (live SHA required)</option>
                     <option value="reply_sent_code_pending">
                       Reply sent · code not deployed
                     </option>

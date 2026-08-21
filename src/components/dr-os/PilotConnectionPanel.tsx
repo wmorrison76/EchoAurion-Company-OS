@@ -131,6 +131,15 @@ export function PilotConnectionPanel({ data }: { data?: PilotConnectionHealth })
           Relay (heartbeat) and Chef&apos;s Brain are separate — unset Brain does not mean
           pilot offline.
         </p>
+        <p className="font-mono text-[10px] text-[#5a5a78]" role="note">
+          COS {data.companyOsCommit ?? 'no SHA yet'}
+          {data.companyOsBranch ? ` (${data.companyOsBranch})` : ''}
+          {' · '}
+          product {data.productCommit ?? 'unknown'}
+          {data.productBranch ? ` (${data.productBranch})` : ''}
+          {' · '}
+          UI “fixed” only when product SHA contains the fix commit
+        </p>
         <p className="font-mono text-3xl font-semibold tabular-nums text-white">
           {data.onlineCount}
           <span className="text-lg text-[#5a5a78]"> / {data.totalClients}</span>

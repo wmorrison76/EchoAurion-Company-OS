@@ -17,8 +17,8 @@ function authorized(req: Request): boolean {
 
 /**
  * POST /api/ops/desk-moles-run
- * Run three single-duty desk moles (workflow / UX / i18n) and optionally
- * file a Night Cleaner Help Desk TASK ticket for William to decide.
+ * Run desk moles (workflow / UX / i18n) plus the src/ stub-file scanner
+ * and optionally file a Night Cleaner Help Desk SYSTEM TECH ticket.
  *
  * Auth: session (Dr. OS) OR Bearer CRON_SECRET
  * Query: ?dryRun=1 — return report only, no ticket

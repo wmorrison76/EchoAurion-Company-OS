@@ -186,12 +186,15 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
     const ONLINE_MS = 5 * 60 * 1000
     const STREAM_MS = 2 * 60 * 1000
     const STALE_MS = 15 * 60 * 1000
+    const { getRuntimeIdentity } = await import('@/lib/runtime-identity')
+    const { probeProductHealth } = await import('@/lib/product-health')
     const [
       clients,
       standby,
       reviewCount,
       pendingOutbox,
       lastQuestion,
+      productHealth,
     ] = await Promise.all([
       db.supportClient.findMany({
         select: { lastHeartbeatAt: true, lastStreamAt: true },
@@ -209,7 +212,9 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
       }),
+      probeProductHealth(),
     ])
+    const cosId = getRuntimeIdentity()
 
     const heartbeats = clients
       .map((c) => c.lastHeartbeatAt?.getTime())
@@ -306,6 +311,10 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
         : null,
       pendingOutbox,
       echoPanelWatch,
+      companyOsCommit: cosId.commit,
+      companyOsBranch: cosId.branch,
+      productCommit: productHealth.commit,
+      productBranch: productHealth.branch,
     }
   } catch (error) {
     const chefsProbe = await probeChefsBrain().catch(() => ({
@@ -357,6 +366,10 @@ async function getPilotConnection(): Promise<PilotConnectionHealth> {
           : 'Echo panel watch off',
       },
       error: error instanceof Error ? error.message : 'Pilot connection query failed',
+      companyOsCommit: null,
+      companyOsBranch: null,
+      productCommit: null,
+      productBranch: null,
     }
   }
 }

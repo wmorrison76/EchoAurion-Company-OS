@@ -112,6 +112,11 @@ export interface PilotConnectionHealth {
     label: string
     enabled: boolean
   }
+  /** Company OS /api/health SHA — treat Autopilot as chat until product SHA matches. */
+  companyOsCommit?: string | null
+  companyOsBranch?: string | null
+  productCommit?: string | null
+  productBranch?: string | null
   error?: string
 }
 

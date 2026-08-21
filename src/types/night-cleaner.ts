@@ -115,7 +115,7 @@ export interface NightCleanerReport {
   tasks: NightCleanerTask[]
   /**
    * Plain-English system improvements for day shift / William —
-   * not just breaks: slow panels, “Coming soon” buttons, unfinished stubs.
+   * not just breaks: slow panels, unfinished copy, dead-end scaffolds. // stub-scan-ignore
    * Report is a task list — never auto-remodel overnight.
    */
   systemImprovements?: string[]

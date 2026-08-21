@@ -21,6 +21,11 @@ import {
 } from '@/types/night-cleaner'
 import { PILOT_UI_LOCALES } from '@/lib/help-desk-locale'
 import { navItems } from '@/lib/nav'
+import {
+  scanCompanyOsSrc,
+  stubScanSummaryLabel,
+  type StubScanResult,
+} from '@/lib/stub-scanner'
 
 type MoleFinding = {
   category: NightCleanerCategoryId
@@ -194,32 +199,112 @@ export function runUxConsistencyMole(): MoleFinding[] {
     )
   )
 
-  out.push(
-    finding(
-      'stubs_placeholders',
-      'warn',
-      'Twilio IVR / SMS / break-glass / Railway poll are scaffolds — not UI Coming Soon',
-      {
-        detail:
-          'No greyed Coming Soon pages found. Remaining stubs are API/env-gated. Document on Trust + Deploy checklists.',
-        ref: 'support-ivr|support-sms|break-glass|railway',
-        priorityHint: 'HIGH',
-      }
-    )
-  )
+  return out
+}
 
-  out.push(
-    finding(
-      'stubs_placeholders',
-      'ok',
-      'No “Coming Soon” strings in Company OS UI routes',
-      {
-        detail: 'Placeholder hunt: form placeholders only. Absolute rule holds for pages.',
-        ref: 'src/app/**/page.tsx',
-        priorityHint: 'LOW',
-      }
+/** UX mole file-scan slice — real src/ walk, never a hardcoded clean bill. */
+export function runStubFileScanMole(scan?: StubScanResult): MoleFinding[] {
+  const result = scan ?? scanCompanyOsSrc()
+  const out: MoleFinding[] = []
+
+  if (result.skipped) {
+    out.push(
+      finding('stubs_placeholders', 'unknown', stubScanSummaryLabel(result), {
+        detail: result.skipReason,
+        ref: 'src/',
+        priorityHint: 'HIGH',
+      })
     )
+    return out
+  }
+
+  const comingSoon = result.hits.filter((h) => h.rule === 'coming_soon')
+  if (comingSoon.length === 0) {
+    out.push(
+      finding(
+        'stubs_placeholders',
+        'ok',
+        `File scan: 0 Coming Soon hits in ${result.filesScanned} src/ files`,
+        {
+          detail: 'Walked src/ — not a hardcoded success. Form placeholder= attributes ignored.',
+          ref: 'src/',
+          priorityHint: 'LOW',
+        }
+      )
+    )
+  } else {
+    out.push(
+      finding(
+        'stubs_placeholders',
+        'error',
+        `File scan: ${comingSoon.length} Coming Soon hit(s)`,
+        {
+          detail: comingSoon
+            .slice(0, 8)
+            .map((h) => `${h.path}:${h.line}`)
+            .join(', '),
+          ref: comingSoon[0]?.path,
+          priorityHint: 'HIGH',
+        }
+      )
+    )
+  }
+
+  const todoClaude = result.hits.filter((h) => h.rule === 'todo_claude')
+  if (todoClaude.length > 0) {
+    out.push(
+      finding(
+        'stubs_placeholders',
+        'warn',
+        `File scan: ${todoClaude.length} TODO(claude) path(s)`,
+        {
+          detail: todoClaude.map((h) => `${h.path}:${h.line}`).join(', '),
+          ref: todoClaude[0]?.path,
+          priorityHint: 'NORMAL',
+        }
+      )
+    )
+  }
+
+  const scaffolds = result.hits.filter((h) => h.rule === 'known_scaffold')
+  if (scaffolds.length > 0) {
+    out.push(
+      finding(
+        'underbuilt_pages',
+        'warn',
+        `Known scaffolds: ${scaffolds.length} path(s) — IVR / SMS / Railway / Gmail / AurionIndex`,
+        {
+          detail: scaffolds.map((h) => h.path).join(', '),
+          ref: scaffolds.map((h) => h.path).join('|'),
+          priorityHint: 'HIGH',
+        }
+      )
+    )
+  }
+
+  const other = result.hits.filter(
+    (h) =>
+      h.rule !== 'coming_soon' &&
+      h.rule !== 'todo_claude' &&
+      h.rule !== 'known_scaffold'
   )
+  if (other.length > 0) {
+    out.push(
+      finding(
+        'stubs_placeholders',
+        'warn',
+        `File scan: ${other.length} other dead-end hit(s) (stub / not implemented / not deployed)`,
+        {
+          detail: other
+            .slice(0, 12)
+            .map((h) => `${h.path}:${h.line} · ${h.rule}`)
+            .join(', '),
+          ref: other[0]?.path,
+          priorityHint: 'NORMAL',
+        }
+      )
+    )
+  }
 
   return out
 }
@@ -346,7 +431,16 @@ export function buildDeskMolesReport(opts?: {
   const workflow = runWorkflowMole()
   const ux = runUxConsistencyMole()
   const i18n = runI18nMole()
-  const all = [...workflow, ...ux, ...i18n]
+  const scan = scanCompanyOsSrc()
+  const stubs = runStubFileScanMole(scan)
+  const pathHits: MoleFinding[] = scan.hits.slice(0, 40).map((h) =>
+    finding(h.category, h.status, `${h.path}:${h.line} · ${h.rule}`, {
+      detail: h.snippet,
+      ref: h.path,
+      priorityHint: h.status === 'error' ? 'HIGH' : 'NORMAL',
+    })
+  )
+  const all = [...workflow, ...ux, ...i18n, ...stubs, ...pathHits]
 
   const categories = [
     toCategory('workflow_clicks', 'Workflow mole · clicks & underbuilt pages', [
@@ -361,6 +455,10 @@ export function buildDeskMolesReport(opts?: {
     ),
     toCategory('ux_consistency', 'UX consistency mole', ux),
     toCategory('i18n', 'i18n language mole', i18n),
+    toCategory('stubs_placeholders', 'Stub / dead-end file scan (src/)', [
+      ...stubs,
+      ...pathHits,
+    ]),
   ]
 
   const tasks = tasksFromFindings(all)
@@ -397,6 +495,7 @@ export function buildDeskMolesReport(opts?: {
       'Keep Approve + Dry-run in sticky Help Desk action dock (done — guard in CI/mole).',
       'Add Help Desk reply-locale chip for forced language override.',
       'Wire AurionIndex live metrics or fold into Dr. OS single card.',
+      `File scan: ${scan.hits.length} dead-end hit(s) across ${scan.filesScanned} src/ files — paths listed in stubs_placeholders.`,
     ],
     expandIdeas: [
       'CRM contact drawer on Kanban for 390px — avoid full page hop.',

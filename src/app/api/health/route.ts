@@ -2,6 +2,7 @@
 // Reports process liveness always; DB reachability when DATABASE_URL is set.
 // emailConfigured is a boolean only — never exposes keys or EMAIL_FROM.
 // redisFanout is informational — Upstash is optional; never fails health when unset.
+// commit + branch match luccca-web /api/health — RENDER_GIT_* with local git fallback.
 export const dynamic = 'force-dynamic'
 
 function redisFanoutMode(): 'configured' | 'memory-only' {
@@ -13,8 +14,12 @@ function redisFanoutMode(): 'configured' | 'memory-only' {
 export async function GET() {
   const timestamp = new Date().toISOString()
   const { isEmailConfigured } = await import('@/lib/email')
+  const { getRuntimeIdentity } = await import('@/lib/runtime-identity')
   const emailConfigured = isEmailConfigured()
   const redisFanout = redisFanoutMode()
+  const identity = getRuntimeIdentity()
+  const commit = identity.commit
+  const branch = identity.branch
 
   let database: 'ok' | 'skipped' | 'error' = 'skipped'
   if (process.env.DATABASE_URL) {
@@ -25,10 +30,26 @@ export async function GET() {
     } catch {
       database = 'error'
       return Response.json(
-        { status: 'degraded', database, emailConfigured, redisFanout, timestamp },
+        {
+          status: 'degraded',
+          database,
+          emailConfigured,
+          redisFanout,
+          timestamp,
+          commit,
+          branch,
+        },
         { status: 503 }
       )
     }
   }
-  return Response.json({ status: 'ok', database, emailConfigured, redisFanout, timestamp })
+  return Response.json({
+    status: 'ok',
+    database,
+    emailConfigured,
+    redisFanout,
+    timestamp,
+    commit,
+    branch,
+  })
 }

@@ -100,7 +100,7 @@ export async function GET(): Promise<Response> {
       schemaVersion: 1,
       labels: { ok: '✓ Ready for morning open', warn: '▲ Needs day-shift attention', error: '✕ Blocks morning open' },
       policy: 'TASK tickets only — morning-open task list; no silent merges, no overnight remodel',
-      systemImprovements: 'optional string[] — plain-English improvements (slow panels, Coming soon, stubs)',
+      systemImprovements: 'optional string[] — plain-English improvements (slow panels, unfinished copy, stubs)', // stub-scan-ignore
       exampleMinimal: example,
     },
   })

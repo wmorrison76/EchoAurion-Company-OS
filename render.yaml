@@ -293,8 +293,9 @@ services:
       - key: CRON_SECRET
         sync: false
 
-  # Daily 11:00 UTC — three desk moles (workflow / UX / i18n) → Help Desk TASK ticket.
-  # Report only — William decides. Does not replace pilot Night Cleaner floor walk.
+  # Daily 11:00 UTC — desk moles (workflow / UX / i18n) + src/ stub-file scanner
+  # → Help Desk SYSTEM TECH ticket with paths. Report only — William decides.
+  # On-demand: POST /api/ops/stub-scan (same CRON_SECRET). See docs/STUB_FILE_SCANNER.md.
   - type: cron
     name: echoaurion-company-os-desk-moles
     runtime: node

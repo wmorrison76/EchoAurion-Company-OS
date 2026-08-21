@@ -146,5 +146,6 @@ On `/lab/elite`: **Test free support** creates a TEXT ticket + Knights draft (no
 
 ## Related
 
+- **New buyer (not Miccosukee):** [`docs/CONNECT_NEW_BUYER.md`](./CONNECT_NEW_BUYER.md)
 - Company OS: `docs/PILOT_CONNECTION.md`, `docs/SECURITY_RELAY.md`, `DEPLOY.md`
 - Pilot: `docs/COMPANY_OS_RELAY_WIRING.md`

@@ -111,12 +111,28 @@ export function MoleKnightsAuditPanel() {
                 label={data.mole.verdict}
               />
               <StatusBadge
-                level="error"
-                label="✕ Cron not in render.yaml"
+                level={data.mole.deskMolesCronWired ? 'ok' : 'error'}
+                label={
+                  data.mole.deskMolesCronWired
+                    ? '✓ Desk-moles cron in render.yaml'
+                    : '✕ Desk-moles cron missing'
+                }
               />
               <StatusBadge
-                level="warn"
-                label="▲ Scanners unwired"
+                level={data.mole.scannersWiredInRepo ? 'ok' : 'warn'}
+                label={
+                  data.mole.scannersWiredInRepo
+                    ? '✓ COS src/ scanner wired'
+                    : '▲ Scanners unwired'
+                }
+              />
+              <StatusBadge
+                level={data.mole.nightCleanerCronWired ? 'ok' : 'warn'}
+                label={
+                  data.mole.nightCleanerCronWired
+                    ? '✓ Product night-cleaner cron'
+                    : '▲ Product night-cleaner cron missing'
+                }
               />
               {data.mole.openNightCleanerTickets > 0 ? (
                 <StatusBadge

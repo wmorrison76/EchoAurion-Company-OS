@@ -326,6 +326,8 @@ scripts/night-cleaner/
 
 Company OS already scaffolds **intake**: `POST /api/ops/night-cleaner-report`.
 
+**Company OS `src/` stub scanner is wired** (2026-08-20): `src/lib/stub-scanner.ts`, `POST /api/ops/stub-scan`, included in daily desk-moles. See [`STUB_FILE_SCANNER.md`](./STUB_FILE_SCANNER.md). Pilot-side `scripts/night-cleaner/` scanners remain missing.
+
 Until Playwright is wired: cron runs static scanners + optional EKG export JSON drop; ticket still opens with whatever categories ran (`skipped` marked `? Unknown` / omitted from score).
 
 ---

@@ -37,9 +37,12 @@ function runDateUtc(iso: string): string {
   return d.toISOString().slice(0, 10)
 }
 
-export function nightCleanerFingerprint(report: NightCleanerReport): string {
+export function nightCleanerFingerprint(
+  report: NightCleanerReport,
+  kind = 'night-cleaner'
+): string {
   const day = runDateUtc(report.finishedAt || report.startedAt)
-  const raw = `night-cleaner|${report.productLine}|${day}`
+  const raw = `${kind}|${report.productLine}|${day}`
   return `nc-${createHash('sha256').update(raw).digest('hex').slice(0, 40)}`
 }
 
@@ -166,9 +169,10 @@ export function validateNightCleanerReport(
  */
 export async function ingestNightCleanerReport(
   report: NightCleanerReport,
-  opts?: { createTicket?: boolean }
+  opts?: { createTicket?: boolean; fingerprintKind?: string }
 ): Promise<NightCleanerIngestResult> {
   const createTicket = opts?.createTicket !== false
+  const fingerprintKind = opts?.fingerprintKind ?? 'night-cleaner'
   // Merge live panel p95 regression signals (anonymized) into morning report.
   const regressions = panelP95RegressionSignals()
   const enriched: NightCleanerReport =
@@ -219,10 +223,13 @@ export async function ingestNightCleanerReport(
           ],
         }
 
-  const fingerprint = nightCleanerFingerprint(enriched)
+  const fingerprint = nightCleanerFingerprint(enriched, fingerprintKind)
   const body = formatNightCleanerTicketBody(enriched)
+  const day = runDateUtc(enriched.finishedAt)
   const subject = scrubLine(
-    `Night cleaner · Morning open · ${runDateUtc(enriched.finishedAt)} · ${enriched.productLine}`,
+    fingerprintKind === 'stub-scan'
+      ? `Stub / dead-end scan · ${day} · ${enriched.productLine}`
+      : `Night cleaner · Morning open · ${day} · ${enriched.productLine}`,
     120
   )
   const priority = priorityForReport(enriched)
@@ -250,7 +257,7 @@ export async function ingestNightCleanerReport(
           occurrenceCount: { increment: 1 },
           lastOccurredAt: new Date(),
           productLine: report.productLine,
-          moduleHint: 'night-cleaner',
+          moduleHint: fingerprintKind === 'stub-scan' ? 'stub-scan' : 'night-cleaner',
           errorCategory: 'UI',
           agentWorking: false,
         },
@@ -283,10 +290,10 @@ export async function ingestNightCleanerReport(
           subject,
           productLine: report.productLine,
           fingerprint,
-          moduleHint: 'night-cleaner',
+          moduleHint: fingerprintKind === 'stub-scan' ? 'stub-scan' : 'night-cleaner',
           errorCategory: 'UI',
           errorScope: 'GLOBAL',
-          clientKey: `ops/night-cleaner/${report.productLine}`,
+          clientKey: `ops/${fingerprintKind === 'stub-scan' ? 'stub-scan' : 'night-cleaner'}/${report.productLine}`,
           occurrenceCount: 1,
           lastOccurredAt: now,
           agentWorking: false,

@@ -18,7 +18,8 @@ export type MoleKnightsAudit = {
     cronWiredInRepo: true
     deskMolesCronWired: true
     nightCleanerCronWired: false
-    scannersWiredInRepo: false
+    /** Company OS src/ stub scanner is wired; pilot night-cleaner scanners are not. */
+    scannersWiredInRepo: boolean
     gaps: string[]
   }
   knights: {
@@ -189,10 +190,10 @@ export async function buildMoleKnightsAudit(): Promise<MoleKnightsAudit> {
     gaps.push('Last night-cleaner ingest is stale (>24h) — overnight walk is not current.')
   }
   gaps.push(
-    'Pilot night-cleaner runner not wired — no scheduled POST to /api/ops/night-cleaner-report (desk moles cron runs daily 11:00 UTC; EKG sweep only when EKG is open).'
+    'Pilot night-cleaner runner not wired — no scheduled POST to /api/ops/night-cleaner-report (desk moles + src/ stub scan run daily 11:00 UTC; EKG sweep only when EKG is open).'
   )
   gaps.push(
-    'Pilot static scanners + Playwright + EKG→report mapper still unwired (docs/NIGHT_CLEANER_MOLE.md §5).'
+    'Pilot static scanners + Playwright + EKG→report mapper still unwired. Company OS src/ stub scanner is live (docs/STUB_FILE_SCANNER.md).'
   )
   if (!process.env.CRON_SECRET?.trim()) {
     gaps.push('CRON_SECRET unset on Company OS — desk moles / night-cleaner / ops crons will 401 until pasted.')
@@ -252,7 +253,7 @@ export async function buildMoleKnightsAudit(): Promise<MoleKnightsAudit> {
       cronWiredInRepo: true,
       deskMolesCronWired: true,
       nightCleanerCronWired: false,
-      scannersWiredInRepo: false,
+      scannersWiredInRepo: true,
       gaps,
     },
     knights: {

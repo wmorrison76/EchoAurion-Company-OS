@@ -15,7 +15,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
-    "approve-all-awaiting": "tsx scripts/approve-all-awaiting.ts"
+    "approve-all-awaiting": "tsx scripts/approve-all-awaiting.ts",
+    "scan:stubs": "tsx scripts/scan-stubs.ts"
   },
   "prisma": {
     "seed": "node --loader ts-node/esm prisma/seed.ts"
