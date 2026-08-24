@@ -48,6 +48,9 @@ export function NightCleanerChip({ data }: { data?: NightCleanerChipSnapshot }) 
               label={`Tasks: ${data.taskCount}`}
             />
           ) : null}
+          {data.scannersMissing ? (
+            <StatusBadge level="warn" label="▲ Pilot scanners missing" />
+          ) : null}
           <span className="font-mono text-[10px] tabular-nums text-[#5a5a78]">
             {data.minutesSinceIngest == null
               ? 'Last night: never'

@@ -8,14 +8,34 @@ import { ingestQueueStats } from '@/lib/ingest-queue'
 import { latestEvalRun } from '@/lib/help-eval'
 import type { StatusLevel } from '@/types'
 import type { DrainHealthSnapshot } from '@/types/drain-health'
+import { nightCleanerChipState } from '@/lib/night-cleaner-chip-state'
 import type {
   CostAnomalyChipSnapshot,
   HelpEvalChipSnapshot,
   NightCleanerChipSnapshot,
+  NightCleanerChipState,
 } from '@/types/ops-chips'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const NIGHT_CLEANER_STALE_H = 36
+/** Product night-cleaner runner is not scheduled. COS stub scan is a different job. */
+const PILOT_NIGHT_CLEANER_CRON_WIRED = false
+
+export { nightCleanerChipState } from '@/lib/night-cleaner-chip-state'
+
+const CHIP_COPY: Record<
+  NightCleanerChipState,
+  { level: StatusLevel; shape: string; label: string }
+> = {
+  never_ingested: { level: 'unknown', shape: '?', label: '? Never ingested' },
+  ingest_ok_scanners_missing: {
+    level: 'warn',
+    shape: '▲',
+    label: '▲ Ingest ok · scanners missing',
+  },
+  stale: { level: 'warn', shape: '▲', label: '▲ Stale' },
+  floor_walk_current: { level: 'ok', shape: '✓', label: '✓ Floor walk current' },
+}
 const HELP_EVAL_STALE_H = 8 * 24 // ~weekly cron — stale after 8 days
 const COST_SCAN_STALE_H = 36
 
@@ -146,10 +166,12 @@ export async function getNightCleanerChip(): Promise<NightCleanerChipSnapshot> {
   ])
 
   if (!ingest) {
+    const copy = CHIP_COPY.never_ingested
     return {
-      level: 'unknown',
-      shape: '?',
-      label: 'No night report yet',
+      level: copy.level,
+      shape: copy.shape,
+      label: copy.label,
+      chipState: 'never_ingested',
       score: null,
       taskCount: null,
       productLine: null,
@@ -157,6 +179,7 @@ export async function getNightCleanerChip(): Promise<NightCleanerChipSnapshot> {
       ingestedAt: null,
       minutesSinceIngest: null,
       stale: true,
+      scannersMissing: !PILOT_NIGHT_CLEANER_CRON_WIRED,
     }
   }
 
@@ -168,32 +191,31 @@ export async function getNightCleanerChip(): Promise<NightCleanerChipSnapshot> {
   const ticketId = ingest.entityId ?? openTicket?.id ?? null
   const mins = minutesSince(ingest.createdAt)
   const stale = mins == null || mins > NIGHT_CLEANER_STALE_H * 60
+  const chipState = nightCleanerChipState({
+    ingested: true,
+    stale,
+    nightCleanerCronWired: PILOT_NIGHT_CLEANER_CRON_WIRED,
+  })
+  const copy = CHIP_COPY[chipState]
 
-  let level: StatusLevel = 'ok'
-  let shape = '✓'
+  let level = copy.level
+  let shape = copy.shape
+  let label = copy.label
   if (status === 'error') {
     level = 'error'
     shape = '✕'
-  } else if (status === 'warn' || stale) {
-    level = 'warn'
-    shape = '▲'
-  } else if (status === 'ok') {
-    level = 'ok'
-    shape = '✓'
-  } else {
-    level = 'unknown'
-    shape = '?'
+    label = '✕ Ingest error · scanners missing'
   }
 
   const scoreBit = score != null ? ` ${score}/100` : ''
   const taskBit = taskCount != null ? ` · ${taskCount} tasks` : ''
-  const staleBit = stale ? ' · stale' : ''
-  const label = `${shape} Last night${scoreBit}${taskBit}${staleBit}`
+  label = `${label}${scoreBit}${taskBit}`
 
   return {
     level,
     shape,
     label,
+    chipState,
     score,
     taskCount,
     productLine,
@@ -201,6 +223,7 @@ export async function getNightCleanerChip(): Promise<NightCleanerChipSnapshot> {
     ingestedAt: ingest.createdAt.toISOString(),
     minutesSinceIngest: mins,
     stale,
+    scannersMissing: !PILOT_NIGHT_CLEANER_CRON_WIRED,
   }
 }
 

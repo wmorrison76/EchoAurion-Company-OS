@@ -95,7 +95,7 @@ export function FinancialDashboard() {
         <RunwayCountdown runway={data.runway} />
         <BurnRateChart burn={data.burnRate} />
         <BrexPanel />
-        <BillCalendar bills={data.bills} />
+        <BillCalendar bills={data.bills} rentSplitMonthlyTotal={data.rentSplitMonthlyTotal} />
         <PLSummary pl={data.pl} />
 
         <KPICard title="Recent Transactions" className="sm:col-span-2 xl:col-span-3">
@@ -115,6 +115,9 @@ export function FinancialDashboard() {
                       {t.merchantName ?? t.name}
                       {t.pending ? (
                         <span className="ml-2 text-[11px] text-[#f59e0b]">⚠ pending</span>
+                      ) : null}
+                      {t.rentSplit ? (
+                        <span className="ml-2 text-[11px] text-[#D4AF37]">▲ Rent split</span>
                       ) : null}
                     </p>
                     <p className="text-xs text-[#5a5a78]">

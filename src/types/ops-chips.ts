@@ -1,10 +1,17 @@
 import type { StatusLevel } from '@/types'
 
+export type NightCleanerChipState =
+  | 'never_ingested'
+  | 'ingest_ok_scanners_missing'
+  | 'stale'
+  | 'floor_walk_current'
+
 /** Night Cleaner “last night” chip — PII-free. */
 export type NightCleanerChipSnapshot = {
   level: StatusLevel
   shape: string
   label: string
+  chipState: NightCleanerChipState
   score: number | null
   taskCount: number | null
   productLine: string | null
@@ -13,6 +20,8 @@ export type NightCleanerChipSnapshot = {
   /** Minutes since last ingest — null if never. */
   minutesSinceIngest: number | null
   stale: boolean
+  /** Pilot floor-walk scanners are still unwired. */
+  scannersMissing: boolean
 }
 
 /** HelpEval Friday / latest suite chip. */

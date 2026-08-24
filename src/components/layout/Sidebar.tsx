@@ -16,7 +16,10 @@ export function Sidebar({ footer }: SidebarProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
+  const isActive = (href: string) => {
+    if (href === '/support') return pathname === '/support'
+    return pathname === href || pathname.startsWith(`${href}/`)
+  }
 
   return (
     <>

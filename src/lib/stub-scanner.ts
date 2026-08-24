@@ -124,7 +124,7 @@ const KNOWN_SCAFFOLDS: { rel: string; label: string }[] = [
   },
   {
     rel: 'src/app/api/webhooks/railway/route.ts',
-    label: 'Railway failure ingest — scaffold, Render is production',
+    label: 'Railway failure ingest — retired; Render is production',
   },
   {
     rel: 'src/app/api/help-desk/break-glass/route.ts',
@@ -132,7 +132,7 @@ const KNOWN_SCAFFOLDS: { rel: string; label: string }[] = [
   },
   {
     rel: 'src/app/api/crm/outreach/route.ts',
-    label: 'CRM Gmail readonly — TODO(claude) hook only',
+    label: 'CRM outreach — manual only; Gmail OAuth not built',
   },
   {
     rel: 'src/app/aurion-index/page.tsx',
@@ -433,8 +433,8 @@ export function buildStubScanReport(opts?: {
     tasks,
     systemImprovements: scan.hits.slice(0, 20).map((h) => `${h.path}:${h.line} · ${h.rule}`),
     expandIdeas: [
-      'Implement or delete Gmail TODO(claude) on CRM outreach.',
-      'Keep IVR/SMS/Railway labeled scaffold until Twilio / Railway are live or retired.',
+      'CRM outreach stays manual until a later Gmail OAuth SKU.',
+      'Keep IVR/SMS labeled scaffold. Railway GET is retired. Do not sell live phone.',
     ],
   }
 }

@@ -57,6 +57,8 @@ export interface TransactionItem {
   name: string
   merchantName: string | null
   pending: boolean
+  /** Apple Pay / Cash App / Zelle in the $1,300–$1,600 rent-split band. */
+  rentSplit: boolean
 }
 
 export interface FinancialOverview {
@@ -67,5 +69,7 @@ export interface FinancialOverview {
   bills: BillItem[]
   pl: PLMonth[]
   recentTransactions: TransactionItem[]
+  /** Current-month Apple Pay / Cash App / Zelle $1,300–$1,600 total. */
+  rentSplitMonthlyTotal: number
   generatedAt: string
 }

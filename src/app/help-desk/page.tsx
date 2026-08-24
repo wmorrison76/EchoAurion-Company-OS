@@ -10,7 +10,7 @@ export default function HelpDeskPage() {
   return (
     <AppShell
       title="Help Desk"
-      subtitle="Knights of the Round Table · text · voice dictation · custom builds"
+      subtitle="Tickets · start here · voice = dictation (phone IVR not live)"
     >
       <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[#12121a]" />}>
         <HelpDeskConsole />

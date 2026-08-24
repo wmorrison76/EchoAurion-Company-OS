@@ -202,16 +202,15 @@ export async function buildMoleKnightsAudit(): Promise<MoleKnightsAudit> {
     'Browser EKG Panel Sweep only runs while EKG is mounted — not a scheduled pre-open walk.'
   )
 
-  const doingJob = Boolean(chip.ingestedAt) && !chip.stale && chip.level !== 'unknown'
-  const verdict = !chip.ingestedAt
-    ? '✕ Mole not reporting — ingest never ran'
-    : chip.stale
-      ? '▲ Mole stale — last report too old for morning open'
-      : chip.level === 'error'
-        ? '✕ Last report blocks morning open — work Tasks ticket'
-        : chip.level === 'warn'
-          ? '▲ Mole reporting · day-shift attention needed'
-          : '✓ Mole reported recently'
+  const doingJob = chip.chipState === 'floor_walk_current'
+  const verdict =
+    chip.chipState === 'never_ingested'
+      ? '? Never ingested'
+      : chip.chipState === 'stale'
+        ? '▲ Stale'
+        : chip.chipState === 'ingest_ok_scanners_missing'
+          ? '▲ Ingest ok · scanners missing'
+          : '✓ Floor walk current'
 
   const recommendations: string[] = []
   if (!doingJob) {

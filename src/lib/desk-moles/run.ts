@@ -50,17 +50,17 @@ function finding(
 export function runWorkflowMole(): MoleFinding[] {
   const out: MoleFinding[] = []
 
-  // Support surface sprawl: Support + Inbox + Pilot links + Help Desk = 4 nav entries
+  // Official path published: start at Help Desk. Inbox hidden from sidebar.
   out.push(
     finding(
       'workflow_duplication',
-      'warn',
-      'Support work spans 4 nav destinations (Support, Inbox, Pilot links, Help Desk)',
+      'ok',
+      'Official path: start at Help Desk. Inbox hidden from sidebar',
       {
         detail:
-          'Same incident may require opening Support health → Inbox triage → Help Desk reply → Pilot links. Target: one Support cockpit with tabs (≤2 clicks).',
-        ref: '/support|/support/inbox|/support/pilot-links|/help-desk',
-        priorityHint: 'HIGH',
+          'Help Desk = tickets. Pilot links = heartbeat/SSE/Ack. Support = client health. /support/inbox remains bookmarkable but is not a nav destination.',
+        ref: '/help-desk|/support/pilot-links|/support',
+        priorityHint: 'LOW',
       }
     )
   )
@@ -491,7 +491,7 @@ export function buildDeskMolesReport(opts?: {
     categories,
     tasks,
     systemImprovements: [
-      'Consolidate Support + Inbox + Pilot links + Help Desk into one cockpit with tabs (≤2 clicks).',
+      'Official path is Help Desk. Inbox is sidebar-hidden. Full tabbed Support cockpit remains a later UX pass.',
       'Keep Approve + Dry-run in sticky Help Desk action dock (done — guard in CI/mole).',
       'Add Help Desk reply-locale chip for forced language override.',
       'Wire AurionIndex live metrics or fold into Dr. OS single card.',

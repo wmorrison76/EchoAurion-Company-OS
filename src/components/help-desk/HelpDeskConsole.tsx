@@ -702,8 +702,9 @@ export function HelpDeskConsole() {
       <div className="rounded-xl border border-[#2a2a3f] bg-gradient-to-b from-[#12121a] to-[#0a0a0f] p-4">
         <p className="text-xs uppercase tracking-widest text-[#D4AF37]">Operator guide</p>
         <p className="mt-1 text-sm text-[#a0a0b8]">
-          Help Desk is your live ticket workspace — text, voice dictation, Ask Knights, custom
-          builds. Board Room is strategy counsel; Support is client health; Inbox is triage.
+          Help Desk is the official ticket workspace — text, voice dictation, Ask Knights, custom
+          builds. Phone IVR is not live. Board Room is strategy counsel; Support is client health;
+          Pilot links is heartbeat / SSE / Ack.
         </p>
         <details className="mt-3 rounded-lg border border-[#2a2a3f] bg-[#0a0a0f] p-3">
           <summary className="cursor-pointer text-xs font-medium text-white">
@@ -1489,7 +1490,7 @@ function EmptyState({ onNew, onVoice }: { onNew: () => void; onVoice: () => void
       <p className="mt-2 text-xs text-[#a0a0b8]">
         Open text tickets, log voice call dictation, Ask the Knights for drafts (you approve before
         anything is official), or request a custom build. Customer-facing intake arrives via relay
-        later — for now you operate from here and Inbox.
+        later — start here. Inbox is optional and hidden from the sidebar.
       </p>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <button

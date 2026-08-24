@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { computeHealth } from '@/lib/support'
+import { computeHealth, resolveHeartbeatLastSyncAt } from '@/lib/support'
 import type { ClientHealth } from '@/types/support'
 
 export interface HeartbeatInput {
@@ -36,7 +36,8 @@ export async function applyHeartbeat(input: HeartbeatInput): Promise<HeartbeatRe
   const online = input.online ?? true
   const queueDepth = input.queueDepth ?? 0
   const errorCount = input.errorCount ?? 0
-  const lastSyncAt = input.lastSyncAt ? new Date(input.lastSyncAt) : null
+  const lastSyncAtProvided = Boolean(input.lastSyncAt?.trim())
+  const lastSyncAt = resolveHeartbeatLastSyncAt(input.lastSyncAt)
   const health = computeHealth({ online, queueDepth, errorCount, lastSyncAt })
 
   const client = await db.supportClient.upsert({
@@ -78,6 +79,8 @@ export async function applyHeartbeat(input: HeartbeatInput): Promise<HeartbeatRe
     health,
     queueDepth,
     errorCount,
+    lastSyncAt: lastSyncAt.toISOString(),
+    lastSyncAtProvided,
     persistSnapshot: !!input.persistSnapshot,
   })
 

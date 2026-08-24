@@ -166,11 +166,13 @@ export async function GET(): Promise<Response> {
     success: true,
     data: {
       endpoint: '/api/webhooks/railway',
-      status: 'scaffold',
+      status: 'retired',
       live: false,
+      shape: '▲',
+      label: '▲ Retired — Render + GitHub are live',
       auth: 'Bearer RAILWAY_WEBHOOK_SECRET or X-Railway-Signature',
       docs: 'docs/ERROR_CAPTURE_AND_SCOPE.md',
-      note: 'Render + GitHub are live. Railway poll/webhook are stubs until token+project wired or service retired.',
+      note: 'Railway poll/webhook skipped forever unless RAILWAY_WEBHOOK_SECRET is set for a leftover non-prod service. POST still accepts that secret; production runtime is Render.',
       exampleBody: {
         serviceId: 'svc_xxx',
         serviceName: 'luccca-api',

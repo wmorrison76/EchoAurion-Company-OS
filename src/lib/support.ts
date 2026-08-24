@@ -11,9 +11,27 @@ export interface HealthInputs {
 }
 
 /**
+ * Successful heartbeat ingest is a sync. Keep-alives that omit lastSyncAt
+ * used to compute RED (hours = Infinity). Stamp ingest time instead.
+ * An explicit lastSyncAt still wins — stale data-sync stays At risk.
+ */
+export function resolveHeartbeatLastSyncAt(
+  raw: string | undefined | null,
+  now: Date = new Date()
+): Date {
+  if (typeof raw === 'string' && raw.trim()) {
+    const parsed = new Date(raw)
+    if (!Number.isNaN(parsed.getTime())) return parsed
+  }
+  return now
+}
+
+/**
  * Tier 0 client health — derived purely from passive diagnostics (no screen,
  * no remote control). Lets the console flag a property before they ever call.
  * Thresholds are deliberately conservative; tune once real telemetry lands.
+ * Missing lastSyncAt is never-synced (RED / At risk) — callers should pass
+ * resolveHeartbeatLastSyncAt() so keep-alives are not RED by design.
  */
 export function computeHealth(i: HealthInputs): ClientHealth {
   let level: ClientHealth = 'GREEN'

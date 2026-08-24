@@ -7,9 +7,7 @@ import type { APIResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
-// TODO(claude): Gmail API integration — requires OAuth scope gmail.readonly.
-// When added: match inbound by sender domain → Contact, auto-create Outreach
-// records with status RESPONDED, surface reply detection on the contact card.
+// Gmail readonly OAuth is out of scope. Manual outreach only — no sync button.
 
 const schema = z.object({
   contactId: z.string().min(1),

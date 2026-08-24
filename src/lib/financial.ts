@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { isRentSplitPay, rentSplitMonthlyTotal } from '@/lib/rent-split'
 import type { StatusLevel } from '@/types'
 import type {
   BalanceCard,
@@ -198,7 +199,22 @@ async function getRecentTransactions(limit: number): Promise<TransactionItem[]> 
     name: t.name,
     merchantName: t.merchantName,
     pending: t.pending,
+    rentSplit: isRentSplitPay({
+      name: t.name,
+      merchantName: t.merchantName,
+      amount: t.amount,
+    }),
   }))
+}
+
+async function getRentSplitMonthlyTotal(): Promise<number> {
+  const now = new Date()
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  const txns = await db.transaction.findMany({
+    where: { date: { gte: start } },
+    select: { name: true, merchantName: true, amount: true, date: true },
+  })
+  return rentSplitMonthlyTotal(txns, now)
 }
 
 const EMPTY: Omit<FinancialOverview, 'generatedAt'> = {
@@ -217,17 +233,19 @@ const EMPTY: Omit<FinancialOverview, 'generatedAt'> = {
   bills: [],
   pl: [],
   recentTransactions: [],
+  rentSplitMonthlyTotal: 0,
 }
 
 export async function getFinancialOverview(): Promise<FinancialOverview> {
   try {
     const itemCount = await db.plaidItem.count()
-    const [balances, burnRate, bills, pl, recentTransactions] = await Promise.all([
+    const [balances, burnRate, bills, pl, recentTransactions, rentSplit] = await Promise.all([
       getBalances(),
       getBurnRate(),
       getBills(),
       getPL(6),
       getRecentTransactions(15),
+      getRentSplitMonthlyTotal(),
     ])
     const runway = getRunway(balances, burnRate)
     return {
@@ -238,6 +256,7 @@ export async function getFinancialOverview(): Promise<FinancialOverview> {
       bills,
       pl,
       recentTransactions,
+      rentSplitMonthlyTotal: rentSplit,
       generatedAt: new Date().toISOString(),
     }
   } catch {

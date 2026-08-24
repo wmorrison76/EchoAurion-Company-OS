@@ -16,21 +16,24 @@ export async function GET(): Promise<Response> {
       orderBy: { updatedAt: 'desc' },
       include: { snapshots: { orderBy: { createdAt: 'desc' }, take: 1 } },
     })
+    const now = Date.now()
     const data: SupportClientView[] = clients.map((c) => {
       const s = c.snapshots[0]
+      const hb = c.lastHeartbeatAt
+      const recentHb = hb != null && now - hb.getTime() < 5 * 60 * 1000
       return {
         id: c.id,
         clientKey: c.clientKey,
         label: c.label,
         property: c.property,
-        health: (s?.health as ClientHealth) ?? 'UNKNOWN',
+        health: (c.lastHealth as ClientHealth) ?? (s?.health as ClientHealth) ?? 'UNKNOWN',
         appVersion: s?.appVersion ?? null,
         platform: s?.platform ?? null,
-        online: s?.online ?? false,
+        online: s?.online ?? recentHb,
         queueDepth: s?.queueDepth ?? 0,
         errorCount: s?.errorCount ?? 0,
-        lastSyncAt: s?.lastSyncAt?.toISOString() ?? null,
-        lastSeenAt: s?.createdAt.toISOString() ?? null,
+        lastSyncAt: s?.lastSyncAt?.toISOString() ?? hb?.toISOString() ?? null,
+        lastSeenAt: hb?.toISOString() ?? s?.createdAt.toISOString() ?? null,
       }
     })
     return Response.json({ success: true, data } satisfies APIResponse<SupportClientView[]>)

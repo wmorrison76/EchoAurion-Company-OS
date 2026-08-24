@@ -3,14 +3,14 @@ import { runStubFileScanMole, runUxConsistencyMole } from './desk-moles/run'
 import { scanCompanyOsSrc, stubScanSummaryLabel } from './stub-scanner'
 
 describe('stub-scanner', () => {
-  it('walks src/ and reports the Gmail TODO(claude) path', () => {
+  it('walks src/ and no longer reports a Gmail TODO(claude) hook', () => {
     const scan = scanCompanyOsSrc()
     expect(scan.skipped).toBe(false)
     expect(scan.filesScanned).toBeGreaterThan(10)
     const gmail = scan.hits.find(
       (h) => h.path.includes('crm/outreach') && h.rule === 'todo_claude'
     )
-    expect(gmail?.path).toBe('src/app/api/crm/outreach/route.ts')
+    expect(gmail).toBeUndefined()
   })
 
   it('lists known scaffolds with paths (IVR / Railway / AurionIndex)', () => {

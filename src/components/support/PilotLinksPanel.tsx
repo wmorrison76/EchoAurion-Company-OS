@@ -79,6 +79,7 @@ export function PilotLinksPanel() {
     }
   }
 
+  const pendingOutboxTotal = (data?.clients ?? []).reduce((s, c) => s + c.pendingOutbox, 0)
   const offlineDeliveryRisk =
     (data?.onlineCount ?? 0) === 0 ||
     (data?.clients ?? []).some((c) => c.pendingOutbox > 0 && !c.streamConnected)
@@ -94,10 +95,32 @@ export function PilotLinksPanel() {
         >
           Maintenance
         </a>
+        . Official ticket path is{' '}
+        <a href="/help-desk" className="text-[#D4AF37] underline" aria-label="Open Help Desk">
+          Help Desk
+        </a>
         . Waiting for pilots? Product must POST heartbeat with matching{' '}
         <code className="text-white">SUPPORT_INGEST_SECRET</code> — see{' '}
         <span className="text-[#D4AF37]">docs/CONNECT_PILOT_TO_COMPANY_OS.md</span>.
       </p>
+      <div
+        role="note"
+        className="rounded-xl border border-[#2a2a3f] bg-[#12121a] px-4 py-3"
+        aria-label="Outbox SOP — Ack is not a fix"
+      >
+        <p className="text-xs font-medium uppercase tracking-widest text-[#D4AF37]">
+          Outbox SOP
+        </p>
+        <p className="mt-1 text-sm text-[#a0a0b8]">
+          Pending outbox is not a Knights failure.{' '}
+          <span className="text-white">
+            Property offline or SSE idle — Ack is not a fix — wait for heartbeat + stream
+          </span>{' '}
+          so <span className="text-white">answer_ready</span> can drain. Phone IVR is not live.
+          Pending now:{' '}
+          <span className="font-mono tabular-nums text-white">{pendingOutboxTotal}</span>.
+        </p>
+      </div>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"

@@ -9,7 +9,13 @@ function ordinal(day: number): string {
   return day + (s[(v - 20) % 10] ?? s[v] ?? s[0])
 }
 
-export function BillCalendar({ bills }: { bills: BillItem[] }) {
+export function BillCalendar({
+  bills,
+  rentSplitMonthlyTotal = 0,
+}: {
+  bills: BillItem[]
+  rentSplitMonthlyTotal?: number
+}) {
   const monthlyTotal = bills.reduce((s, b) => s + b.amount, 0)
 
   return (
@@ -42,6 +48,21 @@ export function BillCalendar({ bills }: { bills: BillItem[] }) {
           <div className="mt-3 flex items-center justify-between border-t border-[#2a2a3f] pt-3 text-xs">
             <span className="text-[#a0a0b8]">Monthly total</span>
             <span className="font-mono tabular-nums text-[#D4AF37]">{formatUSD(monthlyTotal)}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-[#a0a0b8]">
+              Rent split (Apple Pay / Cash App / Zelle · $1,300–$1,600)
+            </span>
+            <span className="flex items-center gap-2">
+              {rentSplitMonthlyTotal > 0 ? (
+                <StatusBadge level="warn" label="Rent split" />
+              ) : (
+                <StatusBadge level="unknown" label="None this month" />
+              )}
+              <span className="font-mono tabular-nums text-white">
+                {formatUSD(rentSplitMonthlyTotal)}
+              </span>
+            </span>
           </div>
         </>
       )}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { nightCleanerChipState } from '@/lib/night-cleaner-chip-state'
 
 /**
  * Pure helpers mirrored from status/chip scoring thresholds.
@@ -48,6 +49,21 @@ describe('Dr. OS chip scoring', () => {
     expect(nightCleanerLevel('error', false)).toBe('error')
     expect(nightCleanerLevel('ok', true)).toBe('warn')
     expect(nightCleanerLevel('unknown', false)).toBe('unknown')
+  })
+
+  it('Night Cleaner chip has four honest states', () => {
+    expect(
+      nightCleanerChipState({ ingested: false, stale: true, nightCleanerCronWired: false })
+    ).toBe('never_ingested')
+    expect(
+      nightCleanerChipState({ ingested: true, stale: false, nightCleanerCronWired: false })
+    ).toBe('ingest_ok_scanners_missing')
+    expect(
+      nightCleanerChipState({ ingested: true, stale: true, nightCleanerCronWired: false })
+    ).toBe('stale')
+    expect(
+      nightCleanerChipState({ ingested: true, stale: false, nightCleanerCronWired: true })
+    ).toBe('floor_walk_current')
   })
 
   it('Neon poolSize parses connection_limit from DATABASE_URL', () => {

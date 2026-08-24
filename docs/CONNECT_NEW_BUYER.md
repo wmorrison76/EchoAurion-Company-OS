@@ -49,7 +49,7 @@ curl -sS -H "Authorization: Bearer $SECRET" "$OS/api/relay/whoami"
 curl -sS https://<buyer-host>/api/company-os-relay/status
 # Expect: configured:true hasSecret:true
 
-# 4. Heartbeat
+# 4. Heartbeat (omitted lastSyncAt is stamped to ingest time after this week's SHA deploys)
 curl -sS -X POST -H "Authorization: Bearer $SECRET" -H "Content-Type: application/json" \
   -d "{\"clientKey\":\"$CLIENT_KEY\",\"label\":\"Buyer property\",\"online\":true}" \
   "$OS/api/relay/heartbeat"

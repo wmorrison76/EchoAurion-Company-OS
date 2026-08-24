@@ -65,6 +65,8 @@ Authorization: Bearer $SUPPORT_INGEST_SECRET
 
 Upserts `SupportClient`, sets `lastHeartbeatAt` / `lastHealth`, audits, raises CRITICAL alert on **RED**.
 
+Keep-alive bodies may omit `lastSyncAt`. The server stamps **ingest time** (`resolveHeartbeatLastSyncAt`) so a successful keep-alive is not RED by design. Send an explicit `lastSyncAt` only when reporting a distinct data-sync timestamp. **At risk** (shape + label, not color alone) when that timestamp is older than 72h, `queueDepth > 50`, `errorCount > 10`, or the caller still uses a build that treats a missing sync as never-synced. See `docs/WILLIAM_RENDER_P0.md`.
+
 `POST /api/support/diagnostics` uses the **same** helper and also writes a `DiagnosticSnapshot`. Prefer heartbeat for keep-alive; use diagnostics when you need a full snapshot.
 
 ---

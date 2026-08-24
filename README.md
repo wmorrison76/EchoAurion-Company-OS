@@ -46,14 +46,16 @@ Start with Step 1 in §15 of CLAUDE.md.
 | 3 | Financial Monitor (Plaid + Mercury) | ✅ Complete |
 | 4 | Revenue Dashboard (Stripe MRR) | ✅ Complete |
 | 5 | CRM (Kanban + contacts) | ✅ Complete |
-| 6 | AurionIndex CDK | ✅ Scaffold |
+| 6 | AurionIndex CDK | ◻ Scaffold — static checklist, not live AWS |
 | 7 | Board Room (Knights) | ✅ Complete |
-| 8 | Support + Ask-the-Board + free/charge gate | ✅ Complete |
+| 8 | Support + Ask-the-Board + free/charge gate | ✅ Complete (tickets live in Help Desk) |
 | 9 | PWA + push alerts | ✅ Complete |
 | 10 | Fleet Nexus (Render + Support ops map) | ✅ Complete |
-| 11 | Public homepage + Knowledge Plane scaffold | ✅ Complete |
-| 12 | Help Desk (tickets · voice · Knights · custom builds) | ✅ Complete |
+| 11 | Public homepage + Knowledge Plane | ◻ Partial — keyword retrieve; embeddings deferred |
+| 12 | Help Desk (tickets · Knights · dictation) | ✅ Ops-complete · phone IVR = scaffold (not live) |
 | — | Production deploy (Render + Neon) | ◻ See DEPLOY.md |
+
+**Honesty (do not over-claim):** single-admin login only — no invites, roles, or multi-seat. Phone IVR is a scaffold (no live Twilio number). AurionIndex is a pre-migration checklist, not CloudWatch. Knowledge retrieve is keyword-only (`embeddingsEnabled: false`). Autopilot / Approve = chat, not a product deploy.
 
 ## Local Development
 

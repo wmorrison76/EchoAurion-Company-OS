@@ -49,6 +49,41 @@ interface FleetGraphCanvasProps {
   onSelect: (id: string | null) => void
 }
 
+export function healthGlyph(h: FleetHealth): string {
+  if (h === 'ok') return '✓'
+  if (h === 'warn') return '⚠'
+  if (h === 'error') return '✕'
+  return '?'
+}
+
+export function kindGlyph(kind: string): string {
+  switch (kind) {
+    case 'platform':
+    case 'hq':
+      return '◆'
+    case 'client':
+    case 'entity':
+      return '●'
+    case 'service':
+    case 'deployment':
+    case 'chain-deployment':
+      return '■'
+    case 'infra':
+    case 'datastore':
+      return '▲'
+    case 'edge':
+    case 'external':
+      return '○'
+    default:
+      return '·'
+  }
+}
+
+function shortLabel(label: string): string {
+  const t = label.trim()
+  return t.length > 16 ? `${t.slice(0, 15)}…` : t
+}
+
 function isBottleneck(n: FleetNode): boolean {
   return (
     n.p95 > 600 ||
@@ -204,30 +239,25 @@ export function FleetGraphCanvas({
       ctx.strokeStyle = KIND_RING[nd.n.kind] || '#0a0a0f'
       ctx.stroke()
 
-      // Colorblind-safe glyph inside larger nodes
-      if (nd.r >= 14 && !selectedId) {
-        const glyph =
-          nd.n.health === 'ok' ? '✓' : nd.n.health === 'warn' ? '⚠' : nd.n.health === 'error' ? '✕' : '?'
-        ctx.globalAlpha = dim ? 0.3 : 0.95
-        ctx.fillStyle = '#0a0a0f'
-        ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(glyph, nd.x, nd.y)
-      }
+      // Colorblind-safe: every visible node has health glyph + kind glyph + short label.
+      ctx.globalAlpha = dim ? 0.35 : 0.95
+      ctx.fillStyle = '#0a0a0f'
+      ctx.font = `bold ${nd.r >= 14 ? 11 : 8}px ui-sans-serif, system-ui, sans-serif`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(healthGlyph(nd.n.health), nd.x, nd.y)
 
-      if (view.k > 0.45 || nd.r > 18 || nd.id === selectedId) {
-        ctx.globalAlpha = dim ? 0.3 : 1
-        ctx.fillStyle = '#ffffff'
-        ctx.font = '10px ui-sans-serif, system-ui, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.lineWidth = 3
-        ctx.strokeStyle = 'rgba(10,10,15,0.92)'
-        const labelY = nd.y + nd.r + 10
-        ctx.strokeText(nd.label, nd.x, labelY)
-        ctx.fillText(nd.label, nd.x, labelY)
-      }
+      ctx.globalAlpha = dim ? 0.35 : 1
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '10px ui-sans-serif, system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.lineWidth = 3
+      ctx.strokeStyle = 'rgba(10,10,15,0.92)'
+      const caption = `${kindGlyph(nd.n.kind)} ${shortLabel(nd.label)}`
+      const labelY = nd.y + nd.r + 10
+      ctx.strokeText(caption, nd.x, labelY)
+      ctx.fillText(caption, nd.x, labelY)
       ctx.globalAlpha = 1
     }
     ctx.restore()

@@ -122,6 +122,9 @@ export function FleetNexusViewer() {
             label="Attention"
             count={data.counts.unhealthy}
           />
+          <span className="text-[10px] text-[#5a5a78]" aria-label="Fleet node legend">
+            Health ✓ / ⚠ / ✕ / ? · kind ◆ platform · ● client · ■ service · ▲ infra · ○ edge
+          </span>
           {data.counts.supportRed > 0 ? (
             <StatusBadge level="error" label="Support RED" count={data.counts.supportRed} />
           ) : null}

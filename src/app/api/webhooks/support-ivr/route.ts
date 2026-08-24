@@ -448,8 +448,11 @@ export async function GET(req: Request): Promise<Response> {
       docs: 'docs/SUPPORT_IVR.md',
       twilioConfigured,
       twilioRequired: false,
-      shape: twilioConfigured ? '✓' : '◇',
-      label: twilioConfigured ? 'Twilio credentials present' : 'Feature-flagged scaffold',
+      live: false,
+      shape: '▲',
+      label: twilioConfigured
+        ? '▲ Phone not live — credentials present, no Twilio number purchased'
+        : '▲ Phone not live — IVR scaffold, no Twilio number',
     },
   })
 }
