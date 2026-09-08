@@ -1,5 +1,10 @@
-// Public, unauthenticated health check used by Render (CLAUDE.md §20.2).
-// Reports process liveness always; DB reachability when DATABASE_URL is set.
+// Public, unauthenticated LIVENESS check used by Render (CLAUDE.md §20.2).
+// Deliberately does NOT touch the database. Render probes this path
+// continuously; a `SELECT 1` here kept the Neon compute permanently awake
+// (767 CU-hours in Aug 2026) and made a Neon cold start look like an
+// application outage — the probe would 503 and Render would cycle the service.
+// Database reachability now lives at /api/health/deep, which monitoring calls
+// on an interval instead of on every probe.
 // emailConfigured is a boolean only — never exposes keys or EMAIL_FROM.
 // redisFanout is informational — Upstash is optional; never fails health when unset.
 export const dynamic = 'force-dynamic'
@@ -16,19 +21,14 @@ export async function GET() {
   const emailConfigured = isEmailConfigured()
   const redisFanout = redisFanoutMode()
 
-  let database: 'ok' | 'skipped' | 'error' = 'skipped'
-  if (process.env.DATABASE_URL) {
-    try {
-      const { db } = await import('@/lib/db')
-      await db.$queryRaw`SELECT 1`
-      database = 'ok'
-    } catch {
-      database = 'error'
-      return Response.json(
-        { status: 'degraded', database, emailConfigured, redisFanout, timestamp },
-        { status: 503 }
-      )
-    }
-  }
-  return Response.json({ status: 'ok', database, emailConfigured, redisFanout, timestamp })
+  // `database: 'not-checked'` is intentional and stable: it tells any reader
+  // that this endpoint makes no claim about the database, rather than implying
+  // the database is absent. Use /api/health/deep for a real answer.
+  return Response.json({
+    status: 'ok',
+    database: 'not-checked',
+    emailConfigured,
+    redisFanout,
+    timestamp,
+  })
 }

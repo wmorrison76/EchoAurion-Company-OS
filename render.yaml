@@ -189,13 +189,19 @@ services:
       - key: CRON_SECRET
         sync: false
 
-  # Every 1 minute: drain TEXT knight ingest jobs (Help Desk relay path).
+  # Every 30 minutes: drain TEXT knight ingest jobs (Help Desk relay path).
   # This cron IS the knight background worker — no separate Render worker type needed.
   # See docs/SCALE_AND_THROTTLE.md — keeps POST /api/relay/questions fast.
+  #
+  # Cadence: was */1. At 1-minute the job ran 1,440x/day, each run opening a
+  # Neon connection, and every sampled run reported processed:0 on an empty
+  # queue — while making it impossible for the Neon compute to ever reach its
+  # 5-minute idle threshold. 30 minutes is the development cadence; tighten
+  # deliberately (and not below 6 minutes) if queue latency becomes a problem.
   - type: cron
     name: echoaurion-company-os-knight-drain
     runtime: node
-    schedule: "*/1 * * * *"
+    schedule: "*/30 * * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-knight-drain.mjs
     envVars:
@@ -207,12 +213,15 @@ services:
       - key: CRON_SECRET
         sync: false
 
-  # Every 5 minutes: Render/GitHub failure → SYSTEM tickets + drain ingest queue.
+  # Every 30 minutes: Render/GitHub failure → SYSTEM tickets + drain ingest queue.
   # See docs/SCALE_AND_THROTTLE.md, docs/ERROR_CAPTURE_AND_SCOPE.md
+  #
+  # Cadence: was */5, which landed exactly on Neon's 300s suspend timeout and
+  # so kept the compute awake by itself, independent of any other job.
   - type: cron
     name: echoaurion-company-os-ops-poll
     runtime: node
-    schedule: "*/5 * * * *"
+    schedule: "*/30 * * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-ops-poll.mjs
     envVars:
@@ -277,11 +286,13 @@ services:
       - key: CRON_SECRET
         sync: false
 
-  # Every 10 minutes — page William if Echo TECH tickets unresolved past ECHO_ONCALL_MINUTES.
+  # Every 30 minutes — page William if Echo TECH tickets unresolved past
+  # ECHO_ONCALL_MINUTES (currently 30), so polling faster than the window it
+  # measures bought nothing. Was */10.
   - type: cron
     name: echoaurion-company-os-echo-oncall
     runtime: node
-    schedule: "*/10 * * * *"
+    schedule: "*/30 * * * *"
     buildCommand: "true"
     startCommand: node scripts/cron-http-post.mjs /api/ops/echo-oncall
     envVars:
