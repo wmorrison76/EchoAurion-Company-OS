@@ -297,7 +297,8 @@ See [docs/AURION_KNOWLEDGE_PLANE.md](./docs/AURION_KNOWLEDGE_PLANE.md) and
 ## 5. Post-deploy smoke check
 
 - [ ] `GET /` → public Aurion homepage (Login → `/login` → Dr. OS)
-- [ ] `GET /api/health` → `{ "status": "ok", "database": "ok" }`
+- [ ] `GET /api/health` → `{ "status": "ok", "database": "not-checked" }` (liveness only — deliberately does not touch the DB, so Render's continuous probe cannot pin the Neon compute awake)
+- [ ] `GET /api/health/deep` → `{ "status": "ok", "database": "ok" }` (real DB round-trip; call from monitoring at >= 15 min, never as the Render health path)
 - [ ] Login with `ADMIN_EMAIL`
 - [ ] `/fleet-nexus` loads (Live/Partial/Empty banner; graph when Render key set)
 - [ ] `/knowledge-plane` shows privacy banner + empty signals/insights
