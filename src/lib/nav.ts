@@ -12,6 +12,7 @@ import {
   Link2,
   BookOpen,
   Megaphone,
+  BarChart3,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -29,6 +30,12 @@ export interface NavItem {
 // Help Files = searchable KB / macros. Maintenance = downtime notices.
 export const navItems: NavItem[] = [
   { href: '/dr-os', label: 'Dr. OS', icon: Terminal, description: 'System overview' },
+  {
+    href: '/marketing-analytics',
+    label: 'Marketing',
+    icon: BarChart3,
+    description: 'Traffic · campaigns',
+  },
   {
     href: '/help-desk',
     label: 'Help Desk',
