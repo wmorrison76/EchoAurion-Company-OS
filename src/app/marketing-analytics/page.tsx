@@ -19,6 +19,21 @@ type VisitPayload = {
 
 type Visit = VisitPayload & { createdAt: Date }
 
+const ET_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/New_York',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+const ET_HOUR = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  hour12: false,
+})
+
 function payloadOf(value: unknown): VisitPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   const record = value as Record<string, unknown>
@@ -49,12 +64,15 @@ function sourceLabel(source?: string): string {
 }
 
 function dayKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  return ET_DATE.format(date)
 }
 
 function hourKey(date: Date): string {
-  const shifted = new Date(date.getTime() - 4 * 60 * 60 * 1000)
-  return `${shifted.toISOString().slice(5, 10)} ${shifted.toISOString().slice(11, 13)}:00`
+  const parts = ET_HOUR.formatToParts(date)
+  const month = parts.find((part) => part.type === 'month')?.value ?? '00'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '00'
+  const hour = parts.find((part) => part.type === 'hour')?.value ?? '00'
+  return `${month}-${day} ${hour}:00`
 }
 
 export default async function MarketingAnalyticsPage() {
