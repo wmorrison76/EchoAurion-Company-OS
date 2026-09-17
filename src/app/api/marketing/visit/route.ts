@@ -5,7 +5,7 @@ import { allowRateLimit, clientIp } from '@/lib/rate-limit'
 export const dynamic = 'force-dynamic'
 
 const visitSchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.string().min(8).max(100),
   source: z.string().min(1).max(180),
   medium: z.string().min(1).max(180),
   campaign: z.string().max(180).optional(),
