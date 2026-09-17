@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { RegisterSW } from '@/components/pwa/RegisterSW'
+import { MarketingAttributionTracker } from '@/components/marketing/MarketingAttributionTracker'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen bg-bg-base font-sans text-[#ffffff] antialiased">
         {children}
+        <MarketingAttributionTracker />
         <RegisterSW />
       </body>
     </html>
