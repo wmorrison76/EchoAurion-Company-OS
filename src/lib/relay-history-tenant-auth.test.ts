@@ -25,11 +25,11 @@ function req(token?: string, clientKeyHeader?: string): Request {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  find.mockImplementation(async ({ where }) => {
+  find.mockImplementation((async ({ where }) => {
     if (where.clientKey === tenantA) return { ingestSecretHash: digest(keyA) } as never
     if (where.clientKey === tenantB) return { ingestSecretHash: digest(keyB) } as never
     return null
-  })
+  }) as never)
 })
 
 describe('tenant-scoped Help Desk history read credentials', () => {
