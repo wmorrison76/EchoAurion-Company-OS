@@ -42,6 +42,11 @@ export async function authorizeRelayHistoryRead(input: {
   // Enforce a dedicated, strong installation credential. No shared fallback.
   if (!bearer || bearer.length < 32 || bearer.length > 512) return unauthorized()
 
+  // Never grant private history access with the fleet-wide shared relay secret,
+  // even if an installation was accidentally provisioned with its digest.
+  const fleetSecret = process.env.SUPPORT_INGEST_SECRET
+  if (fleetSecret && bearer === fleetSecret) return unauthorized()
+
   try {
     const client = await db.supportClient.findUnique({
       where: { clientKey },
