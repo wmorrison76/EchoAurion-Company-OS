@@ -1,0 +1,30 @@
+name: DrOS Relay Tenant History Isolation
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/relay-history-tenant-auth.ts'
+      - 'src/lib/relay-history-tenant-auth.test.ts'
+      - 'src/app/api/relay/questions/route.ts'
+      - 'docs/DR_OS_RELAY_HISTORY_TENANT_SECURITY.md'
+      - '.github/workflows/dr-os-relay-history-tenant-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Tenant and cross-installation authorization tests
+        run: npx vitest run src/lib/relay-history-tenant-auth.test.ts
+      - name: Typecheck
+        run: npm run typecheck
