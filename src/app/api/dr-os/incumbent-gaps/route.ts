@@ -110,6 +110,7 @@ export async function POST(req: Request): Promise<Response> {
         removed: report.removed,
         typeChanged: report.typeChanged,
         criticalGaps: report.criticalGaps,
+        missingCritical: report.missingCritical,
         acceptance: 'Human-reviewed mapping, bounded tests, verified source, Exodus off-provider continuity',
       })
       const work = await tx.workRequest.create({
@@ -175,6 +176,7 @@ export async function POST(req: Request): Promise<Response> {
         unmapped: report.unmapped.length,
         removed: report.removed.length,
         typeChanged: report.typeChanged.length,
+        missingCritical: report.missingCritical.length,
       }).catch(() => { /* Detection stays visible if audit service is unavailable. */ })
     }
     return Response.json({ success: true, data: { report, ...result } })
