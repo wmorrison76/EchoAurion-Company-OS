@@ -43,7 +43,7 @@ function req(method: 'GET' | 'POST', body?: Record<string, unknown>, cron = fals
 
 beforeEach(() => {
   vi.resetAllMocks()
-  vi.mocked(auth).mockResolvedValue(null)
+  vi.mocked(auth).mockResolvedValue(null as never)
   vi.mocked(isRenderApiConfigured).mockReturnValue(true)
   vi.mocked(listRenderOpsServices).mockResolvedValue([])
   vi.mocked(resolveRenderServiceId).mockResolvedValue({
