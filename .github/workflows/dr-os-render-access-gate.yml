@@ -1,0 +1,29 @@
+name: DrOS Infrastructure Access Separation
+
+on:
+  pull_request:
+    paths:
+      - 'src/app/api/dr-os/render-config/route.ts'
+      - 'src/app/api/dr-os/render-config/route.security.test.ts'
+      - 'docs/DR_OS_RENDER_AUTH_SECURITY.md'
+      - '.github/workflows/dr-os-render-access-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Enforce admin versus cron permissions
+        run: npx vitest run src/app/api/dr-os/render-config/route.security.test.ts
+      - name: Typecheck
+        run: npm run typecheck

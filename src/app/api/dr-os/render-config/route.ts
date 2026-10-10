@@ -2,8 +2,8 @@
  * GET  /api/dr-os/render-config — list Render services (id/name/type; no env values)
  * POST /api/dr-os/render-config — upsert allowlisted env vars or apply suggested ECHO_AI_URL
  *
- * Auth: Dr. OS admin session → actor william_morrison
- *       OR Bearer $CRON_SECRET → actor computer_agent
+ * Auth: an authenticated Dr. OS admin session with role=dr_os ONLY.
+ * A cron bearer token may run scheduled jobs but may never administer Render.
  *
  * Never returns secret values. Audit stores key names only.
  * Knights / Round Table seats never receive RENDER_API_KEY.
@@ -25,7 +25,6 @@ import {
   rotateCronSecretEverywhere,
 } from '@/lib/cron-secret-rotation'
 import type { APIResponse } from '@/types'
-import { verifyCronBearer } from '@/lib/verify-bearer'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -34,12 +33,11 @@ type AuthResult =
   | { ok: true; actor: Actor }
   | { ok: false; response: Response }
 
-async function authorize(req: Request): Promise<AuthResult> {
-  if (verifyCronBearer(req)) {
-    return { ok: true, actor: 'computer_agent' }
-  }
+async function authorize(): Promise<AuthResult> {
+  // A scheduler bearer is NOT a deployment/secret-management identity. Only
+  // the admin session has authority to list services or change Render config.
   const session = await auth()
-  if (session?.user) {
+  if (session?.user?.role === 'dr_os') {
     return { ok: true, actor: 'william_morrison' }
   }
   return {
@@ -73,7 +71,7 @@ function opsErrorResponse(error: unknown): Response {
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const gate = await authorize(req)
+  const gate = await authorize()
   if (!gate.ok) return gate.response
 
   if (!isRenderApiConfigured()) {
@@ -138,7 +136,7 @@ type PostBody = {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const gate = await authorize(req)
+  const gate = await authorize()
   if (!gate.ok) return gate.response
 
   if (!isRenderApiConfigured()) {
