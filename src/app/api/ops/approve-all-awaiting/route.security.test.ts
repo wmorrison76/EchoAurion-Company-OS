@@ -21,7 +21,7 @@ function request(dryRun: boolean, bearer = false) {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  vi.mocked(auth).mockResolvedValue(null)
+  vi.mocked(auth).mockResolvedValue(null as never)
   vi.mocked(verifyCronBearer).mockReturnValue(false)
   vi.mocked(approveAllAwaitingApproval).mockResolvedValue({
     approved: 0, skipped: 0, failed: 0, results: [],
