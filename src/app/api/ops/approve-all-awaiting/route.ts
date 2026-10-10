@@ -53,10 +53,16 @@ export async function POST(req: Request): Promise<Response> {
       }
     )
 
+    // Scheduler credentials are not entitled to ticket identifiers or subjects.
+    const data = cronOk ? {
+      approved: result.approved,
+      skipped: result.skipped,
+      failed: result.failed,
+    } : result
     return Response.json({
       success: true,
-      data: result,
-    } satisfies APIResponse<BulkApproveResult>)
+      data,
+    })
   } catch (error) {
     return Response.json(
       {
