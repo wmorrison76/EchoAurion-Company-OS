@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/lib/incumbent-schema-gap*'
       - 'src/lib/gap-rd-cost-allocation*'
+      - 'src/lib/autonomous-capability-certification*'
       - 'src/app/api/dr-os/incumbent-gaps/**'
       - 'src/app/api/dr-os/gap-rd-cost-preview/**'
       - 'prisma/schema.prisma'
@@ -33,6 +34,6 @@ jobs:
         run: npx prisma validate
       - run: npx prisma generate
       - name: Focused adaptive-capability unit tests
-        run: npx vitest run src/lib/incumbent-schema-gap.test.ts src/lib/gap-rd-cost-allocation.test.ts src/app/api/dr-os/incumbent-gaps/route.test.ts
+        run: npx vitest run src/lib/incumbent-schema-gap.test.ts src/lib/gap-rd-cost-allocation.test.ts src/lib/autonomous-capability-certification.test.ts src/app/api/dr-os/incumbent-gaps/route.test.ts
       - name: Typecheck
         run: npm run typecheck
