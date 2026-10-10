@@ -75,7 +75,9 @@ export function allocateGapRDCosts(input: {
   const allocationLines: RDAllocation[] = []
   const costsByGapCents: Record<string, number> = Object.create(null) as Record<string, number>
   let allocatedTotalCents = 0
-  let requiresVendorReconciliation = false
+  // Metered provider cost is not an invoice. All allocated charges require
+  // vendor-bill reconciliation before controller-approved GL posting.
+  const requiresVendorReconciliation = input.shares.length > 0
   for (const [id, event] of usage) {
     const rows = (allocations.get(id) ?? []).sort((a, b) =>
       a.workRequestId.localeCompare(b.workRequestId))
@@ -95,7 +97,6 @@ export function allocateGapRDCosts(input: {
       })
       costsByGapCents[row.workRequestId] = (costsByGapCents[row.workRequestId] ?? 0) + allocatedCents
       allocatedTotalCents += allocatedCents
-      if (event.estimated) requiresVendorReconciliation = true
     }
   }
   const glAccount = input.glAccount?.trim() || null
