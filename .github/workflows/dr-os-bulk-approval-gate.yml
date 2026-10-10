@@ -1,0 +1,29 @@
+name: DrOS Bulk Approval Authorization Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/app/api/ops/approve-all-awaiting/route.ts'
+      - 'src/app/api/ops/approve-all-awaiting/route.security.test.ts'
+      - 'docs/DR_OS_BULK_APPROVAL_AUTH.md'
+      - '.github/workflows/dr-os-bulk-approval-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Verify cron bulk approval remains dry-run only
+        run: npx vitest run src/app/api/ops/approve-all-awaiting/route.security.test.ts
+      - name: Typecheck
+        run: npm run typecheck
