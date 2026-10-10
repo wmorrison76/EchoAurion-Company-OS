@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/lib/relay-history-tenant-auth.ts'
       - 'src/lib/relay-history-tenant-auth.test.ts'
+      - 'src/app/api/relay/questions/route.tenant-security.test.ts'
       - 'src/app/api/relay/questions/route.ts'
       - 'docs/DR_OS_RELAY_HISTORY_TENANT_SECURITY.md'
       - '.github/workflows/dr-os-relay-history-tenant-security.yml'
@@ -25,6 +26,6 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - name: Tenant and cross-installation authorization tests
-        run: npx vitest run src/lib/relay-history-tenant-auth.test.ts
+        run: npx vitest run src/lib/relay-history-tenant-auth.test.ts src/app/api/relay/questions/route.tenant-security.test.ts
       - name: Typecheck
         run: npm run typecheck
