@@ -184,3 +184,38 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ success: false, error: kind }, { status: kind.startsWith('Invalid') ? 400 : 503 })
   }
 }
+
+
+/** DrOS integration-passport history. Owner session only, metadata only. */
+export async function GET(req: Request): Promise<Response> {
+  const session = await auth()
+  if (!session?.user) return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const url = new URL(req.url)
+  const clientKey = url.searchParams.get('clientKey') ?? ''
+  const providerKey = url.searchParams.get('providerKey') ?? ''
+  if (!clientKey || clientKey.length > 128 ||
+      !/^[A-Za-z][A-Za-z0-9_-]{1,63}$/.test(providerKey)) {
+    return Response.json({ success: false, error: 'clientKey and providerKey required' }, { status: 400 })
+  }
+  try {
+    const client = await db.supportClient.findUnique({ where: { clientKey }, select: { id: true } })
+    if (!client) return Response.json({ success: false, error: 'Unknown installation' }, { status: 404 })
+    const observations = await db.incumbentSchemaObservation.findMany({
+      where: { clientKey, providerKey },
+      orderBy: { lastObservedAt: 'desc' },
+      take: 100,
+      select: {
+        id: true, providerKey: true, facilityKey: true,
+        apiVersion: true, adapterVersion: true, schemaHash: true,
+        fieldCount: true, sourceVerified: true, connectionVerifiedAt: true,
+        firstObservedAt: true, lastObservedAt: true,
+      },
+    })
+    return Response.json({
+      success: true,
+      data: { observations, note: 'First observed does not imply first authenticated connection.' },
+    })
+  } catch {
+    return Response.json({ success: false, error: 'Integration passport history unavailable' }, { status: 503 })
+  }
+}
