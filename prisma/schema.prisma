@@ -1308,3 +1308,29 @@ model EchoKnowledgeChunk {
   @@index([shareScope, updatedAt])
   @@map("echo_knowledge_chunks")
 }
+
+
+// ── Adaptive incumbent integration passports (schema metadata only) ───────────
+// Each row is tenant/installation-bound. No source payload values, credentials,
+// guest/staff PII, or claimed live-provider authentication may be stored here.
+// Connection verification is a separate provider-issued evidence gate.
+model IncumbentSchemaObservation {
+  id                     String   @id @default(cuid())
+  observationKey         String   @unique
+  clientKey              String
+  providerKey            String
+  facilityKey            String
+  apiVersion             String?
+  adapterVersion         String
+  schemaHash             String
+  fieldCount             Int
+  fieldDescriptors       Json
+  sourceVerified         Boolean  @default(false)
+  connectionVerifiedAt   DateTime?
+  firstObservedAt        DateTime @default(now())
+  lastObservedAt         DateTime @default(now())
+
+  @@index([clientKey, providerKey, facilityKey, lastObservedAt])
+  @@index([providerKey, schemaHash])
+  @@map("incumbent_schema_observations")
+}
