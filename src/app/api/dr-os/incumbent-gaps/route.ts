@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { createHash } from 'node:crypto'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
@@ -56,6 +57,30 @@ export async function POST(req: Request): Promise<Response> {
     if (!client) return Response.json({ success: false, error: 'Unknown installation' }, { status: 404 })
 
     const report = analyzeIncumbentSchema(input)
+    // Append a versioned integration passport even when no new gap exists.
+    // This metadata is not evidence of a live/provider-authenticated connection.
+    const observationKey = createHash('sha256')
+      .update(JSON.stringify([
+        input.clientKey, input.providerKey, input.facilityKey,
+        input.apiVersion, input.adapterVersion, report.schemaHash,
+      ])).digest('hex')
+    await db.incumbentSchemaObservation.upsert({
+      where: { observationKey },
+      create: {
+        observationKey,
+        clientKey: input.clientKey,
+        providerKey: input.providerKey,
+        facilityKey: input.facilityKey,
+        apiVersion: input.apiVersion,
+        adapterVersion: input.adapterVersion,
+        schemaHash: report.schemaHash,
+        fieldCount: report.fieldCount,
+        fieldDescriptors: [...input.fields].sort((a, b) => a.path.localeCompare(b.path)),
+        sourceVerified: false,
+        connectionVerifiedAt: null,
+      },
+      update: { lastObservedAt: new Date() },
+    })
     if (report.status === 'NO_GAP') {
       return Response.json({
         success: true,
