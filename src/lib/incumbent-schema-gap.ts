@@ -38,6 +38,8 @@ export interface SchemaGapReport {
   removed: SchemaField[]
   typeChanged: Array<{ path: string; before: FieldKind; after: FieldKind }>
   criticalGaps: string[]
+  /** Required paths absent even on first observation; never treat as ready. */
+  missingCritical: string[]
   status: 'NO_GAP' | 'MAPPING_REVIEW' | 'BREAKING_REVIEW'
   /** Schema inventory is not proof of a verified provider sync or a built capability. */
   continuityCertified: false
@@ -93,7 +95,8 @@ export function analyzeIncumbentSchema(input: SchemaObservation): SchemaGapRepor
     ...removed.map(f => f.path),
     ...typeChanged.map(f => f.path),
   ])
-  const criticalGaps = [...critical].filter(p => allGapPaths.has(p)).sort()
+  const missingCritical = [...critical].filter(p => !fields.has(p)).sort()
+  const criticalGaps = [...critical].filter(p => allGapPaths.has(p) || !fields.has(p)).sort()
   const schemaHash = sha256(current)
   const fingerprint = sha256({
     providerKey: input.providerKey,
@@ -103,6 +106,7 @@ export function analyzeIncumbentSchema(input: SchemaObservation): SchemaGapRepor
     unmapped: unmapped.map(f => f.path),
     removed: removed.map(f => f.path),
     typeChanged,
+    criticalGaps,
   })
   return {
     schemaHash,
@@ -117,7 +121,8 @@ export function analyzeIncumbentSchema(input: SchemaObservation): SchemaGapRepor
     removed,
     typeChanged,
     criticalGaps,
-    status: removed.length || typeChanged.length ? 'BREAKING_REVIEW'
+    missingCritical,
+    status: removed.length || typeChanged.length || missingCritical.length ? 'BREAKING_REVIEW'
       : unmapped.length ? 'MAPPING_REVIEW' : 'NO_GAP',
     continuityCertified: false,
     sourceVerified: false,
