@@ -1,0 +1,27 @@
+name: DrOS Supply Chain Advisory Baseline
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/report-company-os-dependency-audit.mjs'
+      - 'docs/DR_OS_DEPENDENCY_SECURITY_BASELINE.md'
+      - '.github/workflows/dr-os-supply-chain-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Read-only production dependency advisory inventory
+        run: node scripts/report-company-os-dependency-audit.mjs
