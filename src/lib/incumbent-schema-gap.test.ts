@@ -54,6 +54,21 @@ describe('incumbent schema gaps', () => {
     expect(analyzeIncumbentSchema({ ...base, apiVersion: 'new' }).fingerprint).not.toBe(a.fingerprint)
   })
 
+  it('blocks Exodus when a required field is missing on the FIRST observation', () => {
+    const report = analyzeIncumbentSchema({
+      ...base,
+      mappedPaths: base.fields.map(f => f.path),
+      criticalPaths: ['reservation.id', 'reservation.total', 'folio.criticalTotal'],
+    })
+    expect(report.missingCritical).toEqual(['folio.criticalTotal'])
+    expect(report.criticalGaps).toEqual(['folio.criticalTotal'])
+    expect(report.status).toBe('BREAKING_REVIEW')
+    expect(report.continuityCertified).toBe(false)
+    expect(analyzeIncumbentSchema({
+      ...base, mappedPaths: base.fields.map(f => f.path),
+    }).fingerprint).not.toBe(report.fingerprint)
+  })
+
   it('says no gap only when every path is explicitly mapped', () => {
     const report = analyzeIncumbentSchema({
       ...base, mappedPaths: base.fields.map(f => f.path),
