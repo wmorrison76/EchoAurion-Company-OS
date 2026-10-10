@@ -14,6 +14,9 @@ GET /api/relay/questions?clientKey=...&userId=... previously accepted the fleet 
 - POST questions and all other relay routes are unchanged in this draft (a separate audit and migration are still required).
 - The server-side product proxy must authenticate its user before requesting a userId. **This patch does not authenticate individual end users in Company OS.** An authorized installation server can still request another userId within its own installation; that remains a certification-blocking user-delegation task.
 
+
+**Verified active product proxy dependency:** EchoAurion `server/routes/company-os-relay.ts` currently sends the fleet-wide `COMPANY_OS_INGEST_SECRET` in `forward()` for history reads, and its `/questions/history` route uses `optionalJwtAuthMiddleware` with an unauthenticated query-user fallback. Product security [issue #887](https://github.com/wmorrison76/Echo_Aurion-LUCCCA_Framework/issues/887) tracks a separate mandatory-session and signed-delegation fix in the product-owning lane. **Neither the new Company OS history gate nor the product fix may be treated as deployed or independently certified while #887 remains open.**
+
 ## Must complete before operator-authorized release
 
 1. Inventory all callers of history GET and determine which are currently using the fleet-wide secret. They must be migrated to independently random 32+ character installation credentials stored as SHA-256 digests in SupportClient.ingestSecretHash. Never place installation secrets in browser JS, query strings, agent prompts, logs or GitHub.
