@@ -7,7 +7,8 @@ on:
       - 'src/lib/gap-rd-cost-allocation*'
       - 'src/app/api/dr-os/incumbent-gaps/**'
       - 'src/app/api/dr-os/gap-rd-cost-preview/**'
-      - 'prisma/**'
+      - 'prisma/schema.prisma'
+      - 'prisma/migrations/20261010003500_incumbent_schema_observations/**'
       - '.github/workflows/adaptive-capability-gate.yml'
   workflow_dispatch:
 
