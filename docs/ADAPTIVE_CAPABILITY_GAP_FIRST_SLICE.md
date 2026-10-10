@@ -27,11 +27,10 @@
         {"path": "reservation.newMetric", "kind": "number"}
       ],
       "mappedPaths": ["reservation.id"],
-      "previousFields": [{"path": "reservation.id", "kind": "string"}],
       "criticalPaths": ["reservation.newMetric"]
     }
 
-The values must come from an operator-reviewed, redacted schema inventory. This endpoint does NOT discover the MEWS API itself. The separate live MEWS lane must provide authorized, sanitized provider evidence. No sourceVerified or connectionVerifiedAt is set by a metadata submission.
+The values must come from an operator-reviewed, redacted schema inventory. Schema drift comparisons use the last stored provider/facility observation; caller-supplied previousFields are rejected rather than trusted. The submitted mappedPaths are advisory claims, not a signed mapping certification. This endpoint does NOT discover the MEWS API itself. The separate live MEWS lane must provide authorized, sanitized provider evidence. No sourceVerified or connectionVerifiedAt is set by a metadata submission.
 
 ## GL preview input
 
