@@ -51,6 +51,17 @@ describe('tenant-scoped Help Desk history read credentials', () => {
     expect(result).toMatchObject({ ok: false, status: 401 })
   })
 
+  it('rejects the fleet secret even when accidentally stored as installation digest', async () => {
+    vi.stubEnv('SUPPORT_INGEST_SECRET', sharedKey)
+    try {
+      find.mockResolvedValueOnce({ ingestSecretHash: digest(sharedKey) } as never)
+      expect(await authorizeRelayHistoryRead({ req: req(sharedKey), clientKey: tenantA }))
+        .toMatchObject({ ok: false, status: 401 })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('does not fall back to shared credentials when installation is unregistered', async () => {
     const result = await authorizeRelayHistoryRead({
       req: req(sharedKey), clientKey: 'unregistered-install',
