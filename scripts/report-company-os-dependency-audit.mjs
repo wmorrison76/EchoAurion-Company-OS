@@ -49,7 +49,11 @@ const rank = { critical: 0, high: 1, moderate: 2, low: 3, info: 4 }
 risks.sort((a, b) => (rank[a.severity] ?? 5) - (rank[b.severity] ?? 5)
   || a.name.localeCompare(b.name))
 const counts = report.metadata.vulnerabilities
-const total = Object.values(counts).reduce((sum, n) => sum + (typeof n === 'number' ? n : 0), 0)
+const total = Number(counts.total)
+if (!Number.isSafeInteger(total) || total < 0) {
+  console.error('SECURITY_AUDIT_UNAVAILABLE: invalid NPM vulnerability total.')
+  process.exit(2)
+}
 
 console.log('COMPANY_OS_PRODUCTION_DEPENDENCY_ADVISORIES')
 console.log('Counts (npm audit --omit=dev):', JSON.stringify(counts))
