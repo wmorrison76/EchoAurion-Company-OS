@@ -32,6 +32,6 @@ jobs:
         run: npx prisma validate
       - run: npx prisma generate
       - name: Focused adaptive-capability unit tests
-        run: npx vitest run src/lib/incumbent-schema-gap.test.ts src/lib/gap-rd-cost-allocation.test.ts
+        run: npx vitest run src/lib/incumbent-schema-gap.test.ts src/lib/gap-rd-cost-allocation.test.ts src/app/api/dr-os/incumbent-gaps/route.test.ts
       - name: Typecheck
         run: npm run typecheck
