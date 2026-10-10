@@ -14,6 +14,7 @@ vi.mock('@/lib/db', () => ({
 
 import { db } from '@/lib/db'
 import { auth } from '@/lib/auth'
+import { audit } from '@/lib/audit'
 import { POST, GET } from './route'
 import { POST as costPreview } from '../gap-rd-cost-preview/route'
 
@@ -41,6 +42,7 @@ const payload = {
 beforeEach(() => {
   vi.resetAllMocks()
   ;(auth as any).mockResolvedValue({ user: { id: 'operator' } })
+  ;(audit as any).mockResolvedValue(undefined)
   mockDb.supportClient.findUnique.mockResolvedValue({ id: 'registered-client' })
   mockDb.incumbentSchemaObservation.upsert.mockResolvedValue({ id: 'obs1' })
   mockDb.incumbentSchemaObservation.findMany.mockResolvedValue([])
