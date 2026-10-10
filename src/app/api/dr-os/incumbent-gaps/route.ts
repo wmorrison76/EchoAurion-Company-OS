@@ -24,7 +24,6 @@ const inputSchema = z.object({
   apiVersion: z.string().max(80).nullable(),
   adapterVersion: z.string().min(1).max(96).regex(/^[A-Za-z0-9._+/-]+$/),
   fields: z.array(field).min(1).max(500),
-  previousFields: z.array(field).max(500).optional(),
   mappedPaths: z.array(field.shape.path).max(500),
   criticalPaths: z.array(field.shape.path).max(500).optional(),
 }).strict()
@@ -56,7 +55,29 @@ export async function POST(req: Request): Promise<Response> {
     const client = await db.supportClient.findUnique({ where: { clientKey: input.clientKey } })
     if (!client) return Response.json({ success: false, error: 'Unknown installation' }, { status: 404 })
 
-    const report = analyzeIncumbentSchema(input)
+    // Derive drift from this installation's actual stored observation history,
+    // not a caller-provided "previous" schema. A caller must not erase breakage
+    // by submitting a convenient prior shape.
+    const last = await db.incumbentSchemaObservation.findFirst({
+      where: {
+        clientKey: input.clientKey,
+        providerKey: input.providerKey,
+        facilityKey: input.facilityKey,
+      },
+      orderBy: { lastObservedAt: 'desc' },
+      select: { fieldDescriptors: true },
+    })
+    const prior = last ? z.array(field).max(500).safeParse(last.fieldDescriptors) : null
+    if (prior && !prior.success) {
+      return Response.json({
+        success: false,
+        error: 'Stored schema history invalid; manual review required',
+      }, { status: 503 })
+    }
+    const report = analyzeIncumbentSchema({
+      ...input,
+      previousFields: prior?.success ? prior.data : [],
+    })
     // Append a versioned integration passport even when no new gap exists.
     // This metadata is not evidence of a live/provider-authenticated connection.
     const observationKey = createHash('sha256')
