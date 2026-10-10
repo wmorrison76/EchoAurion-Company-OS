@@ -34,6 +34,7 @@ describe('gap R&D allocation — draft only, never automatic GL posting', () => 
     expect(result.glStatus).toBe('DRAFT_REVIEW')
     expect(result.glAccount).toBe('RND-CONTROLLER-SELECTED')
     expect(result.posted).toBe(false)
+    expect(result.requiresVendorReconciliation).toBe(true)
   })
 
   it('rejects unmeasured calls, duplicate usage and excess allocations', () => {
