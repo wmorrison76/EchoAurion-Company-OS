@@ -13,6 +13,7 @@ import { getStandbyConfig } from '@/lib/standby'
 import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
 import { supportEtaLabel } from '@/lib/support-eta'
 import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
+import { authorizeRelayHistoryRead } from '@/lib/relay-history-tenant-auth'
 import {
   attachmentAuditMeta,
   parseIncomingAttachments,
@@ -112,19 +113,28 @@ function redactPilotText(text: string, max = PILOT_THREAD_TEXT_MAX): string {
  * Never returns org-wide / coworker tickets.
  */
 export async function GET(req: Request): Promise<Response> {
-  const a = relayAuthorized(req)
-  if (!a.ok) {
-    return Response.json(
-      { success: false, error: a.error, code: a.code },
-      { status: a.status }
-    )
-  }
   const url = new URL(req.url)
   const key = requireClientKey(url.searchParams.get('clientKey'))
   if (!key.ok) {
     return Response.json(
       { success: false, error: key.error, code: key.code },
       { status: key.status }
+    )
+  }
+  // Private history must be scoped to the registered installation credential;
+  // the fleet-wide ingest secret is insufficient to select a property.
+  const install = await authorizeRelayHistoryRead({ req, clientKey: key.clientKey })
+  if (!install.ok) {
+    return Response.json(
+      { success: false, error: install.error, code: install.code },
+      { status: install.status }
+    )
+  }
+  const throttle = relayRateLimited(req, 'questions')
+  if (!throttle.ok) {
+    return Response.json(
+      { success: false, error: throttle.error, code: throttle.code },
+      { status: throttle.status }
     )
   }
   const userId = parseRelayUserId(url.searchParams.get('userId'))
