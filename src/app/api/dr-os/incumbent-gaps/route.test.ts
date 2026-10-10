@@ -5,7 +5,7 @@ vi.mock('@/lib/audit', () => ({ audit: vi.fn() }))
 vi.mock('@/lib/db', () => ({
   db: {
     supportClient: { findUnique: vi.fn() },
-    incumbentSchemaObservation: { upsert: vi.fn(), findMany: vi.fn() },
+    incumbentSchemaObservation: { upsert: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
     $transaction: vi.fn(),
     aiUsageEvent: { findMany: vi.fn() },
     workRequest: { findMany: vi.fn() },
@@ -46,6 +46,7 @@ beforeEach(() => {
   mockDb.supportClient.findUnique.mockResolvedValue({ id: 'registered-client' })
   mockDb.incumbentSchemaObservation.upsert.mockResolvedValue({ id: 'obs1' })
   mockDb.incumbentSchemaObservation.findMany.mockResolvedValue([])
+  mockDb.incumbentSchemaObservation.findFirst.mockResolvedValue(null)
   mockDb.$transaction.mockImplementation(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx))
   tx.$queryRaw.mockResolvedValue([])
   tx.helpTicket.findFirst.mockResolvedValue(null)
@@ -66,6 +67,51 @@ describe('DrOS incumbent schema intake (mocked DB; not live MEWS)', () => {
     const res = await POST(request('/api/dr-os/incumbent-gaps', payload))
     expect(res.status).toBe(404)
     expect(mockDb.incumbentSchemaObservation.upsert).not.toHaveBeenCalled()
+  })
+
+  it('compares against persisted provider/facility history, not an injected baseline', async () => {
+    mockDb.incumbentSchemaObservation.findFirst.mockResolvedValue({
+      fieldDescriptors: [
+        { path: 'reservation.id', kind: 'string' },
+        { path: 'reservation.discontinued', kind: 'boolean' },
+      ],
+    })
+    const res = await POST(request('/api/dr-os/incumbent-gaps', payload))
+    expect(res.status).toBe(200)
+    const result = await res.json()
+    expect(result.data.report.removed).toEqual([
+      { path: 'reservation.discontinued', kind: 'boolean' },
+    ])
+    expect(result.data.report.status).toBe('BREAKING_REVIEW')
+    expect(mockDb.incumbentSchemaObservation.findFirst).toHaveBeenCalledWith({
+      where: {
+        clientKey: 'registered-install',
+        providerKey: 'mews',
+        facilityKey: 'facility-001',
+      },
+      orderBy: { lastObservedAt: 'desc' },
+      select: { fieldDescriptors: true },
+    })
+    expect(tx.helpTicket.create.mock.calls[0][0].data.priority).toBe('HIGH')
+  })
+
+  it('rejects caller-supplied previous schemas that could conceal breaking changes', async () => {
+    const forged = await POST(request('/api/dr-os/incumbent-gaps', {
+      ...payload, previousFields: [...payload.fields],
+    }))
+    expect(forged.status).toBe(400)
+    expect(mockDb.incumbentSchemaObservation.findFirst).not.toHaveBeenCalled()
+    expect(tx.workRequest.create).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when historical schema metadata is corrupted', async () => {
+    mockDb.incumbentSchemaObservation.findFirst.mockResolvedValue({
+      fieldDescriptors: [{ path: 'reservation.id', kind: 'not-a-field-kind' }],
+    })
+    const res = await POST(request('/api/dr-os/incumbent-gaps', payload))
+    expect(res.status).toBe(503)
+    expect(mockDb.incumbentSchemaObservation.upsert).not.toHaveBeenCalled()
+    expect(tx.helpTicket.create).not.toHaveBeenCalled()
   })
 
   it('creates versioned metadata passport and a linked internal gap work item', async () => {
