@@ -109,6 +109,24 @@ describe('Help Desk GET route tenant authorization wiring', () => {
     expect(questionRead).not.toHaveBeenCalled()
   })
 
+  it('rejects throttled requests before querying installation credentials', async () => {
+    rate.mockReturnValueOnce({ ok: false, status: 429, error: 'rate limited', code: 'RATE_LIMITED' })
+    const result = await GET(req())
+    expect(result.status).toBe(429)
+    expect(auth).not.toHaveBeenCalled()
+    expect(questionRead).not.toHaveBeenCalled()
+  })
+
+  it('does not disclose internal history query exceptions', async () => {
+    auth.mockResolvedValueOnce({ ok: true, clientKey: 'property-alpha' })
+    questionRead.mockRejectedValueOnce(new Error('private database connection details'))
+    const result = await GET(req())
+    expect(result.status).toBe(500)
+    const body = await result.json()
+    expect(body.code).toBe('HISTORY_FAILED')
+    expect(JSON.stringify(body)).not.toContain('private database connection details')
+  })
+
   it('does not retrieve org-wide history if caller omits a userId', async () => {
     auth.mockResolvedValueOnce({ ok: true, clientKey: 'property-alpha' })
     const result = await GET(req('property-alpha', ''))
