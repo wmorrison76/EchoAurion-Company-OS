@@ -5,6 +5,9 @@ on:
     paths:
       - 'src/app/api/ops/approve-all-awaiting/route.ts'
       - 'src/app/api/ops/approve-all-awaiting/route.security.test.ts'
+      - 'src/app/api/help-desk/tickets/[id]/approve/route.ts'
+      - 'src/app/api/help-desk/tickets/[id]/approve/route.security.test.ts'
+      - 'src/lib/auth.config.ts'
       - 'src/lib/help-desk-approve.ts'
       - 'src/lib/help-desk-approve.test.ts'
       - 'scripts/approve-all-awaiting.ts'
