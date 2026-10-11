@@ -121,6 +121,15 @@ export async function GET(req: Request): Promise<Response> {
       { status: key.status }
     )
   }
+  // Reject throttled requests before performing credential database lookups.
+  // This per-process limit is defense in depth; ingress-wide limits are still required.
+  const throttle = relayRateLimited(req, 'questions')
+  if (!throttle.ok) {
+    return Response.json(
+      { success: false, error: throttle.error, code: throttle.code },
+      { status: throttle.status }
+    )
+  }
   // Private history must be scoped to the registered installation credential;
   // the fleet-wide ingest secret is insufficient to select a property.
   const install = await authorizeRelayHistoryRead({ req, clientKey: key.clientKey })
@@ -128,13 +137,6 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json(
       { success: false, error: install.error, code: install.code },
       { status: install.status }
-    )
-  }
-  const throttle = relayRateLimited(req, 'questions')
-  if (!throttle.ok) {
-    return Response.json(
-      { success: false, error: throttle.error, code: throttle.code },
-      { status: throttle.status }
     )
   }
   const userId = parseRelayUserId(url.searchParams.get('userId'))
@@ -268,7 +270,7 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'History fetch failed',
+        error: 'History fetch failed',
         code: 'HISTORY_FAILED',
       },
       { status: 500 }
