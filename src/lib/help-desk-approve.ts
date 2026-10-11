@@ -369,12 +369,13 @@ export async function approveHelpTicket(
 
 export type BulkApproveAwaitingResult = {
   approved: number
+  wouldApprove: number
   skipped: number
   failed: number
   results: Array<{
     ticketId: string
     subject: string
-    outcome: 'approved' | 'skipped' | 'failed'
+    outcome: 'approved' | 'would_approve' | 'skipped' | 'failed'
     error?: string
   }>
 }
@@ -407,6 +408,7 @@ export async function approveAllAwaitingApproval(opts?: {
 
   const results: BulkApproveAwaitingResult['results'] = []
   let approved = 0
+  let wouldApprove = 0
   let skipped = 0
   let failed = 0
 
@@ -455,11 +457,11 @@ export async function approveAllAwaitingApproval(opts?: {
     }
 
     if (dryRun) {
-      approved += 1
+      wouldApprove += 1
       results.push({
         ticketId: ticket.id,
         subject: ticket.subject,
-        outcome: 'approved',
+        outcome: 'would_approve',
       })
       continue
     }
@@ -498,5 +500,5 @@ export async function approveAllAwaitingApproval(opts?: {
     }
   }
 
-  return { approved, skipped, failed, results }
+  return { approved, wouldApprove, skipped, failed, results }
 }
