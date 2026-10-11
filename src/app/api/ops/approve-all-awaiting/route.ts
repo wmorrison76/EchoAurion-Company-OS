@@ -48,6 +48,7 @@ export async function POST(req: Request): Promise<Response> {
       {
         dryRun,
         approved: result.approved,
+        wouldApprove: result.wouldApprove,
         skipped: result.skipped,
         failed: result.failed,
       }
@@ -56,6 +57,7 @@ export async function POST(req: Request): Promise<Response> {
     // Scheduler credentials are not entitled to ticket identifiers or subjects.
     const data = cronOk ? {
       approved: result.approved,
+      wouldApprove: result.wouldApprove,
       skipped: result.skipped,
       failed: result.failed,
     } : result
