@@ -68,8 +68,22 @@ describe('bulk Help Desk approval identity gate', () => {
     expect(approveAllAwaitingApproval).not.toHaveBeenCalled()
   })
 
+  it('rejects a non-founder administrator even with dr_os role', async () => {
+    vi.mocked(auth).mockResolvedValue({ user: { id: 'other-admin', role: 'dr_os' } } as never)
+    const res = await POST(request(false))
+    expect(res.status).toBe(401)
+    expect(approveAllAwaitingApproval).not.toHaveBeenCalled()
+  })
+
+  it('rejects founder identifier without administrator role', async () => {
+    vi.mocked(auth).mockResolvedValue({ user: { id: 'william_morrison', role: 'viewer' } } as never)
+    const res = await POST(request(false))
+    expect(res.status).toBe(401)
+    expect(approveAllAwaitingApproval).not.toHaveBeenCalled()
+  })
+
   it('permits admin session to approve or send subject to downstream safety gates', async () => {
-    vi.mocked(auth).mockResolvedValue({ user: { id: 'admin', role: 'dr_os' } } as never)
+    vi.mocked(auth).mockResolvedValue({ user: { id: 'william_morrison', role: 'dr_os' } } as never)
     const res = await POST(request(false))
     expect(res.status).toBe(200)
     expect(approveAllAwaitingApproval).toHaveBeenCalledWith({
@@ -79,7 +93,7 @@ describe('bulk Help Desk approval identity gate', () => {
   })
 
   it('permits admin to preview without sending', async () => {
-    vi.mocked(auth).mockResolvedValue({ user: { id: 'admin', role: 'dr_os' } } as never)
+    vi.mocked(auth).mockResolvedValue({ user: { id: 'william_morrison', role: 'dr_os' } } as never)
     const res = await POST(request(true))
     expect(res.status).toBe(200)
     expect(approveAllAwaitingApproval).toHaveBeenCalledWith({
