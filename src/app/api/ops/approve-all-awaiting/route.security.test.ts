@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.mocked(auth).mockResolvedValue(null as never)
   vi.mocked(verifyCronBearer).mockReturnValue(false)
   vi.mocked(approveAllAwaitingApproval).mockResolvedValue({
-    approved: 0, skipped: 0, failed: 0, results: [],
+    approved: 0, wouldApprove: 0, skipped: 0, failed: 0, results: [],
   })
   vi.mocked(audit).mockResolvedValue(undefined)
 })
@@ -47,13 +47,13 @@ describe('bulk Help Desk approval identity gate', () => {
   it('lets scheduler inspect ONLY a non-mutating dry-run', async () => {
     vi.mocked(verifyCronBearer).mockReturnValue(true)
     vi.mocked(approveAllAwaitingApproval).mockResolvedValueOnce({
-      approved: 0, skipped: 0, failed: 0,
+      approved: 0, wouldApprove: 0, skipped: 0, failed: 0,
       results: [{ ticketId: 'private-ticket', subject: 'private-subject', outcome: 'skipped' }],
     } as never)
     const res = await POST(request(true, true))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.data).toEqual({ approved: 0, skipped: 0, failed: 0 })
+    expect(body.data).toEqual({ approved: 0, wouldApprove: 0, skipped: 0, failed: 0 })
     expect(JSON.stringify(body)).not.toContain('private-ticket')
     expect(JSON.stringify(body)).not.toContain('private-subject')
     expect(approveAllAwaitingApproval).toHaveBeenCalledWith({
