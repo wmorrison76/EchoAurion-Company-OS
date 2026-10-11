@@ -21,7 +21,7 @@ export async function POST(req: Request): Promise<Response> {
   const dryRun = ['1', 'true'].includes((url.searchParams.get('dryRun') ?? '').toLowerCase())
   const cronOk = verifyCronBearer(req)
   const session = cronOk ? null : await auth()
-  const adminOk = session?.user?.role === 'dr_os'
+  const adminOk = session?.user?.role === 'dr_os' && session.user.id === 'william_morrison'
 
   if (!adminOk && !cronOk) {
     return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
