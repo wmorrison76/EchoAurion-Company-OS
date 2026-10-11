@@ -1,5 +1,6 @@
 /**
- * Read-only preview of Help Desk tickets awaiting approval.\n * Live approvals require an authenticated founder session through the HTTP route.
+ * Read-only preview of Help Desk tickets awaiting approval.
+ * Live approvals require an authenticated founder session through the HTTP route.
  *
  * Uses the same path as POST /api/help-desk/tickets/[id]/approve (relay + audit + echo_repair_ready).
  *
@@ -15,7 +16,12 @@
  */
 
 async function main() {
-  // Direct database scripts have no authenticated founder principal. Fail closed.\n  if (process.argv.some(arg => ['--execute', '--live', '--approve', '--send'].includes(arg))) {\n    console.error('[approve-all] Live approval from CLI is prohibited; use the authenticated administrator route.')\n    process.exit(1)\n  }\n  const dryRun = true
+  // Direct database scripts have no authenticated founder principal. Fail closed.
+  if (process.argv.some(arg => ['--execute', '--live', '--approve', '--send'].includes(arg))) {
+    console.error('[approve-all] Live approval from CLI is prohibited; use the authenticated administrator route.')
+    process.exit(1)
+  }
+  const dryRun = true
 
   if (!process.env.DATABASE_URL?.trim()) {
     console.error(
@@ -37,12 +43,12 @@ async function main() {
   })
 
   console.log(
-    `[approve-all] Done — approved: ${result.approved}, skipped: ${result.skipped}, failed: ${result.failed}`
+    `[approve-all] Done — approved: ${result.approved}, would approve: ${result.wouldApprove}, skipped: ${result.skipped}, failed: ${result.failed}`
   )
 
   for (const row of result.results) {
     const tag =
-      row.outcome === 'approved' ? 'OK' : row.outcome === 'skipped' ? 'SKIP' : 'FAIL'
+      row.outcome === 'approved' ? 'OK' : row.outcome === 'would_approve' ? 'PREVIEW' : row.outcome === 'skipped' ? 'SKIP' : 'FAIL'
     const err = row.error ? ` — ${row.error}` : ''
     console.log(`  [${tag}] ${row.ticketId.slice(0, 12)}… ${row.subject.slice(0, 80)}${err}`)
   }
