@@ -1,5 +1,5 @@
 /**
- * One-shot: approve every Help Desk ticket in AWAITING_APPROVAL.
+ * Read-only preview of Help Desk tickets awaiting approval.\n * Live approvals require an authenticated founder session through the HTTP route.
  *
  * Uses the same path as POST /api/help-desk/tickets/[id]/approve (relay + audit + echo_repair_ready).
  *
@@ -15,7 +15,7 @@
  */
 
 async function main() {
-  const dryRun = process.argv.includes('--dry-run') || process.argv.includes('--dryRun')
+  // Direct database scripts have no authenticated founder principal. Fail closed.\n  if (process.argv.some(arg => ['--execute', '--live', '--approve', '--send'].includes(arg))) {\n    console.error('[approve-all] Live approval from CLI is prohibited; use the authenticated administrator route.')\n    process.exit(1)\n  }\n  const dryRun = true
 
   if (!process.env.DATABASE_URL?.trim()) {
     console.error(
