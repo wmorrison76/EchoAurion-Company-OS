@@ -5,6 +5,9 @@ on:
     paths:
       - 'src/app/api/ops/approve-all-awaiting/route.ts'
       - 'src/app/api/ops/approve-all-awaiting/route.security.test.ts'
+      - 'src/lib/help-desk-approve.ts'
+      - 'src/lib/help-desk-approve.test.ts'
+      - 'scripts/approve-all-awaiting.ts'
       - 'docs/DR_OS_BULK_APPROVAL_AUTH.md'
       - '.github/workflows/dr-os-bulk-approval-gate.yml'
   workflow_dispatch:
