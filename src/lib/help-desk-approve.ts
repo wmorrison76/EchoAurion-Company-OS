@@ -391,8 +391,8 @@ export async function approveAllAwaitingApproval(opts?: {
   actor?: HelpDeskApproveActor
   dryRun?: boolean
 }): Promise<BulkApproveAwaitingResult> {
-  const actor = opts?.actor ?? 'william_morrison'
-  const dryRun = opts?.dryRun ?? false
+  const actor = opts?.actor ?? 'computer_agent'
+  const dryRun = opts?.dryRun ?? true
 
   const tickets = await db.helpTicket.findMany({
     where: { status: 'AWAITING_APPROVAL' },
