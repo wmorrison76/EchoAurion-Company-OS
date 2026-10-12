@@ -47,7 +47,13 @@ function resolveAnswer(
 export async function approveHelpTicket(
   input: ApproveHelpTicketInput
 ): Promise<ApproveHelpTicketResult> {
-  const actor = input.actor ?? 'william_morrison'
+  // Approval is privileged: never infer founder identity from a missing actor.
+  // Callers must explicitly supply an authorized principal; automated callers
+  // cannot acquire approval authority by omitting this field.
+  if (input.actor !== 'william_morrison') {
+    return { ok: false, error: 'Founder authorization required', status: 403 }
+  }
+  const actor = input.actor
   const mode = input.mode ?? 'reply'
   const { ticketId: id } = input
 
