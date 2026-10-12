@@ -19,7 +19,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const session = await auth()
-  if (!session?.user) {
+  // A valid login alone does not grant customer-reply or work approval authority.
+  if (session?.user?.role !== 'dr_os' || session.user.id !== 'william_morrison') {
     return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
   }
 
@@ -51,7 +52,7 @@ export async function POST(
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Approve failed',
+        error: 'Approve failed',
       },
       { status: 500 }
     )

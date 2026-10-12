@@ -47,7 +47,13 @@ function resolveAnswer(
 export async function approveHelpTicket(
   input: ApproveHelpTicketInput
 ): Promise<ApproveHelpTicketResult> {
-  const actor = input.actor ?? 'william_morrison'
+  // Approval is privileged: never infer founder identity from a missing actor.
+  // Callers must explicitly supply an authorized principal; automated callers
+  // cannot acquire approval authority by omitting this field.
+  if (input.actor !== 'william_morrison') {
+    return { ok: false, error: 'Founder authorization required', status: 403 }
+  }
+  const actor = input.actor
   const mode = input.mode ?? 'reply'
   const { ticketId: id } = input
 
@@ -57,6 +63,9 @@ export async function approveHelpTicket(
   })
   if (!ticket) {
     return { ok: false, error: 'Ticket not found', status: 404 }
+  }
+  if (ticket.status === 'RESOLVED') {
+    return { ok: false, error: 'Ticket already resolved', status: 409 }
   }
 
   const answer = resolveAnswer(ticket, input)
@@ -369,12 +378,13 @@ export async function approveHelpTicket(
 
 export type BulkApproveAwaitingResult = {
   approved: number
+  wouldApprove: number
   skipped: number
   failed: number
   results: Array<{
     ticketId: string
     subject: string
-    outcome: 'approved' | 'skipped' | 'failed'
+    outcome: 'approved' | 'would_approve' | 'skipped' | 'failed'
     error?: string
   }>
 }
@@ -390,8 +400,8 @@ export async function approveAllAwaitingApproval(opts?: {
   actor?: HelpDeskApproveActor
   dryRun?: boolean
 }): Promise<BulkApproveAwaitingResult> {
-  const actor = opts?.actor ?? 'william_morrison'
-  const dryRun = opts?.dryRun ?? false
+  const actor = opts?.actor ?? 'computer_agent'
+  const dryRun = opts?.dryRun ?? true
 
   const tickets = await db.helpTicket.findMany({
     where: { status: 'AWAITING_APPROVAL' },
@@ -407,6 +417,7 @@ export async function approveAllAwaitingApproval(opts?: {
 
   const results: BulkApproveAwaitingResult['results'] = []
   let approved = 0
+  let wouldApprove = 0
   let skipped = 0
   let failed = 0
 
@@ -455,11 +466,11 @@ export async function approveAllAwaitingApproval(opts?: {
     }
 
     if (dryRun) {
-      approved += 1
+      wouldApprove += 1
       results.push({
         ticketId: ticket.id,
         subject: ticket.subject,
-        outcome: 'approved',
+        outcome: 'would_approve',
       })
       continue
     }
@@ -498,5 +509,5 @@ export async function approveAllAwaitingApproval(opts?: {
     }
   }
 
-  return { approved, skipped, failed, results }
+  return { approved, wouldApprove, skipped, failed, results }
 }

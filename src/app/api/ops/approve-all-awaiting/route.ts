@@ -10,57 +10,66 @@ export const maxDuration = 120
 type BulkApproveResult = Awaited<ReturnType<typeof approveAllAwaitingApproval>>
 
 /**
- * Bulk-approve every AWAITING_APPROVAL ticket with a knight draft.
+ * Bulk approval requires an authenticated DrOS administrator session.
+ * Scheduler bearer tokens can request dry-run summaries ONLY.
  *
- * Auth: admin session OR Authorization: Bearer $CRON_SECRET
- *
- * Example (Render shell / cron):
- *   curl -X POST "$WEB_SERVICE_URL/api/ops/approve-all-awaiting" \
- *     -H "Authorization: Bearer $CRON_SECRET"
- *
- * Dry run:
- *   curl -X POST "...?dryRun=1" -H "Authorization: Bearer $CRON_SECRET"
+ * CRON_SECRET is an automation credential, never approval authority.
+ * An explicit dryRun=1 may return a preview without approving/sending.
  */
 export async function POST(req: Request): Promise<Response> {
-    const cronOk = verifyCronBearer(req)
-
-  if (!cronOk) {
-    const session = await auth()
-    if (!session?.user) {
-      return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
-    }
-  }
-
   const url = new URL(req.url)
-  const dryRun = url.searchParams.get('dryRun') === '1' || url.searchParams.get('dryRun') === 'true'
+  const dryRun = ['1', 'true'].includes((url.searchParams.get('dryRun') ?? '').toLowerCase())
+  const cronOk = verifyCronBearer(req)
+  const session = cronOk ? null : await auth()
+  const adminOk = session?.user?.role === 'dr_os' && session.user.id === 'william_morrison'
+
+  if (!adminOk && !cronOk) {
+    return Response.json({ success: false, error: 'Unauthorized', code: '401' }, { status: 401 })
+  }
+  if (cronOk && !dryRun) {
+    return Response.json({
+      success: false,
+      error: 'Scheduler cannot approve or send replies; administrator session required',
+      code: 'ADMIN_APPROVAL_REQUIRED',
+    }, { status: 403 })
+  }
+  const actor = adminOk ? 'william_morrison' : 'computer_agent'
 
   try {
     const result = await approveAllAwaitingApproval({
-      actor: cronOk ? 'computer_agent' : 'william_morrison',
+      actor,
       dryRun,
     })
 
     await audit(
-      cronOk ? 'computer_agent' : 'william_morrison',
+      actor,
       'help_desk.ticket.approve_all',
       undefined,
       {
         dryRun,
         approved: result.approved,
+        wouldApprove: result.wouldApprove,
         skipped: result.skipped,
         failed: result.failed,
       }
     )
 
+    // Scheduler credentials are not entitled to ticket identifiers or subjects.
+    const data = cronOk ? {
+      approved: result.approved,
+      wouldApprove: result.wouldApprove,
+      skipped: result.skipped,
+      failed: result.failed,
+    } : result
     return Response.json({
       success: true,
-      data: result,
-    } satisfies APIResponse<BulkApproveResult>)
+      data,
+    })
   } catch (error) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Bulk approve failed',
+        error: 'Bulk approve failed',
       },
       { status: 500 }
     )
