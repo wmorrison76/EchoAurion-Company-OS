@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized, relayQuestionsThrottle, relayRateLimited, relayThrottleResponse, requireClientKey } from '@/lib/relay-auth'
+import { relayQuestionsThrottle, relayRateLimited, relayThrottleResponse, requireClientKey } from '@/lib/relay-auth'
 import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import {
   processInboundQuestion,
@@ -12,7 +12,6 @@ import {
 import { getStandbyConfig } from '@/lib/standby'
 import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
 import { supportEtaLabel } from '@/lib/support-eta'
-import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
 import { authorizeRelayHistoryRead } from '@/lib/relay-history-tenant-auth'
 import {
   attachmentAuditMeta,
@@ -284,13 +283,6 @@ export async function GET(req: Request): Promise<Response> {
  * draft in the background. Standby may auto-approve low-risk TEXT only.
  */
 export async function POST(req: Request): Promise<Response> {
-  const auth = relayAuthorized(req)
-  if (!auth.ok) {
-    return Response.json(
-      { success: false, error: auth.error, code: auth.code },
-      { status: auth.status }
-    )
-  }
   const ipLimit = relayRateLimited(req, 'questions')
   if (!ipLimit.ok) {
     return Response.json(
@@ -313,6 +305,9 @@ export async function POST(req: Request): Promise<Response> {
         { status: key.status }
       )
     }
+
+    const auth = await authorizeRelayHistoryRead({ req, clientKey: key.clientKey })
+    if (!auth.ok) return Response.json({ success: false, error: auth.error, code: auth.code }, { status: auth.status })
 
     const clientThrottle = await relayQuestionsThrottle(key.clientKey)
     if (!clientThrottle.ok && !clientThrottle.throttle.ok) {
@@ -363,18 +358,6 @@ export async function POST(req: Request): Promise<Response> {
           }
         )
       }
-    }
-
-    const tenant = await enforcePerTenantSecretIfSet({
-      clientKey: key.clientKey,
-      req,
-      sharedOk: true,
-    })
-    if (!tenant.ok) {
-      return Response.json(
-        { success: false, error: tenant.error, code: tenant.code },
-        { status: tenant.status }
-      )
     }
 
     const { question, context, locale, attachments: rawAttachments, ticketId: followUpRef } =
