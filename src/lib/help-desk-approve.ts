@@ -58,6 +58,9 @@ export async function approveHelpTicket(
   if (!ticket) {
     return { ok: false, error: 'Ticket not found', status: 404 }
   }
+  if (ticket.status === 'RESOLVED') {
+    return { ok: false, error: 'Ticket already resolved', status: 409 }
+  }
 
   const answer = resolveAnswer(ticket, input)
 
