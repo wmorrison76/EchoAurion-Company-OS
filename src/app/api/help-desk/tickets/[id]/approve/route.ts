@@ -52,7 +52,7 @@ export async function POST(
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Approve failed',
+        error: 'Approve failed',
       },
       { status: 500 }
     )
