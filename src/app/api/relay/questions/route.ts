@@ -290,8 +290,36 @@ export async function POST(req: Request): Promise<Response> {
       { status: ipLimit.status }
     )
   }
+  // Reject oversized bodies before JSON parsing or installation database work.
+  // A streaming bound is required because Content-Length can be absent or forged.
+  const MAX_QUESTION_BODY_BYTES = 5_000_000
+  const declaredLength = Number(req.headers.get('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_QUESTION_BODY_BYTES) {
+    return Response.json({ success: false, error: 'Request too large', code: 'PAYLOAD_TOO_LARGE' }, { status: 413 })
+  }
   try {
-    const parsed = schema.safeParse(await req.json())
+    const reader = req.body?.getReader()
+    if (!reader) return Response.json({ success: false, error: 'Missing request body', code: 'SCHEMA' }, { status: 400 })
+    const chunks: Uint8Array[] = []
+    let byteCount = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      byteCount += value.byteLength
+      if (byteCount > MAX_QUESTION_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        return Response.json({ success: false, error: 'Request too large', code: 'PAYLOAD_TOO_LARGE' }, { status: 413 })
+      }
+      chunks.push(value)
+    }
+    const rawBody = Buffer.concat(chunks).toString('utf8')
+    let body: unknown
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      return Response.json({ success: false, error: 'Invalid JSON', code: 'SCHEMA' }, { status: 400 })
+    }
+    const parsed = schema.safeParse(body)
     if (!parsed.success) {
       return Response.json(
         { success: false, error: 'Invalid question payload', code: 'SCHEMA' },
