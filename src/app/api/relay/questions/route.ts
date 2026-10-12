@@ -667,7 +667,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Question submit failed',
+        error: 'Question submit failed',
         code: 'QUESTION_FAILED',
       },
       { status: 500 }
