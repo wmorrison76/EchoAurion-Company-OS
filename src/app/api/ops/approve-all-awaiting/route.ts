@@ -69,7 +69,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Bulk approve failed',
+        error: 'Bulk approve failed',
       },
       { status: 500 }
     )
