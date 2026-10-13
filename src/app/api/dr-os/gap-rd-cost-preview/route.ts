@@ -23,6 +23,9 @@ const schema = z.object({
 export async function POST(req: Request): Promise<Response> {
   const session = await auth()
   if (!session?.user) return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'dr_os' || session.user.id !== 'william_morrison') {
+    return Response.json({ success: false, error: 'Forbidden' }, { status: 403 })
+  }
 
   let input: z.infer<typeof schema>
   try {
