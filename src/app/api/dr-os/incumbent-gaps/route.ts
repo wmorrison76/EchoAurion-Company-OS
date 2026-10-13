@@ -213,6 +213,9 @@ export async function POST(req: Request): Promise<Response> {
 export async function GET(req: Request): Promise<Response> {
   const session = await auth()
   if (!session?.user) return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'dr_os' || session.user.id !== 'william_morrison') {
+    return Response.json({ success: false, error: 'Forbidden' }, { status: 403 })
+  }
   const url = new URL(req.url)
   const clientKey = url.searchParams.get('clientKey') ?? ''
   const providerKey = url.searchParams.get('providerKey') ?? ''
