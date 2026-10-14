@@ -102,4 +102,26 @@ describe('Company OS distributed nonce replay defense', () => {
     expect(result).toMatchObject({ ok: false, status: 401, code: 'HANDSHAKE_HASH_MISMATCH' })
     expect(create).not.toHaveBeenCalled()
   })
+  it('does not expand timestamp freshness beyond five minutes through configuration', async () => {
+    const previous = process.env.RELAY_HANDSHAKE_SKEW_MS
+    process.env.RELAY_HANDSHAKE_SKEW_MS = String(24 * 60 * 60 * 1000)
+    try {
+      const headers = buildHandshakeHeaders({
+        clientKey: 'property-test-a', nonce: 'stale-nonce-12345678',
+      })
+      headers['X-Echo-Timestamp'] = String(Date.now() - 10 * 60 * 1000)
+      const result = await verifyRequestHandshake({
+        req: new Request('https://example.test/relay', { method: 'POST', headers }),
+        route: '/api/relay/test',
+        clientKey: 'property-test-a',
+        required: true,
+      })
+      expect(result).toMatchObject({ ok: false, status: 401, code: 'HANDSHAKE_SKEW' })
+      expect(create).not.toHaveBeenCalled()
+    } finally {
+      if (previous === undefined) delete process.env.RELAY_HANDSHAKE_SKEW_MS
+      else process.env.RELAY_HANDSHAKE_SKEW_MS = previous
+    }
+  })
+
 })
