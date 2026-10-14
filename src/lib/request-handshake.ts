@@ -21,7 +21,7 @@ export type HandshakeResult =
 
 function skewWindowMs(): number {
   const n = Number(process.env.RELAY_HANDSHAKE_SKEW_MS ?? '')
-  return Number.isFinite(n) && n >= 30_000 ? n : DEFAULT_SKEW_MS
+  return Number.isFinite(n) && n >= 30_000 && n <= DEFAULT_SKEW_MS ? n : DEFAULT_SKEW_MS
 }
 
 /** When true, missing handshake headers → 401. Default false (soft) during pilot rollout. */
@@ -73,11 +73,12 @@ export function buildHandshakeHeaders(input: {
 }
 
 /**
- * Persist nonce; reject if already seen (replay).
- * Uses RequestNonce table; falls back to in-memory if migration not applied yet.
+ * Atomically persist and claim a nonce in shared PostgreSQL.
+ *
+ * SECURITY: Never fall back to per-process memory on a database error. A
+ * request replayed against another worker would otherwise be accepted.
+ * Database unavailability must block a handshake, not downgrade it.
  */
-const memoryNonces = new Map<string, number>()
-
 async function claimNonce(input: {
   route: string
   nonce: string
@@ -85,8 +86,6 @@ async function claimNonce(input: {
   deliveryId?: string | null
 }): Promise<{ ok: true } | { ok: false; code: string; error: string }> {
   const expiresAt = new Date(Date.now() + NONCE_TTL_MS)
-  const key = `${input.route}:${input.nonce}`
-
   try {
     await db.requestNonce.create({
       data: {
@@ -100,7 +99,7 @@ async function claimNonce(input: {
     return { ok: true }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    // Unique violation → replay
+    // Only a unique constraint error represents a consumed nonce.
     if (/unique|duplicate|P2002/i.test(msg)) {
       return {
         ok: false,
@@ -108,24 +107,11 @@ async function claimNonce(input: {
         error: 'Replay rejected — nonce already used',
       }
     }
-    // Table missing / other DB error → memory fallback
-    const now = Date.now()
-    // Opportunistic prune
-    if (memoryNonces.size > 5000) {
-      for (const [k, exp] of memoryNonces) {
-        if (exp < now) memoryNonces.delete(k)
-      }
+    return {
+      ok: false,
+      code: 'REPLAY_STORE_UNAVAILABLE',
+      error: 'Replay protection unavailable — request not accepted',
     }
-    const existing = memoryNonces.get(key)
-    if (existing && existing > now) {
-      return {
-        ok: false,
-        code: 'REPLAY_REJECTED',
-        error: 'Replay rejected — nonce already used',
-      }
-    }
-    memoryNonces.set(key, expiresAt.getTime())
-    return { ok: true }
   }
 }
 
@@ -263,7 +249,7 @@ export async function verifyRequestHandshake(input: {
     }).catch(() => {})
     return {
       ok: false,
-      status: 409,
+      status: claimed.code === 'REPLAY_STORE_UNAVAILABLE' ? 503 : 409,
       error: claimed.error,
       code: claimed.code,
     }
