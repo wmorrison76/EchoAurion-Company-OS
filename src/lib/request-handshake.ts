@@ -21,7 +21,7 @@ export type HandshakeResult =
 
 function skewWindowMs(): number {
   const n = Number(process.env.RELAY_HANDSHAKE_SKEW_MS ?? '')
-  return Number.isFinite(n) && n >= 30_000 ? n : DEFAULT_SKEW_MS
+  return Number.isFinite(n) && n >= 30_000 && n <= DEFAULT_SKEW_MS ? n : DEFAULT_SKEW_MS
 }
 
 /** When true, missing handshake headers → 401. Default false (soft) during pilot rollout. */
