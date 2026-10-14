@@ -99,6 +99,10 @@ describe('Help Desk GET route tenant authorization wiring', () => {
       context: { path: ['userId'], equals: 'user1' },
     })
     expect(ticketRead).toHaveBeenCalledOnce()
+    expect(ticketRead.mock.calls[0][0]?.where).toMatchObject({
+      clientKey: 'property-alpha',
+      customerQuestionId: { in: [] },
+    })
   })
 
   it('throttles even a valid installation before touching private data', async () => {
