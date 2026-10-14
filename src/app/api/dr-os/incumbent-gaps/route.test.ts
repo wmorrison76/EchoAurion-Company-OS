@@ -41,7 +41,7 @@ const payload = {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  ;(auth as any).mockResolvedValue({ user: { id: 'operator' } })
+  ;(auth as any).mockResolvedValue({ user: { id: 'william_morrison', role: 'dr_os' } })
   ;(audit as any).mockResolvedValue(undefined)
   mockDb.supportClient.findUnique.mockResolvedValue({ id: 'registered-client' })
   mockDb.incumbentSchemaObservation.upsert.mockResolvedValue({ id: 'obs1' })
