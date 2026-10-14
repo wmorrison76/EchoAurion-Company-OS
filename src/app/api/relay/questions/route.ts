@@ -181,7 +181,10 @@ export async function GET(req: Request): Promise<Response> {
     })
 
     const tickets = await db.helpTicket.findMany({
-      where: { customerQuestionId: { in: rows.map((r) => r.id) } },
+      where: {
+        clientKey: key.clientKey,
+        customerQuestionId: { in: rows.map((r) => r.id) },
+      },
       select: {
         id: true,
         customerQuestionId: true,
