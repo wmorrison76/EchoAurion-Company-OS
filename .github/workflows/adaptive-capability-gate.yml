@@ -1,0 +1,56 @@
+name: Adaptive Capability Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/incumbent-schema-gap*'
+      - 'src/lib/gap-rd-cost-allocation*'
+      - 'src/lib/autonomous-capability-certification*'
+      - 'src/app/api/dr-os/incumbent-gaps/**'
+      - 'src/app/api/dr-os/gap-rd-cost-preview/**'
+      - 'prisma/schema.prisma'
+      - 'scripts/check-adaptive-schema-db.mjs'
+      - 'prisma/migrations/20261010003500_incumbent_schema_observations/**'
+      - '.github/workflows/adaptive-capability-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
+      DATABASE_URL_UNPOOLED: postgresql://test:test@127.0.0.1:5432/test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Validate Prisma schema without connecting to production
+        run: npx prisma validate
+      - run: npx prisma generate
+      - name: Verify passport SQL in disposable PostgreSQL (rollback)
+        run: node scripts/check-adaptive-schema-db.mjs
+      - name: Focused adaptive-capability unit tests
+        run: npx vitest run src/lib/incumbent-schema-gap.test.ts src/lib/gap-rd-cost-allocation.test.ts src/lib/autonomous-capability-certification.test.ts src/app/api/dr-os/incumbent-gaps/route.test.ts
+      - name: Typecheck
+        run: npm run typecheck
