@@ -61,6 +61,25 @@ if (!Number.isSafeInteger(total) || total < 0) {
   process.exit(2)
 }
 
+
+const severityLevels = ['info', 'low', 'moderate', 'high', 'critical']
+const observed = Object.fromEntries(severityLevels.map(level => [level, 0]))
+for (const risk of risks) {
+  if (!Object.hasOwn(observed, risk.severity)) {
+    console.error('SECURITY_AUDIT_UNAVAILABLE: unknown NPM advisory severity.')
+    process.exit(2)
+  }
+  observed[risk.severity] += 1
+}
+if (risks.length !== total || severityLevels.some(level =>
+  !Number.isSafeInteger(counts[level]) ||
+  counts[level] < 0 ||
+  counts[level] !== observed[level]
+)) {
+  console.error('SECURITY_AUDIT_UNAVAILABLE: inconsistent NPM advisory counts.')
+  process.exit(2)
+}
+
 console.log('COMPANY_OS_PRODUCTION_DEPENDENCY_ADVISORIES')
 console.log('Counts (npm audit --omit=dev):', JSON.stringify(counts))
 console.log('Affected package count:', risks.length)
