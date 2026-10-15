@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { audit } from '@/lib/audit'
 import { raiseAlert } from '@/lib/alerts'
-import { relayAuthorized, relayQuestionsThrottle, relayRateLimited, relayThrottleResponse, requireClientKey } from '@/lib/relay-auth'
+import { relayQuestionsThrottle, relayRateLimited, relayThrottleResponse, requireClientKey } from '@/lib/relay-auth'
 import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
 import {
   processInboundQuestion,
@@ -12,7 +12,7 @@ import {
 import { getStandbyConfig } from '@/lib/standby'
 import { gateFromQuestionPayload, INTAKE_GATE_META } from '@/lib/intake-gate'
 import { supportEtaLabel } from '@/lib/support-eta'
-import { enforcePerTenantSecretIfSet } from '@/lib/tenant-ingest-secret'
+import { authorizeRelayHistoryRead } from '@/lib/relay-history-tenant-auth'
 import {
   attachmentAuditMeta,
   parseIncomingAttachments,
@@ -112,19 +112,30 @@ function redactPilotText(text: string, max = PILOT_THREAD_TEXT_MAX): string {
  * Never returns org-wide / coworker tickets.
  */
 export async function GET(req: Request): Promise<Response> {
-  const a = relayAuthorized(req)
-  if (!a.ok) {
-    return Response.json(
-      { success: false, error: a.error, code: a.code },
-      { status: a.status }
-    )
-  }
   const url = new URL(req.url)
   const key = requireClientKey(url.searchParams.get('clientKey'))
   if (!key.ok) {
     return Response.json(
       { success: false, error: key.error, code: key.code },
       { status: key.status }
+    )
+  }
+  // Reject throttled requests before performing credential database lookups.
+  // This per-process limit is defense in depth; ingress-wide limits are still required.
+  const throttle = relayRateLimited(req, 'questions')
+  if (!throttle.ok) {
+    return Response.json(
+      { success: false, error: throttle.error, code: throttle.code },
+      { status: throttle.status }
+    )
+  }
+  // Private history must be scoped to the registered installation credential;
+  // the fleet-wide ingest secret is insufficient to select a property.
+  const install = await authorizeRelayHistoryRead({ req, clientKey: key.clientKey })
+  if (!install.ok) {
+    return Response.json(
+      { success: false, error: install.error, code: install.code },
+      { status: install.status }
     )
   }
   const userId = parseRelayUserId(url.searchParams.get('userId'))
@@ -170,7 +181,10 @@ export async function GET(req: Request): Promise<Response> {
     })
 
     const tickets = await db.helpTicket.findMany({
-      where: { customerQuestionId: { in: rows.map((r) => r.id) } },
+      where: {
+        clientKey: key.clientKey,
+        customerQuestionId: { in: rows.map((r) => r.id) },
+      },
       select: {
         id: true,
         customerQuestionId: true,
@@ -258,7 +272,7 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'History fetch failed',
+        error: 'History fetch failed',
         code: 'HISTORY_FAILED',
       },
       { status: 500 }
@@ -272,13 +286,6 @@ export async function GET(req: Request): Promise<Response> {
  * draft in the background. Standby may auto-approve low-risk TEXT only.
  */
 export async function POST(req: Request): Promise<Response> {
-  const auth = relayAuthorized(req)
-  if (!auth.ok) {
-    return Response.json(
-      { success: false, error: auth.error, code: auth.code },
-      { status: auth.status }
-    )
-  }
   const ipLimit = relayRateLimited(req, 'questions')
   if (!ipLimit.ok) {
     return Response.json(
@@ -286,8 +293,36 @@ export async function POST(req: Request): Promise<Response> {
       { status: ipLimit.status }
     )
   }
+  // Reject oversized bodies before JSON parsing or installation database work.
+  // A streaming bound is required because Content-Length can be absent or forged.
+  const MAX_QUESTION_BODY_BYTES = 5_000_000
+  const declaredLength = Number(req.headers.get('content-length'))
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_QUESTION_BODY_BYTES) {
+    return Response.json({ success: false, error: 'Request too large', code: 'PAYLOAD_TOO_LARGE' }, { status: 413 })
+  }
   try {
-    const parsed = schema.safeParse(await req.json())
+    const reader = req.body?.getReader()
+    if (!reader) return Response.json({ success: false, error: 'Missing request body', code: 'SCHEMA' }, { status: 400 })
+    const chunks: Uint8Array[] = []
+    let byteCount = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      byteCount += value.byteLength
+      if (byteCount > MAX_QUESTION_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        return Response.json({ success: false, error: 'Request too large', code: 'PAYLOAD_TOO_LARGE' }, { status: 413 })
+      }
+      chunks.push(value)
+    }
+    const rawBody = Buffer.concat(chunks).toString('utf8')
+    let body: unknown
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      return Response.json({ success: false, error: 'Invalid JSON', code: 'SCHEMA' }, { status: 400 })
+    }
+    const parsed = schema.safeParse(body)
     if (!parsed.success) {
       return Response.json(
         { success: false, error: 'Invalid question payload', code: 'SCHEMA' },
@@ -301,6 +336,9 @@ export async function POST(req: Request): Promise<Response> {
         { status: key.status }
       )
     }
+
+    const auth = await authorizeRelayHistoryRead({ req, clientKey: key.clientKey })
+    if (!auth.ok) return Response.json({ success: false, error: auth.error, code: auth.code }, { status: auth.status })
 
     const clientThrottle = await relayQuestionsThrottle(key.clientKey)
     if (!clientThrottle.ok && !clientThrottle.throttle.ok) {
@@ -351,18 +389,6 @@ export async function POST(req: Request): Promise<Response> {
           }
         )
       }
-    }
-
-    const tenant = await enforcePerTenantSecretIfSet({
-      clientKey: key.clientKey,
-      req,
-      sharedOk: true,
-    })
-    if (!tenant.ok) {
-      return Response.json(
-        { success: false, error: tenant.error, code: tenant.code },
-        { status: tenant.status }
-      )
     }
 
     const { question, context, locale, attachments: rawAttachments, ticketId: followUpRef } =
@@ -672,7 +698,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Question submit failed',
+        error: 'Question submit failed',
         code: 'QUESTION_FAILED',
       },
       { status: 500 }
