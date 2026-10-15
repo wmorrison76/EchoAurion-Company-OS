@@ -48,8 +48,9 @@ vi.mock('@/lib/relay-question-followup', () => ({ processRelayFollowUp: vi.fn() 
 
 import { db } from '@/lib/db'
 import { authorizeRelayHistoryRead } from '@/lib/relay-history-tenant-auth'
-import { relayAuthorized, relayRateLimited } from '@/lib/relay-auth'
-import { GET } from './route'
+import { relayAuthorized, relayRateLimited, relayQuestionsThrottle } from '@/lib/relay-auth'
+import { upsertSupportClientByKey } from '@/lib/relay-heartbeat'
+import { GET, POST } from './route'
 
 const auth = vi.mocked(authorizeRelayHistoryRead)
 const questionRead = vi.mocked(db.customerQuestion.findMany)
@@ -136,5 +137,47 @@ describe('Help Desk GET route tenant authorization wiring', () => {
     const result = await GET(req('property-alpha', ''))
     expect(result.status).toBe(200)
     expect(questionRead).not.toHaveBeenCalled()
+  })
+})
+
+function questionPost(): Request {
+  return new Request('https://company-os.invalid/api/relay/questions', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer legacy-fleet-credential',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      clientKey: 'property-alpha',
+      question: 'Can I see my ticket?',
+    }),
+  })
+}
+
+describe('Help Desk POST route installation authorization wiring', () => {
+  it('rejects a legacy fleet-only credential before tenant writes or processing', async () => {
+    const result = await POST(questionPost())
+    expect(result.status).toBe(401)
+    expect((await result.json()).code).toBe('INSTALLATION_CREDENTIAL_REQUIRED')
+    expect(auth).toHaveBeenCalledWith({
+      req: expect.any(Request),
+      clientKey: 'property-alpha',
+    })
+    expect(vi.mocked(relayQuestionsThrottle)).not.toHaveBeenCalled()
+    expect(vi.mocked(upsertSupportClientByKey)).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when installation authorization storage is unavailable', async () => {
+    auth.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      error: 'Installation authorization unavailable',
+      code: 'INSTALLATION_AUTH_UNAVAILABLE',
+    })
+    const result = await POST(questionPost())
+    expect(result.status).toBe(503)
+    expect((await result.json()).code).toBe('INSTALLATION_AUTH_UNAVAILABLE')
+    expect(vi.mocked(relayQuestionsThrottle)).not.toHaveBeenCalled()
+    expect(vi.mocked(upsertSupportClientByKey)).not.toHaveBeenCalled()
   })
 })
