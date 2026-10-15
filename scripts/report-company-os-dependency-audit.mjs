@@ -14,6 +14,12 @@ const child = spawnSync('npm', args, {
 })
 
 if (child.error) throw child.error
+// npm audit returns 1 when vulnerabilities are present; any other nonzero
+// status or signal means the inventory cannot be trusted as complete.
+if (child.signal || (child.status !== 0 && child.status !== 1)) {
+  console.error('SECURITY_AUDIT_UNAVAILABLE: npm audit process failed unexpectedly.')
+  process.exit(2)
+}
 let report
 try {
   report = JSON.parse(child.stdout)
